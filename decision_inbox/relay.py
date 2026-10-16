@@ -2,7 +2,8 @@
 
 Input is the JSON text a session got back from the MCP tools `bridge_agents`,
 `bridge_outbox` and `bridge_wake_status` (agent-relay >= 0.6.10, interface 2.x). Message bodies and
-previews are never copied into the output.
+previews are never copied into the output, except by `parse_inbox`, whose job is to hand the hub's
+own incoming messages to hub-loop (spec/hub-loop.md).
 """
 
 from __future__ import annotations
@@ -69,6 +70,26 @@ class MessageFact:
 class Outbox:
     sender: str
     messages: tuple[MessageFact, ...]
+    warnings: tuple[str, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class InboxMessage:
+    id: int
+    sender: str
+    body: str
+    created_at: str | None
+    reply_to: int | None
+    expects_reply: bool
+    truncated: bool
+    next_offset: int | None
+
+
+@dataclass(frozen=True)
+class Inbox:
+    agent: str | None
+    messages: tuple[InboxMessage, ...]
+    has_more: bool
     warnings: tuple[str, ...] = field(default=())
 
 
@@ -230,3 +251,35 @@ def parse_wake_jobs(text: str) -> dict[str, dict[str, int]]:
             per = counts.setdefault(agent, {})
             per[state] = per.get(state, 0) + 1
     return counts
+
+
+def parse_inbox(text: str) -> Inbox:
+    """bridge_inbox output (a page with `messages`, or one `message` read by id), bodies kept."""
+    try:
+        doc = json.loads(text)
+    except (TypeError, json.JSONDecodeError) as e:
+        raise RelayDataError(f"bridge_inbox 的返回不是合法 JSON：{e}") from None
+    if isinstance(doc, dict) and isinstance(doc.get("message"), dict) and "messages" not in doc:
+        raw = [doc["message"]]
+    elif isinstance(doc, dict) and isinstance(doc.get("messages"), list):
+        raw = doc["messages"]
+    else:
+        raise RelayDataError("bridge_inbox 的返回缺少 messages 数组")
+    warnings: list[str] = []
+    messages: list[InboxMessage] = []
+    for m in raw:
+        if not isinstance(m, dict) or _int_or_none(m.get("id")) is None or not _str_or_none(m.get("fromAgent")):
+            warnings.append("bridge_inbox 有一条消息缺少 id 或发件人，已跳过")
+            continue
+        messages.append(InboxMessage(
+            id=m["id"],
+            sender=m["fromAgent"],
+            body=_str_or_none(m.get("body")) or "",
+            created_at=_str_or_none(m.get("createdAt")),
+            reply_to=_int_or_none(m.get("replyTo")),
+            expects_reply=m.get("expectsReply") is True,
+            truncated=m.get("bodyTruncated") is True,
+            next_offset=_int_or_none(m.get("nextOffset")),
+        ))
+    return Inbox(agent=_str_or_none(doc.get("agent")), messages=tuple(messages),
+                 has_more=doc.get("hasMore") is True, warnings=tuple(warnings))

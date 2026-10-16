@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：relay-reader 返工——`parse_inbox`
+- [x] Task 1：relay-reader 返工——`parse_inbox`
   - 验收：按 agent-relay 0.7.0 源码字段解析 `agent`、`messages`、`hasMore`；没读全的消息标 `truncated` 并带 `nextOffset`；缺 `id` 或 `fromAgent` 的记警告并跳过；不是 JSON 或没有 `messages` 时抛 `RelayDataError`；原有 relay 测试不改动、全部通过
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/inbox.json`、`tests/fixtures/relay/inbox-truncated.json`

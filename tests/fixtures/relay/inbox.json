@@ -1,0 +1,12 @@
+{
+ "agent": "di-hub",
+ "messages": [
+  {"id": 4001, "fromAgent": "fe-codex", "toAgent": "di-hub", "body": "【等待用户】\n来自：前端\n要你决定：选方案", "threadId": null, "idempotencyKey": null, "createdAt": "2026-10-16T08:00:00.000Z", "deliveryState": "accepted", "expiresAt": null, "replyTo": null, "expectsReply": true},
+  {"id": 4002, "fromAgent": "bridge", "toAgent": "di-hub", "body": "Message #3990 to api-codex failed.", "threadId": null, "idempotencyKey": null, "createdAt": "2026-10-16T08:01:00.000Z", "deliveryState": null, "expiresAt": null, "replyTo": 3990, "expectsReply": false},
+  {"toAgent": "di-hub", "body": "no id"},
+  {"id": 4003, "toAgent": "di-hub", "body": "no sender", "createdAt": "2026-10-16T08:02:00.000Z"}
+ ],
+ "hasMore": false,
+ "nextAfterId": null,
+ "readRecorded": true
+}

@@ -263,3 +263,42 @@ class StaticScanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParseInboxTest(unittest.TestCase):
+    def test_page_fields(self):
+        inbox = relay.parse_inbox(fixture("inbox.json"))
+        self.assertEqual(inbox.agent, "di-hub")
+        self.assertFalse(inbox.has_more)
+        first = inbox.messages[0]
+        self.assertEqual((first.id, first.sender, first.created_at, first.reply_to, first.expects_reply),
+                         (4001, "fe-codex", "2026-10-16T08:00:00.000Z", None, True))
+        self.assertEqual(first.body, "【等待用户】\n来自：前端\n要你决定：选方案")
+        self.assertFalse(first.truncated)
+        self.assertIsNone(first.next_offset)
+        self.assertEqual(inbox.messages[1].sender, "bridge")
+        self.assertEqual(inbox.messages[1].reply_to, 3990)
+
+    def test_entries_without_id_or_sender_skipped_with_warning(self):
+        inbox = relay.parse_inbox(fixture("inbox.json"))
+        self.assertEqual([m.id for m in inbox.messages], [4001, 4002])
+        self.assertEqual(len(inbox.warnings), 2)
+
+    def test_truncated_body_and_more_pages(self):
+        inbox = relay.parse_inbox(fixture("inbox-truncated.json"))
+        self.assertTrue(inbox.has_more)
+        m = inbox.messages[0]
+        self.assertTrue(m.truncated)
+        self.assertEqual(m.next_offset, 20)
+
+    def test_single_message_read(self):
+        doc = json.loads(fixture("inbox.json"))
+        single = {"agent": "di-hub", "message": doc["messages"][0], "readRecorded": True}
+        inbox = relay.parse_inbox(json.dumps(single, ensure_ascii=False))
+        self.assertEqual([m.id for m in inbox.messages], [4001])
+        self.assertFalse(inbox.has_more)
+
+    def test_structural_errors(self):
+        for text in ("not json", "[]", '{"agent": "x"}', '{"messages": {}}'):
+            with self.assertRaises(relay.RelayDataError):
+                relay.parse_inbox(text)
