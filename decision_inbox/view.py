@@ -36,6 +36,13 @@ def ago(now: str, then: str) -> str:
     return f"{minutes // (24 * 60)} 天前"
 
 
+def waited(minutes: int) -> str:
+    """A duration without 前: N 分钟 / N 小时 / N 天 (shared by map-view and stop-hook)."""
+    if minutes < 60:
+        return f"{minutes} 分钟"
+    return f"{minutes // 60} 小时" if minutes < 24 * 60 else f"{minutes // (24 * 60)} 天"
+
+
 def clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 

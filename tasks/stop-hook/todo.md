@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：`decide`——认会话、四种放行、拦下与说明
+- [x] Task 1：`decide`——认会话、四种放行、拦下与说明
   - 验收：
     - Spec 验收 1：拦下时 `reason` 格式一致，多张单按单号排序；
     - Spec 验收 2：`stop_hook_active` 为 true 时放行；

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from decision_inbox import items, protocol, reviews, store, tickets
-from decision_inbox.view import clip
+from decision_inbox.view import clip, waited
 
 _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
 _REVIEW_MARKS = {"approved": "✔", "pending": "待审", "revised": "已改待复审", "invalid": "标记无效", "none": "—"}
@@ -59,15 +59,9 @@ def _clock(value: str) -> str:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
 
 
-def _waited(minutes: int) -> str:
-    if minutes < 60:
-        return f"{minutes} 分钟"
-    return f"{minutes // 60} 小时" if minutes < 24 * 60 else f"{minutes // (24 * 60)} 天"
-
-
 def external_waits(g: store.Group, now: str, session: str) -> list[str]:
     """Open tickets of this line that wait on someone other than the user (spec 已定事项 3)."""
-    return [f"外部等待：等 {t.target} 交付「{''.join(x.strip() for x in t.what.splitlines())}」（已等 {_waited(t.minutes)}）"
+    return [f"外部等待：等 {t.target} 交付「{''.join(x.strip() for x in t.what.splitlines())}」（已等 {waited(t.minutes)}）"
             for t in tickets.open_tickets(g, now) if t.waiter == session and t.target not in tickets.USER_TARGETS]
 
 
