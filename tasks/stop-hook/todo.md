@@ -25,9 +25,10 @@
 - [x] Checkpoint 1（report）：全部测试全绿；记下一次子进程实跑的 stdout 和 stderr，然后继续
   - 记录（2026-10-16）：`python3 -m unittest discover -s tests -v` → Ran 292 tests, OK。scratchpad 临时协作组实跑：第一次 stdout 为 `{"decision": "block", "reason": "【decision-inbox】收工前请先处理：有会话在等你。\n- #1 等待方 在等你：探针的测试交付（已等 0 分钟）…"}`，退出码 0；第二次（stop_hook_active 为 true）stdout 为空，stderr「decision-inbox 停止钩子放行：本轮已经拦过一次」，退出码 0。另：首次搭建时把等待方的 repo 设成了探针 repo 的上级目录，两条都匹配，按规格放行（「工作目录同时属于 探针、等待方」）
 
-- [ ] Task 3：Claude 桌面版实测
+- [x] Task 3：Claude 桌面版实测
   - 验收：Spec 验收 9（拦下后同一轮继续并收到 `reason`；第二次 `stop_hook_active` 为 true 时放行）。按 plan「实测方案」做，开会话前先问用户；结果写进 `spec/stop-hook.md` 的「实测记录」一节
   - 验证：实测日志和会话记录
   - 文件：`spec/stop-hook.md`（scratchpad 里的测试项目不提交）
+  - 记录（2026-10-16）：经用户同意开实测会话；钩子调用两次，第一次拦下、同一轮继续并复述说明首行，第二次 stop_hook_active 为 true 放行；无信任提示、无权限确认。详见规格「实测记录」
 
 - [ ] Checkpoint 2（gate）：模块最终验收——全部测试全绿、9 条验收标准逐条有测试或实测记录、列出实际改动文件、给出规格修订内容；停下等用户确认
