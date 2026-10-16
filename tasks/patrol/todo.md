@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：group-store 返工——`desktopSession` 可选字段
+- [x] Task 1：group-store 返工——`desktopSession` 可选字段
   - 验收：Spec 验收 12（不是 `local_` 开头的字符串时拒绝登记；不填照常）；group-store 原有测试不改动、全部通过
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/store.py`、`tests/test_store_roster.py`

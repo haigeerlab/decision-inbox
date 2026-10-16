@@ -58,6 +58,10 @@ def _validate_session(entry: dict, others: list[dict]) -> dict:
         raise bad("line 必须是短名数组")
     if repo is not None and (not isinstance(repo, str) or not os.path.isabs(repo)):
         raise bad("repo 必须是绝对路径")
+    if "desktopSession" in entry:
+        desktop = entry["desktopSession"]
+        if not isinstance(desktop, str) or not desktop.startswith("local_") or len(desktop) <= len("local_"):
+            raise bad("desktopSession 必须是桌面版会话编号（local_ 开头）")
     if role == "dev" and (len(line) != 1 or repo is None):
         raise bad("开发线必须恰好属于一条线，并填写 repo")
     if role == "owner" and not line:

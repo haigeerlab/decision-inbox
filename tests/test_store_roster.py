@@ -27,6 +27,21 @@ class RosterTest(TempHomeTestCase):
         self.assertEqual(store.find_session(self.g, short_name="前端负责人")["role"], "owner")
         self.assertIsNone(store.find_session(self.g, short_name="后台"))
 
+    def test_desktop_session(self):
+        with self.g.transaction() as tx:
+            tx.add_session(dict(OWNER, relayName="api-owner", shortName="API负责人", line=["API"],
+                                desktopSession="local_0db22e7e-6836-46bc-9e37-7a82d8f09bb9"))
+        self.assertEqual(store.find_session(self.g, relay_name="api-owner")["desktopSession"],
+                         "local_0db22e7e-6836-46bc-9e37-7a82d8f09bb9")
+        self.assertNotIn("desktopSession", store.find_session(self.g, relay_name="fe-owner"))
+        for bad in ("0db22e7e", "", 12, None, "local_"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(store.InvalidSession):
+                    with self.g.transaction() as tx:
+                        tx.add_session(dict(OWNER, relayName="x-owner", shortName="X负责人", line=["X"],
+                                            desktopSession=bad))
+        self.assertIsNone(store.find_session(self.g, relay_name="x-owner"))
+
     def test_replace_existing_entry(self):
         with self.g.transaction() as tx:
             tx.replace_session(dict(DEV, repo="/tmp/shop-fe-2"))
