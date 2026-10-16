@@ -6,6 +6,7 @@ through agent-relay and reports the message ids back.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -161,6 +162,76 @@ def pending(g: store.Group) -> list[dict]:
         if it["status"] == "pending":
             found.append(dict(it, no=int(key), blocks=_blocks(it)))
     return sorted(found, key=lambda it: (-it["blocks"], _instant(it["receivedAt"])))
+
+
+@dataclass(frozen=True)
+class Answer:
+    item: int
+    letter: str | None
+    original: str
+
+
+@dataclass(frozen=True)
+class ReplyParse:
+    answers: tuple[Answer, ...] = ()
+    question: str | None = None
+
+
+_SEGMENT_RE = re.compile(r"^\s*#?(\d+)\s*(.*)$", re.S)
+_LETTER_RE = re.compile(r"^([A-Z])(?:\s+.*)?$", re.S)
+_SPLIT_RE = re.compile(r"[，；;,]")
+ANSWERED = ("forwarded", "picked", "acknowledged")
+
+
+def _segments(text: str, known: dict) -> list[str]:
+    """Split only when every piece starts with an existing item number (spec 关键决策 4)."""
+    def numbered(piece: str) -> bool:
+        m = _SEGMENT_RE.match(piece)
+        return bool(m) and m.group(1) in known
+
+    lines = [line for line in text.split("\n") if line.strip()]
+    if len(lines) > 1:
+        return [line.strip() for line in lines] if all(numbered(l) for l in lines) else [text]
+    pieces = [x.strip() for x in _SPLIT_RE.split(text) if x.strip()]
+    if len(pieces) > 1 and all(numbered(x) for x in pieces):
+        return pieces
+    return [text]
+
+
+def interpret_reply(g: store.Group, text: str) -> ReplyParse:
+    """The user's reply as answers, or a question when anything does not match (requirement 6.4)."""
+    text = text.strip()
+    known = store.read_state(g, DOMAIN).get("items", {})
+    waiting = [k for k, it in known.items() if it["status"] == "pending"]
+    answers: list[Answer] = []
+    for segment in _segments(text, known):
+        m = _SEGMENT_RE.match(segment)
+        if m:
+            key, rest = m.group(1), m.group(2).strip()
+        elif len(waiting) == 1:
+            key, rest = waiting[0], segment
+        else:
+            return ReplyParse(question="没看出这句是答哪一项的，请在开头写上编号，例如「12 B」。")
+        it = known.get(key)
+        if it is None:
+            return ReplyParse(question=f"#{key} 不在待答表里，请确认编号。")
+        if it["status"] in ANSWERED:
+            return ReplyParse(question=f"#{key} 已经转达过，要改答复请先说明以哪次为准。")
+        if it["status"] != "pending":
+            return ReplyParse(question=f"#{key} 已经不在待答状态（已失效或已结束），请确认。")
+        letter = None
+        lm = _LETTER_RE.match(rest) if m else None
+        if lm:
+            letter = lm.group(1)
+            if letter not in {o["letter"] for o in it["options"]}:
+                return ReplyParse(question=f"#{key} 没有选项 {letter}，请确认。")
+        answer = Answer(int(key), letter, segment)
+        same = [a for a in answers if a.item == answer.item]
+        if same and (same[0].letter != letter or (letter is None and same[0].original != segment)):
+            return ReplyParse(question=f"#{key} 这次回复里有两个不同的答复，请说明以哪个为准。")
+        if not same:
+            answers.append(answer)
+    return ReplyParse(answers=tuple(answers))
 
 
 def receive(g: store.Group, text: str, sender: str, relay_id, received_at: str) -> ReceiveResult:

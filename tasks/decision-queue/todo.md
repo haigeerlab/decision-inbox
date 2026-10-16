@@ -15,7 +15,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录：`python3 -m unittest discover -s tests -v` → Ran 112 tests, OK（2026-10-16）
 
-- [ ] Task 3：解析用户回复
+- [x] Task 3：解析用户回复
   - 验收：Spec 验收 6（三种写法）、7（一次答多项的两种切分）、8（六种情况只问不转）；原话里含「，」但不是多项时不误切
   - 验证：`python3 -m unittest discover -s tests -p test_items.py -v`
   - 文件：`decision_inbox/items.py`、`tests/test_items.py`

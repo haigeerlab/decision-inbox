@@ -159,5 +159,51 @@ class ValidityAndOrderTest(ItemsCase):
         self.assertEqual(items.pending(self.g), [])
 
 
+class InterpretTest(ItemsCase):
+    def setUp(self):
+        super().setUp()
+        self.a = self.receive(SINGLE).item                         # options A/B/C
+        self.b = self.receive(SINGLE, sender="api-codex", at=T2).item
+
+    def parse(self, text):
+        return items.interpret_reply(self.g, text)
+
+    def test_letter_reply(self):
+        p = self.parse(f"{self.a} B")
+        self.assertIsNone(p.question)
+        self.assertEqual(p.answers, (items.Answer(self.a, "B", f"{self.a} B"),))
+
+    def test_copy_block_and_free_sentence(self):
+        copy = f"{self.a} A 先接微信支付"
+        self.assertEqual(self.parse(copy).answers, (items.Answer(self.a, "A", copy),))
+        free = f"{self.a} 按推荐来，支付宝下周再说"
+        self.assertEqual(self.parse(free).answers, (items.Answer(self.a, None, free),))
+
+    def test_several_items(self):
+        for text in (f"{self.a} B\n{self.b} A", f"{self.a} B，{self.b} A", f"{self.a} B；{self.b} A"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B"), (self.b, "A")])
+
+    def test_questions_instead_of_answers(self):
+        withdrawn = self.receive(SINGLE, sender="fe-codex", at=T3).item
+        self.receive(f"【撤回】\n事项：#{withdrawn}\n")
+        for text in ("99 A", f"{withdrawn} A", f"{self.a} D", f"{self.a} A，{self.a} B", "按推荐来"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertEqual(p.answers, ())
+                self.assertTrue(p.question)
+
+    def test_no_number_with_single_pending(self):
+        self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
+        p = self.parse("按推荐来")
+        self.assertEqual(p.answers, (items.Answer(self.a, None, "按推荐来"),))
+
+    def test_same_answer_twice_in_one_reply_is_one(self):
+        p = self.parse(f"{self.a} B，{self.a} B")
+        self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B")])
+
+
 if __name__ == "__main__":
     unittest.main()
