@@ -72,6 +72,16 @@ class ReceiveTest(ItemsCase):
         self.assertEqual(self.item(early)["review"]["text"], "不需审：本会话无审查者")
         self.assertEqual(self.item(late)["review"]["text"], "⚠ 未标审查")
         self.assertTrue(self.item(late)["review"]["warn"])
+        self.assertEqual(self.item(early)["review"]["mentions"], [])
+
+    def test_review_mentions_stored(self):
+        reviews.register(self.g, session="fe-codex", reviewer="fe-owner", nodes=("spec",),
+                         approval_item=None, approval_note="接入时用户确认", at=T1)
+        text = SINGLE.replace("要点：", "要点：架构师说审查还没做完。")
+        no = self.receive(text, at=T2).item
+        label = reviews.display_label(self.g, session="fe-codex", message=protocol.parse(text), received_at=T2)
+        self.assertTrue(label.mentions)
+        self.assertEqual(self.item(no)["review"]["mentions"], list(label.mentions))
 
     def test_return_does_not_take_a_number(self):
         r = self.receive(SINGLE.replace("要你决定：支付页先接哪种支付方式\n", ""))
@@ -152,6 +162,18 @@ class ValidityAndOrderTest(ItemsCase):
             "选项与我的建议：", "- 前端负责人：只看\n选项与我的建议："), sender="coord", at=T3).item
         order = [(p["no"], p["blocks"]) for p in items.pending(self.g)]
         self.assertEqual(order, [(multi, 3), (stopped_early, 1), (stopped_late, 1), (not_stopped, 0)])
+
+    def test_get_and_by_status(self):
+        old = self.receive(SINGLE).item
+        new = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"), relay_id=101, at=T2).item
+        gone = self.receive(SINGLE, sender="api-codex", relay_id=102).item
+        self.receive(f"【撤回】\n事项：#{gone}\n原因：需求取消\n", sender="api-codex", relay_id=103)
+        got = items.get(self.g, new)
+        self.assertEqual((got["no"], got["status"], got["relayId"]), (new, "pending", 101))
+        self.assertIsNone(items.get(self.g, 999))
+        self.assertEqual([it["no"] for it in items.by_status(self.g, "superseded", "withdrawn")], [old, gone])
+        self.assertEqual([it["no"] for it in items.by_status(self.g, "pending")], [new])
+        self.assertEqual(items.by_status(self.g, "closed"), [])
 
     def test_pending_excludes_invalidated(self):
         old = self.receive(SINGLE).item

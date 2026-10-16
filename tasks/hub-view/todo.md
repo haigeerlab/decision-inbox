@@ -1,9 +1,8 @@
-<!-- spec-guard: review pending -->
 # Todo: hub-view
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：返工——补 detail、mentions、两个读取函数
+- [x] Task 1：返工——补 detail、mentions、两个读取函数
   - 验收：`AgentFact.presence_detail` 取 `presence.detail`，没有或空串为 None；收单后事项的 `review.mentions` 与 `display_label` 给的一致，旧记录缺字段时读作空；`items.get` 取到事项（带 `no`），编号不存在返回 None；`items.by_status(g, "superseded", "withdrawn")` 只列这两种状态、按编号排序；relay-reader 和 decision-queue 原有测试不改动、全部通过
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/relay.py`、`decision_inbox/items.py`、`tests/test_relay.py`、`tests/test_items.py`

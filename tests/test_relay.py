@@ -35,6 +35,17 @@ class ParseAgentsTest(unittest.TestCase):
         self.assertEqual(fe.presence, "needs-user")
         self.assertEqual(fe.presence_raw, "waiting-approval")
         self.assertEqual(fe.presence_since, "2026-10-16T04:31:00.000Z")
+        self.assertEqual(fe.presence_detail, "permission prompt")
+        self.assertIsNone(owner.presence_detail)
+
+    def test_presence_detail_blank_is_none(self):
+        for presence in ({"state": "waiting-approval", "detail": ""}, {"state": "waiting-approval"}, None):
+            with self.subTest(presence=presence):
+                agent = {"name": "x", "host": None, "unread": 0, "lastActivity": "t", "wake": None}
+                if presence is not None:
+                    agent["presence"] = presence
+                snap = relay.parse_agents(json.dumps({"agents": [agent]}))
+                self.assertIsNone(snap.agents["x"].presence_detail)
 
     def test_presence_categories(self):
         cases = {"running": "active", "waiting-input": "needs-user", "waiting-approval": "needs-user",

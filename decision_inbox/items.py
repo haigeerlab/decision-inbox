@@ -74,7 +74,8 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "lines": list(msg.lines_in_scope) if multi else [],
         "scopes": dict(msg.scopes) if multi else {},
         "ends": {"ids": list(msg.ends.ids), "none": msg.ends.none},
-        "review": {"text": label.text, "warn": label.warn, "highlight": label.highlight, "ref": label.ref},
+        "review": {"text": label.text, "warn": label.warn, "highlight": label.highlight, "ref": label.ref,
+                   "mentions": list(label.mentions)},
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
@@ -162,6 +163,18 @@ def pending(g: store.Group) -> list[dict]:
         if it["status"] == "pending":
             found.append(dict(it, no=int(key), blocks=_blocks(it)))
     return sorted(found, key=lambda it: (-it["blocks"], _instant(it["receivedAt"])))
+
+
+def get(g: store.Group, item: int) -> dict | None:
+    it = store.read_state(g, DOMAIN).get("items", {}).get(str(item))
+    return None if it is None else dict(it, no=int(item))
+
+
+def by_status(g: store.Group, *statuses: str) -> list[dict]:
+    """Items in any of `statuses`, by number (hub-view's detail, recent and invalidated views)."""
+    found = [dict(it, no=int(key)) for key, it in store.read_state(g, DOMAIN).get("items", {}).items()
+             if it["status"] in statuses]
+    return sorted(found, key=lambda it: it["no"])
 
 
 @dataclass(frozen=True)

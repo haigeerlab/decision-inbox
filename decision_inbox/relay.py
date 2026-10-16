@@ -42,6 +42,7 @@ class AgentFact:
     last_activity_at: str | None
     wake_bound: bool | None
     retired: bool
+    presence_detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
             presence_raw=presence_raw,
             presence=_PRESENCE.get(presence_raw, "unknown"),
             presence_since=_str_or_none(presence.get("since")),
+            presence_detail=_str_or_none(presence.get("detail")) or None,
             unread=_int_or_none(a.get("unread")),
             waiting_count=count,
             waiting_from=tuple(x for x in (waiting or {}).get("from", []) if isinstance(x, str)),
