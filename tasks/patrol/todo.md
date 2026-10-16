@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/store.py`、`tests/test_store_roster.py`
 
-- [ ] Task 2：`plan`、`record`、去重记录与叫醒
+- [x] Task 2：`plan`、`record`、去重记录与叫醒
   - 验收：
     - Spec 验收 1：叫醒 → 叫不醒通知 → 不再重复 → 上线后清记录；
     - Spec 验收 2：没登记 `desktopSession` 直接通知；Codex 不出动作；
@@ -17,7 +17,8 @@
   - 验证：`python3 -m unittest discover -s tests -p test_patrol.py -v`
   - 文件：`decision_inbox/patrol.py`、`tests/test_patrol.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-16）：`python3 -m unittest discover -s tests -v` → Ran 302 tests, OK。Task 2 的测试是在实现之后写的，没有先看到失败；补做了两处变异检查（去掉「上一轮才算叫过」的时间比较、每轮清空通知记录），都能被测试抓住，其中第二处是补了一轮断言后才抓住的
 
 - [ ] Task 3：进度预警与 30 分钟升级
   - 验收：
