@@ -35,6 +35,9 @@ _COLON = "[：:]"
 _END_RE = re.compile(rf"^结束\s*{_COLON}\s*(.*)$")
 _REPLY_RE = re.compile(rf"^回复\s*{_COLON}\s*#\s*(\d+)\s*$")
 _NUM_RE = re.compile(r"#\s*(\d+)")
+_OPTION_RE = re.compile(r"^(推荐\s*)?([A-Z])\s*[：:.、)）]\s*(.*)$")
+_RECOMMEND_RE = re.compile(rf"^推荐\s*{_COLON}?\s*([A-Z])\s*$")
+_CONSEQUENCE_RE = re.compile(rf"^选了会怎样\s*{_COLON}\s*(.*)$")
 
 
 @dataclass(frozen=True)
@@ -52,6 +55,13 @@ class EndMark:
 
 
 @dataclass(frozen=True)
+class Option:
+    letter: str
+    text: str
+    consequence: str | None
+
+
+@dataclass(frozen=True)
 class Message:
     kind: str
     markers: tuple[tuple[str, int], ...]
@@ -61,6 +71,10 @@ class Message:
     item: int | None
     problems: tuple[Issue, ...]
     hints: tuple[Issue, ...] = field(default=())
+    options: tuple[Option, ...] = field(default=())
+    recommended: str | None = None
+    suggested_reply: str | None = None
+    fully_stopped: bool | None = None
 
     @property
     def ok(self) -> bool:
@@ -145,6 +159,35 @@ def _require(fields: dict, names, problems: list[Issue]) -> None:
             problems.append(Issue(f"missing-field:{name}", f"缺少「{name}」"))
 
 
+def _options(block: str) -> tuple[tuple[Option, ...], str | None]:
+    """Split 选项与我的建议 into lettered options; never merge or complete them."""
+    options: list[dict] = []
+    recommended = None
+    for raw in block.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        rec = _RECOMMEND_RE.match(line)
+        opt = _OPTION_RE.match(line)
+        cons = _CONSEQUENCE_RE.match(line)
+        if rec:
+            recommended = rec.group(1)
+        elif opt:
+            options.append({"letter": opt.group(2), "text": [opt.group(3)], "consequence": None})
+            if opt.group(1):
+                recommended = opt.group(2)
+        elif cons and options:
+            options[-1]["consequence"] = [cons.group(1)]
+        elif options:
+            target = options[-1]["consequence"] or options[-1]["text"]
+            target.append(line)
+    return tuple(
+        Option(o["letter"], "\n".join(o["text"]).strip(),
+               "\n".join(o["consequence"]).strip() if o["consequence"] else None)
+        for o in options
+    ), recommended
+
+
 def parse(text: str) -> Message:
     tags, end, reply_to, body = _split(text or "")
     kind = "unknown"
@@ -164,9 +207,32 @@ def parse(text: str) -> Message:
                 Issue("missing-field:并行编号", "「并行」标签缺少 #编号"))
     fields = _fields(kind, body)
     item = None
+    hints: list[Issue] = []
+    options: tuple[Option, ...] = ()
+    recommended = None
+    stopped = None
 
     if kind == "unknown":
         problems.append(Issue("unknown-kind", "认不出消息类型"))
+    elif kind == "wait-user":
+        if not end.present:
+            problems.append(Issue("missing-end", "开头缺少「结束：#编号」或「结束：无」"))
+        _require(fields, ("来自", "要你决定"), problems)
+        options, recommended = _options(fields.get("选项与我的建议", ""))
+        if not options:
+            problems.append(Issue("missing-options", "「选项与我的建议」里没有带字母的选项"))
+        flag = fields.get("是否完全停住", "").strip()
+        if not flag:
+            problems.append(Issue("missing-field:是否完全停住", "缺少「是否完全停住」"))
+        elif flag in ("是", "否"):
+            stopped = flag == "是"
+        else:
+            problems.append(Issue("bad-stop-flag", f"「是否完全停住」只能写「是」或「否」，现在是「{flag}」"))
+        for o in options:
+            if o.consequence is None:
+                hints.append(Issue(f"no-consequence:{o.letter}", f"选项 {o.letter} 没写「选了会怎样」"))
+        if options and recommended is None:
+            hints.append(Issue("no-recommendation", "提出方没写推荐哪个"))
     elif kind == "wait-session":
         if not end.present:
             problems.append(Issue("missing-end", "开头缺少「结束：#编号」或「结束：无」"))
@@ -180,4 +246,6 @@ def parse(text: str) -> Message:
             problems.append(Issue("missing-field:事项", "缺少「事项：#编号」"))
 
     return Message(kind=kind, markers=tuple(markers), ends=end, reply_to=reply_to,
-                   fields=fields, item=item, problems=tuple(problems))
+                   fields=fields, item=item, problems=tuple(problems), hints=tuple(hints),
+                   options=options, recommended=recommended,
+                   suggested_reply=fields.get("你该回") or None, fully_stopped=stopped)

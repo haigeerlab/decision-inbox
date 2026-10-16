@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-session.txt`、`tests/fixtures/protocol/resumed.txt`
 
-- [ ] Task 2：【等待用户】必填字段与选项解析
+- [x] Task 2：【等待用户】必填字段与选项解析
   - 验收：Spec 验收 1、2、3；选项字母 `A：` `A.` `A、` `A)` 都能解析；正文里出现「来自：」不被误切
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-user.txt`
