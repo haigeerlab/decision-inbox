@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：`place`、`strip` 与 `BlockConflict`
+- [x] Task 1：`place`、`strip` 与 `BlockConflict`
   - 验收：Spec 验收 1（空文件、已有其他内容、同角色整块替换；别的角色或只有 BEGIN 时抛错、文本不变）、Spec 验收 2（只删本插件的块，没有块时原样返回）；块在开头、中间、结尾，有没有结尾换行，块外内容都逐字节不变
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
