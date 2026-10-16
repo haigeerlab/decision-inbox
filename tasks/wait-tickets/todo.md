@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：登记与理由 1、2
+- [x] Task 1：登记与理由 1、2
   - 验收：Spec 验收 1（登记、不合格不登记）、2（理由 1、别人的【已恢复】给 `not-own-ticket`）、3（理由 2，含【等待用户】的结束行；「结束：无」不关）、8（`unknown-target`）；结束行写事项编号时不动事项也不报错
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
