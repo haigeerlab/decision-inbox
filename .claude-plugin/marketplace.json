@@ -1,5 +1,6 @@
 {
   "name": "decision-inbox-marketplace",
+  "description": "decision-inbox：多会话协作的决策收件箱。",
   "owner": {
     "name": "haigeerlab"
   },
