@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 96ba1b43a6dd -->
+<!-- spec-guard: review approved dd2a221c81b5 -->
 # Spec: message-protocol
 
 > 能力图模块 `message-protocol`。需求来源：`docs/requirements-record.md` 第 4.1～4.4、4.7 节，第 3.3.2、3.3.5 节，第 6.3 节，第 12 节第 6 项。
@@ -77,7 +77,7 @@
 | 【等待其他会话】 | 「结束：…」、在等谁、等什么 | — |
 | 【已恢复】 | 「结束：#N」（可以列多个），或「结束：无编号（原因）」 | — |
 | 【撤回】 | 事项（#N） | 原因 |
-| 【取代 #N】／【与 #N 并行】 | 标签里的 #N | — |
+| 【取代 #N】／【与 #N 并行】 | 标签里的 #N（缺了是问题 `missing-field:取代编号`／`missing-field:并行编号`） | — |
 
 ## 接口约定
 
@@ -87,8 +87,10 @@ from decision_inbox import protocol
 msg = protocol.parse(text)
 msg.kind            # "wait-user" | "user-reply" | "wait-session" | "resumed" | "withdraw" | "unknown"
 msg.markers         # ("supersede", 12) / ("parallel", 12) 的元组
-msg.ends            # EndMark(ids=(12, 15), none=False, unnumbered_reason=None)
+msg.ends            # EndMark(ids=(12, 15), none=False, unnumbered_reason=None, present=True)
+                    # present=False 表示开头没有结束行；present=True 而 ids 为空表示写了结束行却没给编号
 msg.reply_to        # 「回复：#N」里的 N，或 None
+msg.item            # 「事项：#N」里的 N（【用户答复】【撤回】），其他类型为 None
 msg.fields          # {"来自": "前端", "要你决定": "...", ...}，原样保留字段值
 msg.options         # (Option(letter="A", text="...", consequence="..." | None), ...)
 msg.recommended     # "A" | None
