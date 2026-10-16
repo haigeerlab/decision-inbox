@@ -197,5 +197,44 @@ class FlowCategoryTest(QueryCase):
                           "你要做：问 前端 是否已交付，没交付就让它接着做（谁来做：用户）"])
 
 
+class FlowDetailsTest(QueryCase):
+    def details(self, agents=(), maps=None, wakes=None):
+        a, relay = self.assess(agents, maps)
+        text = query.render_flow(self.g, now=NOW, assessment=a, relay=relay, wakes=wakes or {})
+        return text.split("\n\n")[1].split("\n")
+
+    def test_quiet_has_five_rows(self):
+        self.assertEqual(self.details(), ["检查明细", "- 等待链：无等待", "- 积压：无", "- 停住的线：无", "- 漏抛：无",
+                                          "- 长期外部阻塞：无"])
+
+    def test_chain_and_cycle(self):
+        self.wait("fe", "API", 5)
+        self.wait("api", "前端", 5)
+        self.wait("bg", "前端", 5)
+        self.assertEqual(self.details()[1], "- 等待链：前端 → API；API → 前端；后台 → 前端；有循环：前端 ⇄ API")
+
+    def test_backlog_threshold_and_failed_wakes(self):
+        agents = [agent("fe", waiting=(3, ["api"], 10)), agent("api", waiting=(2, ["fe"], 9))]
+        wakes = {"fe": {"held": 1, "refused": 1, "unknown": 1, "expired": 1, "acknowledged": 5, "pending": 2}}
+        self.assertEqual(self.details(agents, wakes=wakes)[2], "- 积压：前端 有 3 条未读，最早已等 10 分钟，叫醒没成功 4 次")
+
+    def test_stalled_line(self):
+        maps = {"fe": line_map([module(last_tick=at(150))])}
+        self.assertTrue(self.details([agent("fe", activity_ago=150)], maps)[3].startswith("- 停住的线：前端 停住 2 小时："))
+
+    def test_missed_raise(self):
+        agents = [agent("fe", state="waiting-input"), agent("api", state="waiting-input"),
+                  agent("bg", state="waiting-input")]
+        self.ask("api")
+        self.wait("bg", "前端", 5)
+        self.assertEqual(self.details(agents)[4], "- 漏抛：前端 停在自己会话里等输入，但没抛【等待用户】")
+
+    def test_long_external_block(self):
+        self.wait("fe", "API", 59)
+        self.wait("bg", "设计组", 60, what="设计稿")
+        self.wait("api", "用户", 300)
+        self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 负责人跟进：第一版不记录")
+
+
 if __name__ == "__main__":
     unittest.main()

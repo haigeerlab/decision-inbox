@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import items, store, tickets
+from decision_inbox import health, items, store, tickets
 from decision_inbox.view import ago, copy_line
 
 
@@ -258,6 +258,53 @@ def _conclusion(g: store.Group, now: str, assessment, relay) -> list[str]:
     ]
 
 
+WAKE_FAILED = ("held", "refused", "unknown", "expired")
+
+
+def _minutes(now: str, then: str) -> int:
+    return max(0, int((_instant(now) - _instant(then)).total_seconds() // 60))
+
+
+def _details(g: store.Group, now: str, assessment, relay, wakes: dict) -> list[str]:
+    order = [e["relayName"] for e in store.roster(g) if e["role"] != "hub"]
+    edges = _wait_graph(g, now)
+    cycle = _cycle(edges, order)
+    chain = "；".join(f"{_short(g, e.waiter)} → {_short(g, e.target)}" for e in sorted(edges, key=lambda e: e.ticket))
+    if not edges:
+        chain = "无等待"
+    else:
+        chain += "；" + (f"有循环：{' ⇄ '.join(_short(g, n) for n in cycle)}" if cycle else "无循环")
+    backlog = []
+    for name in order:
+        fact = relay.agents.get(name) if relay is not None else None
+        if fact is None or not fact.waiting_count or not fact.waiting_oldest_at:
+            continue
+        waited = _minutes(now, fact.waiting_oldest_at)
+        if waited < health.BACKLOG_MINUTES:
+            continue
+        text = f"{_short(g, name)} 有 {fact.waiting_count} 条未读，最早已等 {waited} 分钟"
+        failed = sum(n for state, n in wakes.get(name, {}).items() if state in WAKE_FAILED)
+        backlog.append(text + (f"，叫醒没成功 {failed} 次" if failed else ""))
+    stalled = [sig.text for sig in assessment.signals if sig.no == 3]
+    pending_senders = {it["sender"] for it in items.pending(g)}
+    open_ = tickets.open_tickets(g, now)
+    missed = [f"{_short(g, n)} 停在自己会话里等输入，但没抛【等待用户】" for n in order
+              if relay is not None and n in relay.agents and relay.agents[n].presence_raw == "waiting-input"
+              and n not in pending_senders and not any(t.waiter == n for t in open_)]
+    long_waits = [f"{_short(g, t.waiter)} 等 {t.target}：{_one_line(t.what)} · 已阻塞 {t.minutes // 60} 小时 · "
+                  "负责人跟进：第一版不记录"
+                  for t in open_ if t.minutes >= tickets.STUCK_MINUTES and t.target not in tickets.USER_TARGETS]
+    return [
+        "检查明细",
+        f"- 等待链：{chain}",
+        f"- 积压：{'；'.join(backlog) or '无'}",
+        f"- 停住的线：{'；'.join(stalled) or '无'}",
+        f"- 漏抛：{'；'.join(missed) or '无'}",
+        f"- 长期外部阻塞：{'；'.join(long_waits) or '无'}",
+    ]
+
+
 def render_flow(g: store.Group, now: str, assessment, relay=None, wakes: dict | None = None) -> str:
-    """/flow: one conclusion, then the check details."""
-    return "\n".join(_conclusion(g, now, assessment, relay))
+    """/flow: one conclusion, then the five check details."""
+    return "\n\n".join(["\n".join(_conclusion(g, now, assessment, relay)),
+                        "\n".join(_details(g, now, assessment, relay, wakes or {}))])

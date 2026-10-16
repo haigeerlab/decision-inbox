@@ -21,7 +21,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
 
-- [ ] Task 4：`/flow` 的 5 项检查明细
+- [x] Task 4：`/flow` 的 5 项检查明细
   - 验收：Spec 验收 6（5 行都在；积压 10 分钟门槛的边界；叫醒没成功按 held、refused、unknown、expired 计数；漏抛的正例和两个反例；长期外部阻塞 60 分钟边界，并写「负责人跟进：第一版不记录」）
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
