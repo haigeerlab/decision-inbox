@@ -7,12 +7,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
 
-- [ ] Task 2：理由 3、4
+- [x] Task 2：理由 3、4
   - 验收：Spec 验收 4（转达并记下发送编号后才关，依据「已转发 #编号」）、5（用户关闭、带原因、不存在或已关时 ValueError）
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 139 tests, OK（2026-10-16）
 
 - [ ] Task 3：提醒标记
   - 验收：Spec 验收 6（14／15／60 分钟，按发出时间算）、7（离线立即标、提示含条数与 HH:MM；不传 relay 不判断离线）

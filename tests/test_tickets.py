@@ -106,5 +106,40 @@ class OpenAndCloseTest(TicketsCase):
         self.assertFalse(self.receive("【撤回】\n事项：#3\n").handled)
 
 
+class ReasonThreeFourTest(TicketsCase):
+    def test_reason_3_after_answer_is_sent(self):
+        item = items.receive(self.g, SINGLE, sender="fe-codex", relay_id=1, received_at=SENT).item
+        no = self.receive(wait_session(target="用户", what=f"#{item} 的答复")).opened
+        other = self.receive(wait_session(target="API", what=f"#{item} 的答复"), relay_id=301).opened
+        self.assertEqual(tickets.close_answered(self.g, at="2026-10-16T05:10:00Z"), ())
+        items.answer(self.g, items.interpret_reply(self.g, f"{item} A").answers, answered_at="2026-10-16T05:20:00Z")
+        self.assertEqual(tickets.close_answered(self.g, at="2026-10-16T05:21:00Z"), ())  # not sent yet
+        items.record_sent(self.g, item=item, to="fe-codex", relay_id=2950, at="2026-10-16T05:22:00Z")
+        self.assertEqual(tickets.close_answered(self.g, at="2026-10-16T05:23:00Z"), (no,))
+        close = self.ticket(no)["close"]
+        self.assertEqual((close["reason"], close["basis"]), (3, "已转发 #2950"))
+        self.assertEqual(self.ticket(other)["status"], "open")
+
+    def test_reason_3_needs_own_item(self):
+        item = items.receive(self.g, SINGLE, sender="api-codex", relay_id=1, received_at=SENT).item
+        no = self.receive(wait_session(target="收件枢纽", what=f"#{item} 的答复")).opened
+        items.answer(self.g, items.interpret_reply(self.g, f"{item} A").answers, answered_at=SENT)
+        items.record_sent(self.g, item=item, to="api-codex", relay_id=2951, at=SENT)
+        self.assertEqual(tickets.close_answered(self.g, at=SENT), ())
+        self.assertEqual(self.ticket(no)["status"], "open")
+
+    def test_reason_4_user(self):
+        a = self.receive(wait_session()).opened
+        b = self.receive(wait_session(what="别的"), relay_id=301).opened
+        tickets.close_by_user(self.g, ticket=a, reason=None, at=SENT)
+        tickets.close_by_user(self.g, ticket=b, reason="需求已取消", at=SENT)
+        self.assertEqual((self.ticket(a)["close"]["reason"], self.ticket(a)["close"]["basis"]), (4, "用户关闭"))
+        self.assertEqual(self.ticket(b)["close"]["basis"], "需求已取消")
+        for bad in (a, 999):
+            with self.subTest(ticket=bad):
+                with self.assertRaises(ValueError):
+                    tickets.close_by_user(self.g, ticket=bad, reason=None, at=SENT)
+
+
 if __name__ == "__main__":
     unittest.main()

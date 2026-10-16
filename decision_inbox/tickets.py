@@ -6,6 +6,7 @@ contacts anyone and never deletes a ticket.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from decision_inbox import protocol, store
@@ -13,6 +14,7 @@ from decision_inbox.protocol import Issue
 
 DOMAIN = "tickets"
 USER_TARGETS = ("用户", "收件枢纽")
+_NUM_RE = re.compile(r"#\s*(\d+)")
 
 
 @dataclass(frozen=True)
@@ -82,3 +84,36 @@ def receive(g: store.Group, text: str, sender: str, relay_id, sent_at: str) -> R
             tx.append_event("tickets.opened", ref=opened, actor=sender, data={"relayId": relay_id})
         tx.write_state(DOMAIN, doc)
     return ReceiveResult(True, opened, tuple(closed), tuple(hints) + msg.hints)
+
+
+ANSWERED = ("forwarded", "picked", "acknowledged", "closed")
+
+
+def close_answered(g: store.Group, at: str) -> tuple[int, ...]:
+    """Reason 3: a ticket waiting on the user's answer to the waiter's own item, already sent by the hub."""
+    item_doc = store.read_state(g, "items").get("items", {})
+    closed = []
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for key, t in doc["tickets"].items():
+            if t["status"] != "open" or t["target"] not in USER_TARGETS:
+                continue
+            for no in _NUM_RE.findall(t["what"]):
+                it = item_doc.get(no)
+                if it and it["sender"] == t["waiter"] and it["status"] in ANSWERED and it["sent"]:
+                    _close(tx, doc, key, 3, f"已转发 #{it['sent'][0]['relayId']}", at, "hub")
+                    closed.append(int(key))
+                    break
+        tx.write_state(DOMAIN, doc)
+    return tuple(closed)
+
+
+def close_by_user(g: store.Group, ticket: int, reason: str | None, at: str) -> None:
+    """Reason 4: the user said 「关掉 #编号」."""
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        t = doc["tickets"].get(str(ticket))
+        if t is None or t["status"] != "open":
+            raise ValueError(f"#{ticket} is not an open wait ticket")
+        _close(tx, doc, ticket, 4, (reason or "").strip() or "用户关闭", at, "user")
+        tx.write_state(DOMAIN, doc)
