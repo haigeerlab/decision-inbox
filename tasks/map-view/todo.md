@@ -25,7 +25,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
 
-- [ ] Task 5：`/map all`、选线、读不出能力图
+- [x] Task 5：`/map all`、选线、读不出能力图
   - 验收：Spec 验收 8（每条开发线一行、读不出写原因、按名册顺序）、9（短名和身份名都能选，对不上时列出现有的线）、10（一行原因，加上这条线的待答事项和外部等待）
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`

@@ -167,3 +167,40 @@ def table_rows(g: store.Group, now: str, entry: dict, line_map, full: bool = Fal
 def render_table(g: store.Group, now: str, entry: dict, line_map, full: bool = False) -> str:
     return "\n".join(header_lines(g, now, entry, line_map)) + "\n\n" + "\n".join(
         table_rows(g, now, entry, line_map, full))
+
+
+def _dev_lines(g: store.Group) -> list[dict]:
+    return [e for e in store.roster(g) if e["role"] == "dev"]
+
+
+def _reason(read) -> str:
+    if read is None:
+        return "未读取能力图"
+    return read.reason or read.status
+
+
+def render_line(g: store.Group, now: str, line: str, read, full: bool = False) -> str:
+    """/map <线> and /map <线> 全部; `line` is a short name or relay name of a development line."""
+    lines = _dev_lines(g)
+    entry = next((e for e in lines if line in (e["shortName"], e["relayName"])), None)
+    if entry is None:
+        return f"没有叫「{line}」的线，现有：{'、'.join(e['shortName'] for e in lines)}"
+    if read is None or read.status != "ok":
+        out = [f"{entry['shortName']} · {_reason(read)}"]
+        asks = _asks(g, entry)
+        if asks:
+            out.append("等你决定：" + "、".join(f"#{no}" for no in asks))
+        return "\n".join(out + external_waits(g, now, entry["relayName"]))
+    return render_table(g, now, entry, read.map, full)
+
+
+def render_all(g: store.Group, now: str, reads: dict) -> str:
+    """/map all: the total line of every development line, roster order."""
+    rows = []
+    for entry in _dev_lines(g):
+        read = reads.get(entry["relayName"])
+        if read is not None and read.status == "ok":
+            rows.append(header_lines(g, now, entry, read.map)[0])
+        else:
+            rows.append(f"{entry['shortName']} · {_reason(read)}")
+    return "\n".join(rows)

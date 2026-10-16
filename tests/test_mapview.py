@@ -238,5 +238,39 @@ class TableTest(MapCase):
         self.assertIn("未合入主线：3 个提交（相对 origin/main）；未推送：判断不了", text)
 
 
+class LineAndAllTest(MapCase):
+    def ok(self, modules, **kw):
+        return specguard.ReadResult("ok", None, 0, make_map(modules, **kw))
+
+    def test_select_by_short_or_relay_name(self):
+        read = self.ok([module_doc("a", 1)])
+        by_short = mapview.render_line(self.g, NOW, "前端", read)
+        self.assertTrue(by_short.startswith("前端 · 1 个模块"))
+        self.assertEqual(mapview.render_line(self.g, NOW, "fe-codex", read), by_short)
+        self.assertIn("| 1 | a |", mapview.render_line(self.g, NOW, "前端", read, full=True))
+
+    def test_unknown_line(self):
+        self.assertEqual(mapview.render_line(self.g, NOW, "设计", None), "没有叫「设计」的线，现有：前端、API、后台")
+        self.assertTrue(mapview.render_line(self.g, NOW, "前端负责人", None).startswith("没有叫「前端负责人」的线"))
+
+    def test_unreadable_shows_mailbox_data(self):
+        own = self.ask("fe-codex")
+        self.wait("fe-codex", "API", 40)
+        text = mapview.render_line(self.g, NOW, "前端", specguard.ReadResult("no-map", "无能力图", 3))
+        self.assertEqual(text.split("\n"), ["前端 · 无能力图", f"等你决定：#{own}",
+                                             "外部等待：等 API 交付「订单接口」（已等 40 分钟）"])
+        self.assertEqual(mapview.render_line(self.g, NOW, "API", None), "API · 未读取能力图")
+
+    def test_all(self):
+        reads = {"fe-codex": self.ok([module_doc("a", 1), module_doc("p", 2, "in_progress", "build")], active="p"),
+                 "api-codex": specguard.ReadResult("not-installed", "本机没有安装 spec-guard")}
+        clock = mapview._clock("2026-10-16T11:37:00+08:00")
+        self.assertEqual(mapview.render_all(self.g, NOW, reads).split("\n"), [
+            f"前端 · 2 个模块 · ✅ 1 🔨 1 ⏸ 0 ⛔ 0 🟢 0 ○ 0 · 更新于 {clock}",
+            "API · 本机没有安装 spec-guard",
+            "后台 · 未读取能力图",
+        ])
+
+
 if __name__ == "__main__":
     unittest.main()
