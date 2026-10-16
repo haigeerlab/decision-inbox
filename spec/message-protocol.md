@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved dd2a221c81b5 -->
+<!-- spec-guard: review approved 46f3390dcd05 -->
 # Spec: message-protocol
 
 > 能力图模块 `message-protocol`。需求来源：`docs/requirements-record.md` 第 4.1～4.4、4.7 节，第 3.3.2、3.3.5 节，第 6.3 节，第 12 节第 6 项。
@@ -25,7 +25,7 @@
 
 **范围内**
 
-- 识别消息类型：【等待用户】、【用户答复】、【等待其他会话】、【已恢复】、【撤回】，以及附在【等待用户】上的【取代 #N】、【与 #N 并行】。
+- 识别消息类型：【等待用户】、【用户答复】、【等待其他会话】、【已恢复】、【撤回】、【审查结论】，以及附在【等待用户】上的【取代 #N】、【与 #N 并行】。
 - 解析消息开头的「结束：…」「回复：#N」两种行。
 - 按字段表解析字段，并校验必填项。
 - 解析选项：字母、方案、「选了会怎样」、哪个是推荐，以及「你该回」。
@@ -77,6 +77,7 @@
 | 【等待其他会话】 | 「结束：…」、在等谁、等什么 | — |
 | 【已恢复】 | 「结束：#N」（可以列多个），或「结束：无编号（原因）」 | — |
 | 【撤回】 | 事项（#N） | 原因 |
+| 【审查结论】（负责人静默抄送收件枢纽，2026-10-16 增补，见 review-registry） | 审查编号、节点（Spec／Plan／接口提案／最终验收）、送审方、结论（通过／通过，附建议N条／有须修改项）；节点或结论不是这几种写法时分别是问题 `bad-node`、`bad-verdict` | 来自、要点 |
 | 【取代 #N】／【与 #N 并行】 | 标签里的 #N（缺了是问题 `missing-field:取代编号`／`missing-field:并行编号`） | — |
 
 ## 接口约定
@@ -85,12 +86,14 @@
 from decision_inbox import protocol
 
 msg = protocol.parse(text)
-msg.kind            # "wait-user" | "user-reply" | "wait-session" | "resumed" | "withdraw" | "unknown"
+msg.kind            # "wait-user" | "user-reply" | "wait-session" | "resumed" | "withdraw" | "review-conclusion" | "unknown"
 msg.markers         # ("supersede", 12) / ("parallel", 12) 的元组
 msg.ends            # EndMark(ids=(12, 15), none=False, unnumbered_reason=None, present=True)
                     # present=False 表示开头没有结束行；present=True 而 ids 为空表示写了结束行却没给编号
 msg.reply_to        # 「回复：#N」里的 N，或 None
 msg.item            # 「事项：#N」里的 N（【用户答复】【撤回】），其他类型为 None
+msg.conclusion      # 【审查结论】时为 Conclusion(ref="R-3", node="spec"|"plan"|"interface"|"final",
+                    #   submitter="前端", verdict="passed"|"passed-with-advice"|"changes-required", advice_count=N|None)，其他类型为 None
 msg.fields          # {"来自": "前端", "要你决定": "...", ...}，原样保留字段值
 msg.options         # (Option(letter="A", text="...", consequence="..." | None), ...)
 msg.recommended     # "A" | None
@@ -161,6 +164,7 @@ python3 -m unittest discover -s tests -v
 10. `format_multiline_replies` 为每个适用会话生成一版：各版「适用于你的范围」等于原事项里写给它的那一条，并附原事项全文。
 11. 全角冒号和半角冒号、跨多行的字段值、选项字母写成 `A：` `A.` `A、` `A)`，都能正确解析。
 12. 认不出类型的文本：`kind="unknown"`、`problems` 含 `unknown-kind`，不抛异常。
+13. 【审查结论】（2026-10-16 增补）：四种节点、三种结论都能解析成对应代码，「通过，附建议2条」的 `advice_count` 为 2；缺审查编号、节点、送审方、结论分别得到 `missing-field:<字段>`；节点写「需求」得到 `bad-node`，结论写「差不多」得到 `bad-verdict`。
 
 ## 假设
 

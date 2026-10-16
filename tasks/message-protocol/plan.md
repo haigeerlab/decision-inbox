@@ -55,3 +55,10 @@
 ## Open Questions
 
 无。
+
+## 返工：增补【审查结论】（2026-10-16）
+
+- 改什么：新增消息类型【审查结论】（`kind="review-conclusion"`），解析审查编号、节点、送审方、结论，并按 Spec 字段表校验；问题代码表增加 `bad-node`、`bad-verdict`。
+- 为什么：用户定下审查轮数由负责人静默抄送【审查结论】来统计（review-registry，第 8.1 节信号 7），消息格式归本模块。
+- 影响面：`decision_inbox/protocol.py`、`tests/test_protocol.py`、新增 `tests/fixtures/protocol/review-conclusion.txt`；不改已有消息的解析结果。
+- 检查点：Task 6 之后是 Checkpoint 3（gate），列出返工改动的文件后停下等用户确认。本 Plan 获批即授权本地提交，不授权推送。
