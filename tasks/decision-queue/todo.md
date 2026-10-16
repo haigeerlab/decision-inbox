@@ -33,4 +33,5 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/items.py`、`tests/test_items.py`
 
-- [ ] Checkpoint 3（gate）：模块最终验收——全部测试全绿、13 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+- [x] Checkpoint 3（gate）：模块最终验收——全部测试全绿、13 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+  - 记录：129 个测试全绿（连跑 2 次），本模块 30 个；用户 2026-10-16 验收通过，确认【已恢复】不影响待答事项，并批准规格修订（answer 抛 ValueError、on_resumed 返回结束编号）

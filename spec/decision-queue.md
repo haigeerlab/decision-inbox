@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 3033aefde785 -->
+<!-- spec-guard: review approved 21005f6ad32a -->
 # Spec: decision-queue
 
 > 能力图模块 `decision-queue`。需求来源：`docs/requirements-record.md` 第 3.3.1～3.3.2 节、第 4.1～4.4 节、第 6.1 节第 4 条、第 6.4 节，第 12 节第 7、12 项。
@@ -94,9 +94,11 @@ p = items.interpret_reply(g, "12 B\n13 A")
 p.answers         # (Answer(item=12, letter="B", original="12 B"), ...)
 p.question        # 对不上或含糊时要问用户的话；有它时 answers 为空
 out = items.answer(g, p.answers, answered_at="...")   # 记为已答，返回 (Outgoing(to="fe-codex", text="【用户答复】…", item=12), ...)
+                                  # 有事项已不在待答状态时抛 ValueError，什么都不写（防止重复转达）
 items.record_sent(g, item=12, to="fe-codex", relay_id=2950, at="...")
 items.update_delivery(g, {2950: ("accepted", None)}, at="...")   # 消息编号 → (deliveryState, acknowledgedAt)
-items.on_resumed(g, message, sender="fe-codex", at="...")        # 【已恢复】结束行里提出方自己的事项记为已结束
+items.on_resumed(g, message, sender="fe-codex", at="...")        # 【已恢复】结束行里提出方自己的、已转达之后的事项记为已结束；
+                                  # 返回这次结束的事项编号；还在待答的事项不受影响（要放弃请用【撤回】）
 items.history(g, item=12)         # 该事项的事件，按先后排序，供 /item
 ```
 
@@ -149,7 +151,7 @@ python3 -m unittest discover -s tests -v
 8. 下面这些情况都只返回 `question`，不产生答复：编号不存在、第 12 项已撤回、字母 D 不在选项里、「12 A，12 B」、已转达 A 后又回 B、没写编号却有两项在等。
 9. 多线事项（适用会话：前端、API）答复后：产生三份外发，分别给发件人、前端、API。后两份的「适用于你的范围」等于原事项里写给它们的那一条。
 10. 「审查中，请勿先批」的事项照样可以答复和转发，原话不变。
-11. 状态推进：`answer` 后为 `forwarded`；`record_sent` 记下消息编号；`update_delivery` 收到 `accepted` 后为 `picked`，收到 `acknowledgedAt` 后为 `acknowledged`；提出方发来【已恢复】、结束行写了该编号后为 `closed`。别人的【已恢复】不改变这个事项的状态。
+11. 状态推进：`answer` 后为 `forwarded`；`record_sent` 记下消息编号；`update_delivery` 收到 `accepted` 后为 `picked`，收到 `acknowledgedAt` 后为 `acknowledged`；提出方发来【已恢复】、结束行写了该编号后为 `closed`。别人的【已恢复】不改变这个事项的状态；还在 `pending` 的事项也不因【已恢复】改变（2026-10-16 用户确认：放弃未答事项要用【撤回】，免得事项从待答表里悄悄消失）。
 12. `history(g, item=12)` 按先后列出收单、答复、发送（含消息编号）、投递、结束各条事件。
 13. 所有状态变化都写入 `items` 快照和事件日志，`store show` 的一致性检查为正常。
 
