@@ -130,12 +130,12 @@ onboard.teardown(group, project, confirm) -> Outcome
 
 - 单元测试：约定块的放入、替换、冲突、标记坏了、删除，块外内容一字不变；各角色约定块含上表的要点，且约定块里的消息模板能被 message-protocol 解析成对应类型；`hub`、`join` 的预览不改任何文件；名册与审查者登记；`leave`、`teardown` 不动名册。
 - 命令行测试：用临时目录和临时协作组跑每个子命令，检查退出码和输出。
-- 实测（最终验收前，先问用户）：在 scratchpad 的临时项目目录里，按提示走一遍「收件枢纽接入 → 一条开发线接入 → 建巡视任务并手动立即运行一次 → 卸载并删除任务」，记录写进本规格。
+- 实测（最终验收前）：在 scratchpad 的临时项目目录里，本会话用真实的桌面版会话编号走一遍「收件枢纽接入 → 负责人和开发线接入（含审查者登记）→ 卸载」，记录写进本规格。按提示建巡视任务并手动立即运行一次，挪到 plugin-packaging 实测：插件装好后命令路径才定下来（用户 2026-10-17 确认）。
 
 ## 边界
 
 - 始终：写文件前先预览；只动本插件的块；状态目录不删。
-- 先问：实测里创建定时任务、在 agent-relay 登记测试身份。
+- 先问：在 agent-relay 登记测试身份、创建定时任务（本模块实测不做这两件事）。
 - 绝不：改约定块以外的内容；替用户批准审查者变更；绕过名册规则。
 
 ## 验收标准
@@ -151,7 +151,21 @@ onboard.teardown(group, project, confirm) -> Outcome
 9. `leave`、`teardown` 不改名册、不删状态目录中的任何文件。
 10. 接入后的提示含 `bridge_register`（`wake: "auto"`）、信任停止钩子（Claude Code 和 Codex 各一次）、`get_session` 取会话编号。
 11. 领域 `onboarding` 只由 `onboard.py` 写；原有子命令和测试不受影响。
-12. 实测：按测试策略走一遍，记录写进本规格的「实测记录」。
+12. 实测：按测试策略走一遍接入与卸载，记录写进本规格的「实测记录」；建巡视任务的实测在 plugin-packaging 做。
+
+## 实测记录
+
+2026-10-17 00:24（用户确认实测范围：只做接入与卸载），scratchpad 临时目录 `live-ob`、临时协作组 `live`。本会话用 `get_session("self")` 取得的真实编号 `local_bbdaaaab-…` 作为收件枢纽和负责人的 `--desktop-session`；没有登记 agent-relay 身份，也没有创建定时任务。
+
+| 步骤 | 结果 |
+|---|---|
+| `onboard hub live … --confirm`（`hub/CLAUDE.md` 原有一行） | 退出码 0；原有一行保留在前，后面接收件枢纽约定块；名册登记 `desktopSession` |
+| `onboard join --role owner --host claude-desktop … --confirm`（目录里没有规则文件） | 退出码 0；新建 `owner/CLAUDE.md`，只有负责人约定块；块里 6 段模板解析为 2 条【等待用户】（含多线）、【等待其他会话】【已恢复】【撤回】【审查结论】 |
+| `onboard join --role dev --host codex-desktop --reviewer live-owner --nodes spec,plan,final --confirm`（`fe/AGENTS.md` 有 4 行原有内容） | 退出码 0；写入 `AGENTS.md`；审查者登记为 live-owner，节点 spec、plan、final；提示 2 条（`bridge_register` 的 `wake: "auto"`、信任停止钩子） |
+| 同一条 join 再跑一次 | 规则文件「没有变化」，名册条目不重复 |
+| `onboard leave` 开发线、负责人 | `fe/AGENTS.md` 与接入前逐字节一致（`cmp`）；`owner/CLAUDE.md` 删块后为 0 字节，文件保留 |
+| `onboard teardown --confirm`（没记任务编号） | `hub/CLAUDE.md` 与接入前逐字节一致；提示先 `list_scheduled_tasks` 核对 `decision-inbox-patrol-live`，再 `delete_scheduled_task` |
+| `store show live` | 名册 3 个会话、事件 8 条、一致性正常；状态目录完整保留 |
 
 ## 假设
 

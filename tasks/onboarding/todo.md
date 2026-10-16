@@ -33,9 +33,10 @@
 - [x] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时项目目录里用命令行跑一遍预览与 `--confirm`，记下输出和文件变化后继续
   - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 398 tests, OK。scratchpad 临时目录 cp-ob 实跑：hub 预览退出码 0、协作组目录未建；hub --confirm 写入 CLAUDE.md（原有一行保留在前），后续步骤 6 条含 create_scheduled_task、*/5 * * * *、onboard task、立即运行；join 写入 AGENTS.md，repo 为项目目录；task 记下编号；leave 后前端 AGENTS.md 与接入前逐字节一致（cmp）；teardown 后枢纽 CLAUDE.md 只剩原有一行，并打印 delete_scheduled_task 与任务编号；store show 一致性正常。实跑发现提示里「Claude Code 在 /hooks 里确认」未经核实，改为不指定位置的写法，留到 plugin-packaging 实测钩子时补准确做法。Task 4 中另补了「负责人不能带审查者」的预检（原先会在写完后才报错），Task 5 中发现卸载事件没同时写快照导致 store show 报滞后，已改并加断言
 
-- [ ] Task 6：实测
-  - 验收：Spec 验收 12。先问用户：在 scratchpad 临时项目目录里，本会话按提示接入收件枢纽和一条开发线，创建巡视任务并请你手动立即运行一次，然后卸载并删除任务；结果写进 `spec/onboarding.md` 的实测记录
+- [x] Task 6：实测
+  - 验收：Spec 验收 12（已改）：在 scratchpad 临时项目目录里，本会话用真实会话编号接入收件枢纽、负责人和开发线，再卸载；建巡视任务的实测挪到 plugin-packaging（用户 2026-10-17 确认）；结果写进 `spec/onboarding.md` 的实测记录
   - 验证：命令输出、规则文件内容、定时任务列表与运行记录
   - 文件：`spec/onboarding.md`
+  - 记录（2026-10-17 00:24）：三个角色接入、重复接入、卸载全部按预期；卸载后两个原有规则文件与接入前逐字节一致；详见规格实测记录
 
 - [ ] Checkpoint 3（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条有测试或实测记录、列出实际改动文件、原样附上三个角色约定块全文与规格差异；停下等用户确认
