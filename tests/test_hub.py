@@ -174,3 +174,54 @@ class ReceiveOnceTest(HubCase):
         types = [e["type"] for e in store.read_events(self.g)]
         self.assertIn("hub.received", types)
         self.assertEqual(store.check(self.g)["problems"], [])
+
+
+class SentTest(HubCase):
+    def answered(self):
+        """Item #1 answered 「1 A」 and a ticket waiting on that answer (#2)."""
+        self.receive(message(1201, "fe-codex", WAIT_USER))
+        self.receive(message(1202, "fe-codex", wait_session(target="用户", what="#1 的答复")))
+        outs = items.answer(self.g, items.interpret_reply(self.g, "1 A").answers, answered_at=NOW)
+        return hub._queue_answers(self.g, outs, now=NOW)
+
+    def test_answer_queued_with_reply_to(self):
+        sends = self.answered()
+        self.assertEqual([(s["id"], s["to"], s["replyTo"], s["kind"]) for s in sends],
+                         [("out:1", "fe-codex", 1201, "answer")])
+        self.assertIn("用户原话：1 A", Path(sends[0]["bodyFile"]).read_text(encoding="utf-8"))
+
+    def test_sent_records_relay_id_closes_ticket_and_removes_body(self):
+        sends = self.answered()
+        closed = hub.sent(self.g, done={"out:1": 3950}, failed=[], at=NOW)
+        self.assertEqual(closed, (2,))
+        self.assertEqual(items.get(self.g, 1)["sent"][0]["relayId"], 3950)
+        self.assertEqual(self.tickets()["2"]["close"], {"reason": 3, "basis": "已转发 #3950", "at": NOW})
+        self.assertFalse(Path(sends[0]["bodyFile"]).exists())
+        self.assertEqual(hub.outgoing(self.g), [])
+
+    def test_failed_and_unrecorded_stay(self):
+        self.answered()
+        self.receive(message(1203, "api-codex", "【等待用户】\n结束：无\n"))
+        hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+        left = hub.outgoing(self.g)
+        self.assertEqual([s["id"] for s in left], ["out:1", "out:2"])
+        self.assertTrue(all(Path(s["bodyFile"]).exists() for s in left))
+        self.assertEqual(self.tickets()["2"]["status"], "open")
+        state = store.read_state(self.g, "hub")["outgoing"]
+        self.assertTrue(state["out:1"]["failed"])
+        hub.sent(self.g, done={"out:1": 3951}, failed=[], at=NOW)
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:2"])
+
+    def test_unknown_or_already_sent_id_rejected(self):
+        self.answered()
+        with self.assertRaises(hub.UnknownOutgoing):
+            hub.sent(self.g, done={"out:9": 1}, failed=[], at=NOW)
+        hub.sent(self.g, done={"out:1": 3950}, failed=[], at=NOW)
+        with self.assertRaises(hub.UnknownOutgoing):
+            hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+
+    def test_return_send_does_not_touch_items(self):
+        r = self.receive(message(1204, "api-codex", "【等待用户】\n结束：无\n"))
+        hub.sent(self.g, done={"out:1": 3960}, failed=[], at=NOW)
+        self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:1"]["relayId"], 3960)
+        self.assertFalse(Path(r.sends[0]["bodyFile"]).exists())

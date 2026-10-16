@@ -130,3 +130,53 @@ def receive(g: store.Group, inbox, now: str) -> Receipt:
     if inbox.has_more:
         result.notes.append("还有未读消息：确认已读（bridge_ack）后再读一页")
     return result
+
+
+class UnknownOutgoing(ValueError):
+    """A send id that is not waiting to be sent."""
+
+
+def _queue_answers(g: store.Group, outgoing, now: str) -> list[dict]:
+    """Queue decision-queue's 【用户答复】 texts; only the proposer's copy replies to the item."""
+    sends = []
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for o in outgoing:
+            it = items.get(g, o.item)
+            reply_to = it["relayId"] if o.to == it["sender"] else None
+            sends.append(_queue(g, tx, doc, o.to, o.text, reply_to, "answer", o.item, now))
+        tx.write_state(DOMAIN, doc)
+    return sends
+
+
+def outgoing(g: store.Group) -> list[dict]:
+    """Messages not sent yet: failed ones and ones never reported back."""
+    pending = store.read_state(g, DOMAIN).get("outgoing", {})
+    ordered = sorted(pending.items(), key=lambda kv: int(kv[0].partition(":")[2]))
+    return [_send_view(g, out_id, e) for out_id, e in ordered if e["relayId"] is None]
+
+
+def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
+    """Record what the hub sent (agent-relay ids) or failed to send; then close answered tickets."""
+    failed = list(failed)
+    recorded = []
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for out_id in [*done, *failed]:
+            entry = doc["outgoing"].get(out_id)
+            if entry is None or entry["relayId"] is not None:
+                raise UnknownOutgoing(out_id)
+        for out_id, relay_id in done.items():
+            entry = doc["outgoing"][out_id]
+            entry.update(relayId=relay_id, failed=False, sentAt=at)
+            tx.append_event("hub.sent", ref=entry["item"], actor="hub", data={"id": out_id, "relayId": relay_id})
+            recorded.append((out_id, entry))
+        for out_id in failed:
+            doc["outgoing"][out_id]["failed"] = True
+            tx.append_event("hub.send-failed", ref=doc["outgoing"][out_id]["item"], actor="hub", data={"id": out_id})
+        tx.write_state(DOMAIN, doc)
+    for out_id, entry in recorded:
+        if entry["kind"] == "answer":
+            items.record_sent(g, entry["item"], to=entry["to"], relay_id=entry["relayId"], at=at)
+        (g.path / "outgoing" / f"{out_id.partition(':')[2]}.txt").unlink(missing_ok=True)
+    return tickets.close_answered(g, at)
