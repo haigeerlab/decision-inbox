@@ -30,7 +30,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
 
-- [ ] Task 6：命令行 `map` 子命令与只读校验
+- [x] Task 6：命令行 `map` 子命令与只读校验
   - 验收：Spec 验收 12（三种调用退出码 0；协作组不存在为 2；参数错为 2；运行前后协作组文件哈希一致）；原有 `store`、`query` 子命令不受影响
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/__main__.py`、`tests/test_mapview.py`

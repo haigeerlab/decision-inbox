@@ -272,5 +272,56 @@ class LineAndAllTest(MapCase):
         ])
 
 
+class CommandLineTest(MapCase):
+    def setUp(self):
+        super().setUp()
+        import os
+        self._plugins = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
+        os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.home / "no-plugins.json")  # never start spec-guard
+
+    def tearDown(self):
+        import os
+        if self._plugins is None:
+            os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        else:
+            os.environ["DECISION_INBOX_PLUGINS_FILE"] = self._plugins
+        super().tearDown()
+
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def digest(self):
+        import hashlib
+        return {str(p.relative_to(self.g.path)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(self.g.path.rglob("*")) if p.is_file()}
+
+    def test_three_forms_are_read_only(self):
+        self.ask("fe-codex")
+        self.wait("fe-codex", "API", 40)
+        before = self.digest()
+        code, out, _ = self.run_cli("map", "demo", "前端")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("前端 · 仓库路径必须是存在的绝对路径目录"))  # /r/fe does not exist here
+        self.assertIn("外部等待：等 API 交付", out)
+        self.assertEqual(self.run_cli("map", "demo", "前端", "全部")[0], 0)
+        code, out, _ = self.run_cli("map", "demo", "all")
+        self.assertEqual((code, len(out.strip().split("\n"))), (0, 3))
+        code, out, _ = self.run_cli("map", "demo", "设计")
+        self.assertEqual((code, out.strip()), (0, "没有叫「设计」的线，现有：前端、API、后台"))
+        self.assertEqual(self.digest(), before)
+
+    def test_errors(self):
+        self.assertEqual(self.run_cli("map", "nope", "前端")[0], 2)
+        self.assertEqual(self.run_cli("map", "demo")[0], 2)
+        self.assertEqual(self.run_cli("map", "demo", "前端", "all")[0], 2)
+        self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

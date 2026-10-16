@@ -2,10 +2,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from decision_inbox import health, query, relay, specguard, store
+from decision_inbox import health, mapview, query, relay, specguard, store
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
-         "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...")
+         "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
+         "      python3 -m decision_inbox map <协作组> <线|all> [全部]")
 
 
 def _init(name: str) -> int:
@@ -113,9 +114,35 @@ def _query(argv: list[str]) -> int:
     return 0
 
 
+def _read_line(entry: dict):
+    return specguard.read_line(entry["repo"]) if entry.get("repo") else None
+
+
+def _map(argv: list[str]) -> int:
+    if len(argv) not in (2, 3) or (len(argv) == 3 and argv[2] != "全部"):
+        print(USAGE, file=sys.stderr)
+        return 2
+    try:
+        g = store.open_group(argv[0])
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    now = store.now()
+    lines = [e for e in store.roster(g) if e["role"] == "dev"]
+    if argv[1] == "all":
+        print(mapview.render_all(g, now, {e["relayName"]: _read_line(e) for e in lines}))
+        return 0
+    entry = next((e for e in lines if argv[1] in (e["shortName"], e["relayName"])), None)
+    read = _read_line(entry) if entry is not None else None
+    print(mapview.render_line(g, now, argv[1], read, full=len(argv) == 3))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if argv[:1] == ["query"]:
         return _query(argv[1:])
+    if argv[:1] == ["map"]:
+        return _map(argv[1:])
     commands = {"init": _init, "show": _show}
     if len(argv) != 3 or argv[0] != "store" or argv[1] not in commands:
         print(USAGE, file=sys.stderr)
