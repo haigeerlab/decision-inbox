@@ -40,6 +40,15 @@ _RECOMMEND_RE = re.compile(rf"^推荐\s*{_COLON}?\s*([A-Z])\s*$")
 _CONSEQUENCE_RE = re.compile(rf"^选了会怎样\s*{_COLON}\s*(.*)$")
 _SCOPE_RE = re.compile(rf"^[-*•·]?\s*([^\s：:]+)\s*{_COLON}\s*(.*)$")
 _SESSION_SEP = re.compile(r"[、,，+＋\s]+")
+_REVIEW_REF_RE = re.compile(r"（\s*(#?[A-Za-z]*-?\d+)\s*）$")
+# Requirement 4.3: only these wordings count; anything else is "unrecognized".
+_REVIEW_FORMS = (
+    (re.compile(r"^通过$"), "passed"),
+    (re.compile(r"^通过，附建议(\d+)条(（.*）)?$"), "passed-with-advice"),
+    (re.compile(r"^进行中，请勿先批$"), "in-progress"),
+    (re.compile(r"^不适用（不属于审查节点）$"), "not-applicable"),
+    (re.compile(r"^用户豁免$"), "waived"),
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,30 @@ class Option:
 
 
 @dataclass(frozen=True)
+class ReviewLine:
+    status: str
+    advice_count: int | None = None
+    ref: str | None = None
+    raw: str | None = None
+
+
+def _review(raw: str | None) -> ReviewLine:
+    if raw is None:
+        return ReviewLine("absent")
+    value = raw.strip().replace(",", "，").replace("(", "（").replace(")", "）")
+    ref = None
+    m = _REVIEW_REF_RE.search(value)
+    if m:
+        ref, value = m.group(1), value[:m.start()].rstrip()
+    for pattern, status in _REVIEW_FORMS:
+        hit = pattern.match(value)
+        if hit:
+            advice = int(hit.group(1)) if status == "passed-with-advice" else None
+            return ReviewLine(status, advice, ref, raw)
+    return ReviewLine("unrecognized", None, None, raw)
+
+
+@dataclass(frozen=True)
 class Message:
     kind: str
     markers: tuple[tuple[str, int], ...]
@@ -79,6 +112,7 @@ class Message:
     fully_stopped: bool | None = None
     lines_in_scope: tuple[str, ...] = ()
     scopes: dict[str, str] = field(default_factory=dict)
+    review: ReviewLine = field(default_factory=lambda: ReviewLine("absent"))
 
     @property
     def ok(self) -> bool:
@@ -284,4 +318,5 @@ def parse(text: str) -> Message:
                    fields=fields, item=item, problems=tuple(problems), hints=tuple(hints),
                    options=options, recommended=recommended,
                    suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
-                   lines_in_scope=in_scope, scopes=scopes)
+                   lines_in_scope=in_scope, scopes=scopes,
+                   review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"))

@@ -17,12 +17,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-user-multiline.txt`
 
-- [ ] Task 4：架构审查状态行
+- [x] Task 4：架构审查状态行
   - 验收：Spec 验收 5（五种写法、审查编号、建议条数、`unrecognized` 保留原文、`absent`，都不产生问题）
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 70 tests, OK（2026-10-16）
 
 - [ ] Task 5：生成【用户答复】与多线版本
   - 验收：Spec 验收 9、10；往返后用户原话逐字相同（含换行、全角标点、#）

@@ -176,5 +176,41 @@ class MultilineTest(unittest.TestCase):
         self.assertEqual((msg.lines_in_scope, msg.scopes), ((), {}))
 
 
+class ReviewLineTest(unittest.TestCase):
+    def parse_with(self, line):
+        text = fixture("wait-user.txt").replace("要点：", (line + "\n要点：") if line else "要点：")
+        return protocol.parse(text)
+
+    def test_five_forms(self):
+        cases = {
+            "架构审查：通过": ("passed", None, None),
+            "架构审查：通过（R-3）": ("passed", None, "R-3"),
+            "架构审查：通过，附建议2条（命名、日志）": ("passed-with-advice", 2, None),
+            "架构审查：通过，附建议1条（日志）(#41)": ("passed-with-advice", 1, "#41"),
+            "架构审查：进行中，请勿先批": ("in-progress", None, None),
+            "架构审查：不适用（不属于审查节点）": ("not-applicable", None, None),
+            "架构审查：用户豁免": ("waived", None, None),
+            "架构审查:通过,附建议3条": ("passed-with-advice", 3, None),
+        }
+        for line, (status, advice, ref) in cases.items():
+            with self.subTest(line=line):
+                msg = self.parse_with(line)
+                self.assertEqual((msg.review.status, msg.review.advice_count, msg.review.ref),
+                                 (status, advice, ref))
+                self.assertTrue(msg.ok, msg.problems)
+
+    def test_unrecognized_and_absent(self):
+        msg = self.parse_with("架构审查：已看过，问题不大")
+        self.assertEqual(msg.review.status, "unrecognized")
+        self.assertEqual(msg.review.raw, "已看过，问题不大")
+        self.assertTrue(msg.ok)
+        msg = self.parse_with("架构审查：—")
+        self.assertEqual(msg.review.status, "unrecognized")
+        msg = self.parse_with(None)
+        self.assertEqual(msg.review.status, "absent")
+        self.assertIsNone(msg.review.raw)
+        self.assertTrue(msg.ok)
+
+
 if __name__ == "__main__":
     unittest.main()
