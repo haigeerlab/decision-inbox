@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 119c3ffc42f6 -->
+<!-- spec-guard: review approved 175060eb056e -->
 # Spec: relay-reader
 
 > 能力图模块 `relay-reader`。需求来源：`docs/requirements-record.md` 第 1.4、4.5、8.1、8.3、8.5、10.2 节，第 12 节第 15 项。
@@ -72,7 +72,30 @@ snap.agents["fe-codex"]  # AgentFact
 
 out = relay.parse_outbox(text, sender="hub-claude")   # bridge_outbox 返回的 JSON 原文
 out.messages[0]          # MessageFact
+
+# query-commands 返工（2026-10-16）：bridge_wake_status，不接 bridge_thread
+st = relay.parse_message_status(text)   # bridge_wake_status(messageId) 的原文 → MessageStatusFact；缺 message.id 或不是 JSON 抛 RelayDataError
+wakes = relay.parse_wake_jobs(text)     # 不带参数的 bridge_wake_status 原文 → {身份名: {唤醒状态: 条数}}；缺 jobs 数组抛 RelayDataError，单条坏记录跳过
 ```
+
+```python
+@dataclass(frozen=True)
+class MessageStatusFact:
+    id: int
+    sender: str
+    recipient: str
+    sent_at: str | None
+    delivery_state: str | None    # queued | sending | accepted | failed | unknown | expired
+    acknowledged_at: str | None
+    reply_ids: tuple[int, ...]
+    wake_state: str | None        # pending | sending | accepted | read | held | refused | unknown | cancelled | expired | acknowledged
+    wake_detail: str | None       # 空串记为 None
+    outcome: str | None           # pending | acknowledged | replied | failed | expired
+```
+
+- `bridge_wake_status` 的 `preview`（消息和唤醒记录里都有）一律丢弃。
+- 按编号查状态只许消息的发件人或收件人在自己的会话里查；查不到时由调用方如实说明，不绕过。
+- 实采（2026-10-16，0.6.10）：唤醒记录比 0.6.1 源码多一个 `sentAt` 字段，其余一致；按编号查的返回未能实采（本会话不是收发方），夹具按源码的 `MessageStatus` 合成。
 
 ```python
 @dataclass(frozen=True)
