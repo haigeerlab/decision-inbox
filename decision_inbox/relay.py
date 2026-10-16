@@ -1,7 +1,7 @@
 """Read-only view of agent-relay facts (see spec/relay-reader.md).
 
-Input is the JSON text a session got back from the MCP tools `bridge_agents`
-and `bridge_outbox` (agent-relay >= 0.6.10, interface 2.x). Message bodies and
+Input is the JSON text a session got back from the MCP tools `bridge_agents`,
+`bridge_outbox` and `bridge_wake_status` (agent-relay >= 0.6.10, interface 2.x). Message bodies and
 previews are never copied into the output.
 """
 
@@ -179,3 +179,54 @@ def parse_outbox(text: str, sender: str) -> Outbox:
             reply_to=_int_or_none(e.get("replyTo")),
         ))
     return Outbox(sender=sender, messages=tuple(messages), warnings=tuple(warnings))
+
+
+@dataclass(frozen=True)
+class MessageStatusFact:
+    id: int
+    sender: str
+    recipient: str
+    sent_at: str | None
+    delivery_state: str | None
+    acknowledged_at: str | None
+    reply_ids: tuple[int, ...]
+    wake_state: str | None
+    wake_detail: str | None
+    outcome: str | None
+
+
+def parse_message_status(text: str) -> MessageStatusFact:
+    """bridge_wake_status(messageId) output; the preview is dropped."""
+    try:
+        doc = json.loads(text)
+    except (TypeError, json.JSONDecodeError) as e:
+        raise RelayDataError(f"bridge_wake_status 的返回不是合法 JSON：{e}") from None
+    message = doc.get("message") if isinstance(doc, dict) else None
+    if not isinstance(message, dict) or _int_or_none(message.get("id")) is None:
+        raise RelayDataError("bridge_wake_status 的返回缺少 message.id")
+    wake = doc.get("wake") if isinstance(doc.get("wake"), dict) else {}
+    return MessageStatusFact(
+        id=message["id"],
+        sender=_str_or_none(message.get("fromAgent")) or "",
+        recipient=_str_or_none(message.get("toAgent")) or "",
+        sent_at=_str_or_none(message.get("createdAt")),
+        delivery_state=_str_or_none(doc.get("deliveryState")),
+        acknowledged_at=_str_or_none(doc.get("acknowledgedAt")),
+        reply_ids=tuple(x for x in doc.get("replies") or [] if _int_or_none(x) is not None),
+        wake_state=_str_or_none(wake.get("state")),
+        wake_detail=_str_or_none(wake.get("detail")) or None,
+        outcome=_str_or_none(doc.get("outcome")),
+    )
+
+
+def parse_wake_jobs(text: str) -> dict[str, dict[str, int]]:
+    """bridge_wake_status without arguments -> {agent: {wake state: count}}; malformed jobs are skipped."""
+    counts: dict[str, dict[str, int]] = {}
+    for job in _load(text, "jobs", "bridge_wake_status"):
+        if not isinstance(job, dict):
+            continue
+        agent, state = _str_or_none(job.get("agent")), _str_or_none(job.get("state"))
+        if agent and state:
+            per = counts.setdefault(agent, {})
+            per[state] = per.get(state, 0) + 1
+    return counts

@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：relay-reader 返工——`parse_message_status`、`parse_wake_jobs`
+- [x] Task 1：relay-reader 返工——`parse_message_status`、`parse_wake_jobs`
   - 验收：Spec 验收 10。合成样例覆盖各字段和缺字段的情况；实采样例（不带参数一次、带一个消息编号一次）脱敏后能解析；结构不对抛 `RelayDataError`；解析结果和夹具里都没有 `preview`；relay-reader 原有测试不改动、全部通过
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/`
+  - 实采记录（2026-10-16）：不带参数的 `bridge_wake_status` 采到 100 条唤醒记录，脱敏后取 5 条为 `real-wake-jobs.json`；比 0.6.1 源码多一个 `sentAt` 字段，其余一致。按编号查（#3493）被 agent-relay 拒绝：只许发件人或收件人在自己的会话里查，本会话不是任何一方；按计划不绕过，`message-status.json` 为按源码 `MessageStatus` 合成的样例
 
 - [ ] Task 2：等待图与 `/lines`
   - 验收：Spec 验收 1（按名册顺序、跳过收件枢纽；状态、当前模块与已勾数、最后产出、未读、在等；spec-guard 读不出写原因；未读未知；「你（#N）」；没有在等写「—」）

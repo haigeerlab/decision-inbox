@@ -159,6 +159,43 @@ class ParseOutboxTest(unittest.TestCase):
                     relay.parse_outbox(bad, sender="x")
 
 
+class WakeStatusTest(unittest.TestCase):
+    def test_message_status(self):
+        st = relay.parse_message_status(fixture("message-status.json"))
+        self.assertEqual((st.id, st.sender, st.recipient), (2842, "fe-codex", "hub"))
+        self.assertEqual(st.sent_at, "2026-10-16T03:10:00.000Z")
+        self.assertEqual(st.delivery_state, "accepted")
+        self.assertEqual(st.acknowledged_at, "2026-10-16T03:12:00.000Z")
+        self.assertEqual(st.reply_ids, (2850, 2851))
+        self.assertEqual((st.wake_state, st.wake_detail), ("acknowledged", "Recipient acknowledged the message"))
+        self.assertEqual(st.outcome, "replied")
+        self.assertNotIn("preview", repr(st))
+        self.assertNotIn("正文预览", repr(st))
+
+    def test_message_status_without_wake_or_optional_fields(self):
+        doc = {"message": {"id": 9, "fromAgent": "hub", "toAgent": "api-codex"}, "wake": None}
+        st = relay.parse_message_status(json.dumps(doc))
+        self.assertEqual((st.id, st.delivery_state, st.acknowledged_at, st.reply_ids), (9, None, None, ()))
+        self.assertEqual((st.wake_state, st.wake_detail, st.outcome, st.sent_at), (None, None, None, None))
+
+    def test_message_status_structural_errors(self):
+        for text in ("not json", "[]", json.dumps({"deliveryState": "accepted"}),
+                     json.dumps({"message": {"fromAgent": "x"}})):
+            with self.subTest(text=text):
+                with self.assertRaises(relay.RelayDataError):
+                    relay.parse_message_status(text)
+
+    def test_wake_jobs_counts(self):
+        jobs = [{"agent": "a", "state": "held"}, {"agent": "a", "state": "held"}, {"agent": "a", "state": "refused"},
+                {"agent": "b", "state": "acknowledged"}, {"state": "held"}, "junk", {"agent": "c"}]
+        counts = relay.parse_wake_jobs(json.dumps({"summary": {}, "jobs": jobs}))
+        self.assertEqual(counts, {"a": {"held": 2, "refused": 1}, "b": {"acknowledged": 1}})
+        with self.assertRaises(relay.RelayDataError):
+            relay.parse_wake_jobs(json.dumps({"summary": {}}))
+        with self.assertRaises(relay.RelayDataError):
+            relay.parse_wake_jobs("{")
+
+
 class RealCaptureTest(unittest.TestCase):
     """Sanitised output captured from agent-relay 0.6.10 on 2026-10-16."""
 
@@ -186,7 +223,19 @@ class RealCaptureTest(unittest.TestCase):
         self.assertEqual((first.recipient, first.delivery_state, first.reply_to), ("agent-4", "queued", 2916))
         self.assertTrue(all(m.delivery_state == "accepted" for m in out.messages[1:]))
 
+    def test_real_wake_jobs(self):
+        counts = relay.parse_wake_jobs(fixture("real-wake-jobs.json"))
+        self.assertEqual(counts, {"agent-3": {"unknown": 1, "acknowledged": 1}, "agent-2": {"pending": 1, "read": 1},
+                                  "agent-1": {"acknowledged": 1}})
+
     def test_real_fixtures_are_sanitised(self):
+        jobs = json.loads(fixture("real-wake-jobs.json"))["jobs"]
+        self.assertNotIn('"preview"', fixture("real-wake-jobs.json"))
+        for job in jobs:
+            for field in ("agent", "fromAgent"):
+                self.assertRegex(job[field], r"^agent-\d+$")
+            self.assertEqual(job["mailboxPath"], "/sanitized/mailbox.sqlite")
+            self.assertRegex(job["target"]["sessionId"], r"^session-\d+$")
         for name in ("real-agents.json", "real-outbox.json"):
             doc = json.loads(fixture(name))
             text = json.dumps(doc, ensure_ascii=False)
