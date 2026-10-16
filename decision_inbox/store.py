@@ -114,6 +114,34 @@ def _state_path(group: "Group", domain: str) -> Path:
     return group.path / "state" / f"{validate_name(domain)}.json"
 
 
+def _snapshot_lag(group: "Group", events: list[dict]) -> dict[str, int]:
+    """Per domain: how many of its events are newer than its snapshot's lastSeq.
+
+    An event belongs to the domain named before the dot in its type.
+    Unreadable snapshots are skipped here; check() reports them separately.
+    """
+    lag: dict[str, int] = {}
+    state_dir = group.path / "state"
+    if not state_dir.is_dir():
+        return lag
+    for path in sorted(state_dir.glob("*.json")):
+        domain = path.stem
+        try:
+            last = int(_read_json(path).get("lastSeq", 0))
+        except (StoreError, TypeError, ValueError):
+            continue
+        behind = sum(1 for e in events
+                     if str(e.get("type", "")).split(".")[0] == domain and e["seq"] > last)
+        if behind:
+            lag[domain] = behind
+    return lag
+
+
+def _lag_warnings(group: "Group", events: list[dict]) -> list[str]:
+    return [f"快照落后于日志 {n} 条：{domain}"
+            for domain, n in _snapshot_lag(group, events).items()]
+
+
 def _empty_state() -> dict:
     return {"version": VERSION, "lastSeq": 0}
 
@@ -133,11 +161,19 @@ class Transaction:
         self._counter_dirty = False
         self._events: list[dict] = []
         self._last_seq: int | None = None
+        self.warnings: list[str] = []
 
     def __enter__(self) -> "Transaction":
         lock = self.group.path / ".lock"
         self._lock_fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
+        try:
+            events, self.warnings, _ = _scan_log(self.group.path / "events.jsonl")
+            self.warnings += _lag_warnings(self.group, events)
+        except BaseException:
+            fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+            os.close(self._lock_fd)
+            raise
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
@@ -218,6 +254,37 @@ class Group:
 
     def transaction(self) -> Transaction:
         return Transaction(self)
+
+
+def check(group: Group) -> dict:
+    """Read-only health report used by `store show`.
+
+    problems make `show` exit 3; warnings do not.
+    """
+    report: dict = {"path": str(group.path), "files": {}, "problems": [], "warnings": [],
+                    "next": None, "sessions": None, "events": 0}
+    targets = [group.path / n for n in ("group.json", "roster.json", "counter.json")]
+    state_dir = group.path / "state"
+    if state_dir.is_dir():
+        targets += sorted(state_dir.glob("*.json"))
+    docs = {}
+    for path in targets:
+        rel = str(path.relative_to(group.path))
+        try:
+            docs[rel] = _read_json(path)
+            report["files"][rel] = f"version {docs[rel]['version']}"
+        except StoreCorrupt as e:
+            report["files"][rel] = "无法使用"
+            report["problems"].append(str(e))
+    if "counter.json" in docs:
+        report["next"] = docs["counter.json"].get("next")
+    if "roster.json" in docs:
+        report["sessions"] = len(docs["roster.json"].get("sessions", []))
+    events, warnings, _ = _scan_log(group.path / "events.jsonl")
+    report["events"] = len(events)
+    report["warnings"] += warnings
+    report["problems"] += _lag_warnings(group, events)
+    return report
 
 
 def read_events(group: Group, ref: int | None = None,

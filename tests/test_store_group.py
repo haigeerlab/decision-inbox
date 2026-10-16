@@ -73,3 +73,43 @@ class RootTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShowTest(TempHomeTestCase):
+    def test_show_healthy_group(self):
+        g, _ = store.init_group("demo")
+        with g.transaction() as tx:
+            n = tx.allocate_number()
+            tx.append_event("items.created", ref=n, actor="前端")
+            tx.write_state("items", tx.read_state("items"))
+        r = run_cli("store", "show", "demo")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(str(g.path), r.stdout)
+        self.assertIn("下一个编号：2", r.stdout)
+        self.assertIn("事件：1 条", r.stdout)
+        self.assertIn("名册：0 个会话", r.stdout)
+        self.assertIn("一致性：正常", r.stdout)
+
+    def test_show_missing_group(self):
+        self.assertEqual(run_cli("store", "show", "nope").returncode, 2)
+
+    def test_show_reports_snapshot_behind_log(self):
+        g, _ = store.init_group("demo")
+        lines = [
+            json.dumps({"seq": i, "at": store.now(), "type": "items.created",
+                        "ref": i, "actor": "前端", "data": {}})
+            for i in range(1, 43)
+        ]
+        (g.path / "events.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (g.path / "state").mkdir()
+        (g.path / "state" / "items.json").write_text(
+            json.dumps({"version": 1, "lastSeq": 41}), encoding="utf-8")
+        r = run_cli("store", "show", "demo")
+        self.assertEqual(r.returncode, 3)
+        self.assertIn("快照落后于日志 1 条", r.stdout)
+        self.assertIn("items", r.stdout)
+        with g.transaction() as tx:
+            self.assertTrue(any("落后" in w for w in tx.warnings))
+            tx.append_event("tickets.created", ref=43, actor="API")
+            tx.write_state("tickets", tx.read_state("tickets"))
+        self.assertEqual(store.read_state(g, "tickets")["lastSeq"], 43)

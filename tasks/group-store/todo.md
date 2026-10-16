@@ -28,7 +28,7 @@
 - [x] Checkpoint 2（report）：全部测试全绿，并发测试连续 5 次通过，记下命令与结果后继续
   - 记录：`python3 -m unittest discover -s tests -v` → Ran 23 tests, OK；`python3 -m unittest discover -s tests -p test_store_events.py` 连跑 5 次均 OK（2026-10-16）
 
-- [ ] Task 5：一致性检查与 `store show`
+- [x] Task 5：一致性检查与 `store show`
   - 验收：Spec 验收 8；验收 5 中 `store show` 退出码 3 并点名损坏文件
   - 验证：`python3 -m unittest discover -s tests -p "test_store_[gs]*.py" -v`
   - 文件：`decision_inbox/store.py`、`decision_inbox/__main__.py`、`tests/test_store_group.py`、`tests/test_store_state.py`

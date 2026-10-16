@@ -102,3 +102,17 @@ class StateTest(TempHomeTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShowCorruptTest(TempHomeTestCase):
+    def test_show_names_corrupt_file(self):
+        from test_store_group import run_cli
+        g, _ = store.init_group("demo")
+        path = g.path / "state" / "items.json"
+        path.parent.mkdir()
+        path.write_bytes(b"{not json")
+        r = run_cli("store", "show", "demo")
+        self.assertEqual(r.returncode, 3)
+        self.assertIn(str(path), r.stdout)
+        self.assertIn("事件：0 条", r.stdout)
+        self.assertEqual(path.read_bytes(), b"{not json")
