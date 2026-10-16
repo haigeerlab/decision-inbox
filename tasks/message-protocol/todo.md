@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：解析骨架与简单消息
+- [x] Task 1：解析骨架与简单消息
   - 验收：类型识别与 `unknown-kind`；开头三种行顺序不限、字段之后的「结束：」不算；【已恢复】多编号与「无编号（原因）」、缺结束行 `missing-end`；【撤回】与【取代 #N】【与 #N 并行】标记；【等待其他会话】必填；全角半角冒号与跨行字段值（Spec 验收 6、7、8、12、11 部分）
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-session.txt`、`tests/fixtures/protocol/resumed.txt`
