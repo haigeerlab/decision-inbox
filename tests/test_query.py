@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from helpers import TempHomeTestCase
 from test_health import NOW, WAIT_USER, agent, at, line_map, module, snapshot
@@ -296,6 +297,81 @@ class ItemTest(QueryCase):
         self.assertIn(f"{hhmm(at(30))} 前端 开单：等 API 的「订单接口」（agent-relay #", text)
         self.assertTrue(text.endswith(f"{hhmm(at(5))} 关单：用户关闭，依据：不等了"))
         self.assertEqual(query.render_item(self.g, 999), "#999 不是事项也不是等待单")
+
+
+class CommandLineTest(QueryCase):
+    def setUp(self):
+        super().setUp()
+        import os
+        self._plugins = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
+        os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.home / "no-plugins.json")  # never start spec-guard
+
+    def tearDown(self):
+        import os
+        if self._plugins is None:
+            os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        else:
+            os.environ["DECISION_INBOX_PLUGINS_FILE"] = self._plugins
+        super().tearDown()
+
+    def file(self, name, text):
+        path = self.home / name
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def digest(self):
+        import hashlib
+        return {str(p.relative_to(self.g.path)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(self.g.path.rglob("*")) if p.is_file()}
+
+    def test_four_subcommands_are_read_only(self):
+        import json
+        no = self.ask("fe")
+        items.answer(self.g, [items.Answer(no, "A", f"{no} A")], answered_at=at(3))
+        items.record_sent(self.g, no, "fe", 7001, at=at(2))
+        self.wait("api", "前端", 20)
+        agents = self.file("agents.json", json.dumps({"count": 1, "agents": [agent("fe", activity_ago=1)]}))
+        wakes = self.file("wakes.json", (Path(__file__).resolve().parent / "fixtures" / "relay" /
+                                         "real-wake-jobs.json").read_text(encoding="utf-8"))
+        st = json.loads((Path(__file__).resolve().parent / "fixtures" / "relay" / "message-status.json").read_text())
+        st["message"]["id"] = 7001
+        status_file = self.file("status.json", json.dumps(st))
+        before = self.digest()
+        code, out, _ = self.run_cli("query", "lines", "demo", "--agents", agents, "--relay-version", "0.6.10")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("前端 · "))
+        self.assertIn("仓库路径必须是存在的绝对路径目录", out)  # spec-guard-reader's reason is shown, not hidden
+        code, out, _ = self.run_cli("query", "flow", "demo", "--agents", agents, "--wakes", wakes)
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("停在哪：前端"))
+        self.assertIn("检查明细", out)
+        code, out, _ = self.run_cli("query", "item-ids", "demo", str(no))
+        self.assertEqual((code, out.split()[-1]), (0, "7001"))
+        code, out, _ = self.run_cli("query", "item", "demo", str(no), "--status", status_file)
+        self.assertEqual(code, 0)
+        self.assertIn("agent-relay #7001：投递 accepted", out)
+        self.assertNotIn("正文预览", out)
+        self.assertEqual(self.digest(), before)
+
+    def test_errors(self):
+        agents = self.file("bad.json", "not json")
+        self.assertEqual(self.run_cli("query", "lines", "nope", "--agents", agents)[0], 2)
+        code, _, err = self.run_cli("query", "lines", "demo", "--agents", agents)
+        self.assertEqual(code, 3)
+        self.assertIn("bridge_agents", err)
+        self.assertEqual(self.run_cli("query", "item", "demo", "1", "--status", agents)[0], 3)
+        self.assertEqual(self.run_cli("query", "lines", "demo")[0], 2)
+        self.assertEqual(self.run_cli("query", "item", "demo", "abc")[0], 2)
+        self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
 
 
 if __name__ == "__main__":

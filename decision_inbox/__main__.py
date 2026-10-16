@@ -1,8 +1,11 @@
+import argparse
 import sys
+from pathlib import Path
 
-from decision_inbox import store
+from decision_inbox import health, query, relay, specguard, store
 
-USAGE = "用法：python3 -m decision_inbox store <init|show> <协作组>"
+USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
+         "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...")
 
 
 def _init(name: str) -> int:
@@ -35,7 +38,84 @@ def _show(name: str) -> int:
     return 0
 
 
+class _RelayUnreadable(Exception):
+    pass
+
+
+def _read(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        raise _RelayUnreadable(f"读不出 agent-relay 原文文件 {path}：{e}") from None
+
+
+def _parse(parser, text: str):
+    try:
+        return parser(text)
+    except relay.RelayDataError as e:
+        raise _RelayUnreadable(str(e)) from None
+
+
+def _assess(g, args):
+    """Facts for /lines and /flow: relay snapshot, each dev line's spec-guard map, patrol's last snapshot."""
+    agents = _parse(lambda t: relay.parse_agents(t, relay_version=args.relay_version), _read(args.agents))
+    maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
+            if e["role"] == "dev" and e.get("repo")}
+    previous = store.read_state(g, "patrol").get("snapshot")
+    now = store.now()
+    return now, health.assess(g, now=now, relay=agents, maps=maps, previous=previous), agents, maps
+
+
+def _query(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox query")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("lines", "flow"):
+        p = sub.add_parser(name)
+        p.add_argument("group")
+        p.add_argument("--agents", required=True)
+        p.add_argument("--relay-version")
+        if name == "flow":
+            p.add_argument("--wakes", required=True)
+    for name in ("item-ids", "item"):
+        p = sub.add_parser(name)
+        p.add_argument("group")
+        p.add_argument("number", type=int)
+        if name == "item":
+            p.add_argument("--status", action="append", default=[])
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        g = store.open_group(args.group)
+        if args.command == "lines":
+            now, a, agents, maps = _assess(g, args)
+            print(query.render_lines(g, now=now, assessment=a, relay=agents, maps=maps))
+        elif args.command == "flow":
+            wakes = _parse(relay.parse_wake_jobs, _read(args.wakes))
+            now, a, agents, _ = _assess(g, args)
+            print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
+        elif args.command == "item-ids":
+            for relay_id in query.item_message_ids(g, args.number):
+                print(relay_id)
+        else:
+            statuses = {}
+            for path in args.status:
+                st = _parse(relay.parse_message_status, _read(path))
+                statuses[st.id] = st
+            print(query.render_item(g, args.number, statuses))
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    except _RelayUnreadable as e:
+        print(str(e), file=sys.stderr)
+        return 3
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["query"]:
+        return _query(argv[1:])
     commands = {"init": _init, "show": _show}
     if len(argv) != 3 or argv[0] != "store" or argv[1] not in commands:
         print(USAGE, file=sys.stderr)

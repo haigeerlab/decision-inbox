@@ -31,7 +31,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
 
-- [ ] Task 6：命令行 `query` 的 4 个子命令与只读校验
+- [x] Task 6：命令行 `query` 的 4 个子命令与只读校验
   - 验收：Spec 验收 11（4 个子命令在临时文件上退出码 0；协作组不存在为 2；agent-relay 文件不是 JSON 为 3）、12（查询前后协作组目录里的文件哈希一致）；原有 `store` 子命令不受影响
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/__main__.py`、`tests/test_query.py`
