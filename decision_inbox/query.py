@@ -308,3 +308,86 @@ def render_flow(g: store.Group, now: str, assessment, relay=None, wakes: dict | 
     """/flow: one conclusion, then the five check details."""
     return "\n\n".join(["\n".join(_conclusion(g, now, assessment, relay)),
                         "\n".join(_details(g, now, assessment, relay, wakes or {}))])
+
+
+_ITEM_STATUS = {"pending": "待答", "superseded": "已取代", "withdrawn": "已撤回", "forwarded": "已转达",
+                "picked": "对方已取走", "acknowledged": "对方已确认", "closed": "已结束"}
+
+
+def item_message_ids(g: store.Group, number: int) -> tuple[int, ...]:
+    """agent-relay ids to look up for /item: the 【等待用户】 itself, then each reply sent."""
+    it = items.get(g, number)
+    if it is None:
+        return ()
+    ids = [it["relayId"]] + [s["relayId"] for s in sorted(it["sent"], key=lambda s: _instant(s["at"]))]
+    return tuple(dict.fromkeys(i for i in ids if isinstance(i, int)))
+
+
+def _status_rows(g: store.Group, relay_id: int, at: str, statuses: dict) -> list[tuple[str, str]]:
+    st = statuses.get(relay_id)
+    if st is None:
+        return [(at, f"agent-relay 查不到 #{relay_id}")]
+    parts = [f"投递 {st.delivery_state or '未知'}"]
+    if st.wake_state:
+        parts.append(f"唤醒 {st.wake_state}" + (f"（{st.wake_detail}）" if st.wake_detail else ""))
+    if st.reply_ids:
+        parts.append("回复 " + "、".join(f"#{r}" for r in st.reply_ids))
+    if st.outcome:
+        parts.append(f"结果 {st.outcome}")
+    rows = [(st.sent_at or at, f"agent-relay #{relay_id}：" + "，".join(parts))]
+    if st.acknowledged_at:
+        rows.append((st.acknowledged_at, f"agent-relay #{relay_id}：{_short(g, st.recipient)} 已确认"))
+    return rows
+
+
+def _item_timeline(g: store.Group, it: dict, statuses: dict) -> list[str]:
+    no, times = it["no"], it["statusAt"]
+    events = {e["type"]: e for e in items.history(g, no)}
+    rows = [(it["receivedAt"], f"{_short(g, it['sender'])} 抛出（agent-relay #{it['relayId']}；"
+                               f"审查：{it['review']['text']}）")]
+    rows += _status_rows(g, it["relayId"], it["receivedAt"], statuses)
+    if "superseded" in times:
+        by = events.get("items.superseded", {}).get("data", {}).get("by", "?")
+        rows.append((times["superseded"], f"被 #{by} 取代"))
+    if "withdrawn" in times:
+        reason = events.get("items.withdrawn", {}).get("data", {}).get("reason")
+        rows.append((times["withdrawn"], "提出方撤回" + (f"（原因：{reason}）" if reason else "")))
+    for a in it["answers"]:
+        rows.append((a["at"], f"你答复：{a['original']}"))
+    for s in it["sent"]:
+        rows.append((s["at"], f"转发给 {_short(g, s['to'])}（agent-relay #{s['relayId']}）"))
+        rows += _status_rows(g, s["relayId"], s["at"], statuses)
+    if "picked" in times:
+        rows.append((times["picked"], "对方已取走"))
+    if "acknowledged" in times:
+        rows.append((times["acknowledged"], "对方已确认"))
+    if "closed" in times:
+        actor = events.get("items.closed", {}).get("actor", it["sender"])
+        rows.append((times["closed"], f"{_short(g, actor)} 已恢复，事项结束"))
+    source = f"多线：{'＋'.join(it['lines'])}" if it["multi"] else _short(g, it["sender"])
+    head = (f"#{no} · {source} · {it['decide'].splitlines()[0]} · "
+            f"当前：{_ITEM_STATUS.get(it['status'], it['status'])}")
+    return [head] + [f"{_clock(t)} {text}" for t, text in sorted(rows, key=lambda r: _instant(r[0]))]
+
+
+def _ticket_timeline(g: store.Group, number: int, t: dict) -> list[str]:
+    from decision_inbox.view import CLOSE_REASONS
+    waiter = _short(g, t["waiter"])
+    head = f"#{number} · 等待单 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
+    rows = [f"{_clock(t['sentAt'])} {waiter} 开单：等 {t['target']} 的「{_one_line(t['what'])}」"
+            f"（agent-relay #{t['relayId']}）"]
+    if t.get("close"):
+        c = t["close"]
+        rows.append(f"{_clock(c['at'])} 关单：{CLOSE_REASONS.get(c['reason'], c['reason'])}，依据：{c['basis']}")
+    return [head] + rows
+
+
+def render_item(g: store.Group, number: int, statuses: dict | None = None) -> str:
+    """/item: one item's or wait ticket's timeline; message bodies never appear."""
+    it = items.get(g, number)
+    if it is not None:
+        return "\n".join(_item_timeline(g, it, statuses or {}))
+    t = store.read_state(g, tickets.DOMAIN).get("tickets", {}).get(str(number))
+    if t is not None:
+        return "\n".join(_ticket_timeline(g, number, t))
+    return f"#{number} 不是事项也不是等待单"

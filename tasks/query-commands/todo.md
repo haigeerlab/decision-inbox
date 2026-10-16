@@ -26,7 +26,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
 
-- [ ] Task 5：`/item`——`item_message_ids` 与时间线
+- [x] Task 5：`/item`——`item_message_ids` 与时间线
   - 验收：Spec 验收 7（按时间排序；抛出、答复、转发、投递、确认、唤醒、恢复；缺状态写「agent-relay 查不到 #编号」；扫描输出无正文和 preview）、8（等待单的开单和关单；两边都没有）、9（去重、按先后排序）
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`

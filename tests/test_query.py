@@ -236,5 +236,67 @@ class FlowDetailsTest(QueryCase):
         self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 负责人跟进：第一版不记录")
 
 
+def status(no, sender, recipient, sent_at, delivery="accepted", ack=None, replies=(), wake=None, outcome=None):
+    from decision_inbox.relay import MessageStatusFact
+    return MessageStatusFact(no, sender, recipient, sent_at, delivery, ack, tuple(replies),
+                             wake[0] if wake else None, wake[1] if wake else None, outcome)
+
+
+class ItemTest(QueryCase):
+    def lifecycle(self):
+        no = self.ask("fe", ago_minutes=50)
+        items.answer(self.g, [items.Answer(no, "A", f"{no} A")], answered_at=at(40))
+        items.record_sent(self.g, no, "fe", 7001, at=at(39))
+        items.update_delivery(self.g, {7001: ("accepted", None)}, at=at(35))
+        items.update_delivery(self.g, {7001: ("accepted", at(30))}, at=at(30))
+        from decision_inbox import protocol
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{no}\n"), sender="fe", at=at(20))
+        return no
+
+    def test_message_ids(self):
+        no = self.lifecycle()
+        received = items.get(self.g, no)["relayId"]
+        items.record_sent(self.g, no, "fe", 7001, at=at(10))
+        self.assertEqual(query.item_message_ids(self.g, no), (received, 7001))
+        self.assertEqual(query.item_message_ids(self.g, 999), ())
+
+    def test_timeline(self):
+        no = self.lifecycle()
+        received = items.get(self.g, no)["relayId"]
+        statuses = {7001: status(7001, "hub", "fe", at(39), ack=at(30), replies=(7005,),
+                                 wake=("acknowledged", "Recipient acknowledged the message"), outcome="replied")}
+        text = query.render_item(self.g, no, statuses)
+        self.assertEqual(text.split("\n"), [
+            f"#{no} · 前端 · 支付页先接哪种支付方式 · 当前：已结束",
+            f"{hhmm(at(50))} 前端 抛出（agent-relay #{received}；审查：不需审：本会话无审查者）",
+            f"{hhmm(at(50))} agent-relay 查不到 #{received}",
+            f"{hhmm(at(40))} 你答复：{no} A",
+            f"{hhmm(at(39))} 转发给 前端（agent-relay #7001）",
+            f"{hhmm(at(39))} agent-relay #7001：投递 accepted，唤醒 acknowledged（Recipient acknowledged the message），"
+            "回复 #7005，结果 replied",
+            f"{hhmm(at(35))} 对方已取走",
+            f"{hhmm(at(30))} agent-relay #7001：前端 已确认",
+            f"{hhmm(at(30))} 对方已确认",
+            f"{hhmm(at(20))} 前端 已恢复，事项结束",
+        ])
+        self.assertNotIn("先接微信支付", text)
+
+    def test_superseded_and_withdrawn(self):
+        old = self.ask("fe", ago_minutes=30)
+        new = self.ask(text=WAIT_USER.replace("【等待用户】", f"【等待用户】【取代 #{old}】"), ago_minutes=20)
+        self.assertIn(f"被 #{new} 取代", query.render_item(self.g, old))
+        items.receive(self.g, f"【撤回】\n事项：#{new}\n原因：需求取消\n", sender="fe", relay_id=1, received_at=at(10))
+        self.assertTrue(query.render_item(self.g, new).endswith(f"{hhmm(at(10))} 提出方撤回（原因：需求取消）"))
+
+    def test_ticket_and_unknown(self):
+        t = self.wait("fe", "API", 30, what="订单接口")
+        tickets.close_by_user(self.g, t, "不等了", at=at(5))
+        text = query.render_item(self.g, t)
+        self.assertEqual(text.split("\n")[0], f"#{t} · 等待单 · 前端 等 API · 当前：已关")
+        self.assertIn(f"{hhmm(at(30))} 前端 开单：等 API 的「订单接口」（agent-relay #", text)
+        self.assertTrue(text.endswith(f"{hhmm(at(5))} 关单：用户关闭，依据：不等了"))
+        self.assertEqual(query.render_item(self.g, 999), "#999 不是事项也不是等待单")
+
+
 if __name__ == "__main__":
     unittest.main()
