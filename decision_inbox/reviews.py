@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from decision_inbox import store
+from decision_inbox.protocol import Issue
 
 DOMAIN = "reviews"
 NODES = ("spec", "plan", "interface", "final")
@@ -136,3 +137,58 @@ def display_label(g: store.Group, session: str, message, received_at: str) -> Re
     if review.status in _LABELS:
         return ReviewLabel(_LABELS[review.status], highlight=review.status == "in-progress", ref=review.ref)
     return ReviewLabel("⚠ 未标审查", warn=True, mentions=_mentions(message))
+
+
+@dataclass(frozen=True)
+class ConclusionResult:
+    recorded: bool
+    problems: tuple = ()
+    hints: tuple = ()
+
+
+@dataclass(frozen=True)
+class RoundStats:
+    closed: tuple[tuple[str, str, str, int], ...]
+    open: tuple[tuple[str, str, str, int], ...]
+
+
+def _issue(code: str, text: str) -> Issue:
+    return Issue(code, text)
+
+
+def record_conclusion(g: store.Group, message, sender: str, at: str | None = None) -> ConclusionResult:
+    """Count one 【审查结论】 round; only the registered reviewer of the submitter counts."""
+    at = at or store.now()
+    c = message.conclusion if message.kind == "review-conclusion" and message.ok else None
+    submitter = store.find_session(g, short_name=c.submitter) if c else None
+    if c is None or submitter is None:
+        return ConclusionResult(False, (_issue("bad-conclusion", "【审查结论】不合格或送审方不在名册里"),))
+    session = submitter["relayName"]
+    reg = registration_at(g, session, at)
+    if reg is None or reg.reviewer != sender:
+        return ConclusionResult(False, (_issue("not-registered-reviewer",
+                                               f"{sender} 不是 {c.submitter} 登记的审查者"),))
+    if c.node not in reg.nodes:
+        return ConclusionResult(False, (_issue("node-not-registered", f"{c.submitter} 没有登记审查节点 {c.node}"),))
+    hints = []
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        review = doc.setdefault("reviews", {}).setdefault(
+            c.ref, {"submitter": session, "reviewer": sender, "node": c.node, "rounds": [], "closed": False})
+        if review["closed"]:
+            review["closed"] = False
+            hints.append(_issue("reopened", f"审查 {c.ref} 已结束后又收到结论，已重新打开"))
+        review["rounds"].append({"at": at, "verdict": c.verdict, "adviceCount": c.advice_count})
+        review["closed"] = c.verdict in ("passed", "passed-with-advice")
+        tx.append_event("reviews.conclusion", ref=None, actor=sender,
+                        data={"review": c.ref, "session": session, "node": c.node, "verdict": c.verdict, "at": at})
+        tx.write_state(DOMAIN, doc)
+    return ConclusionResult(True, (), tuple(hints))
+
+
+def round_stats(g: store.Group) -> RoundStats:
+    closed, open_ = [], []
+    for ref, r in store.read_state(g, DOMAIN).get("reviews", {}).items():
+        row = (ref, r["submitter"], r["node"], len(r["rounds"]))
+        (closed if r["closed"] else open_).append(row)
+    return RoundStats(tuple(closed), tuple(open_))

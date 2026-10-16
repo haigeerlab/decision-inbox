@@ -150,5 +150,67 @@ class LabelTest(ReviewsCase):
         self.assertEqual(self.label(None, at="2026-10-16T14:00:00+08:00").text, "不需审：本会话无审查者")
 
 
+def conclusion(verdict="有须修改项", ref="R-3", node="Spec", submitter="前端"):
+    return protocol.parse(f"【审查结论】\n审查编号：{ref}\n节点：{node}\n送审方：{submitter}\n结论：{verdict}\n")
+
+
+class RoundsTest(ReviewsCase):
+    def setUp(self):
+        super().setUp()
+        self.register(nodes=("spec", "plan"))
+
+    def record(self, msg, sender="fe-owner", at=T2):
+        return reviews.record_conclusion(self.g, message=msg, sender=sender, at=at)
+
+    def test_three_rounds_then_pass(self):
+        for verdict in ("有须修改项", "有须修改项", "通过"):
+            result = self.record(conclusion(verdict))
+            self.assertTrue(result.recorded)
+            self.assertEqual(result.problems, ())
+        stats = reviews.round_stats(self.g)
+        self.assertEqual(stats.closed, (("R-3", "fe-codex", "spec", 3),))
+        self.assertEqual(stats.open, ())
+
+    def test_open_review(self):
+        self.record(conclusion("有须修改项", ref="R-4", node="Plan"))
+        self.assertEqual(reviews.round_stats(self.g).open, (("R-4", "fe-codex", "plan", 1),))
+
+    def test_rejected_conclusions_do_not_count(self):
+        cases = {
+            "not-registered-reviewer": dict(msg=conclusion(), sender="coord"),
+            "node-not-registered": dict(msg=conclusion(node="最终验收")),
+            "bad-conclusion": dict(msg=conclusion(verdict="差不多")),
+        }
+        for code, kw in cases.items():
+            with self.subTest(code):
+                result = self.record(**kw)
+                self.assertFalse(result.recorded)
+                self.assertIn(code, {i.code for i in result.problems})
+        self.assertIn("bad-conclusion", {i.code for i in self.record(conclusion(submitter="后台")).problems})
+        self.assertIn("bad-conclusion", {i.code for i in self.record(protocol.parse("【已恢复】\n结束：#1\n")).problems})
+        stats = reviews.round_stats(self.g)
+        self.assertEqual((stats.closed, stats.open), ((), ()))
+
+    def test_before_registration_is_not_registered(self):
+        result = self.record(conclusion(), at=T0)
+        self.assertIn("not-registered-reviewer", {i.code for i in result.problems})
+
+    def test_reopen_after_pass(self):
+        self.record(conclusion("通过"))
+        result = self.record(conclusion("有须修改项"), at=T3)
+        self.assertTrue(result.recorded)
+        self.assertIn("reopened", {i.code for i in result.hints})
+        stats = reviews.round_stats(self.g)
+        self.assertEqual((stats.closed, stats.open), ((), (("R-3", "fe-codex", "spec", 2),)))
+
+    def test_snapshot_and_log_consistent(self):
+        self.record(conclusion("有须修改项"))
+        self.record(conclusion("通过，附建议1条"))
+        report = store.check(self.g)
+        self.assertEqual(report["problems"], [])
+        types = [e["type"] for e in store.read_events(self.g)]
+        self.assertEqual(types.count("reviews.conclusion"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
