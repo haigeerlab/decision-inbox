@@ -14,9 +14,9 @@
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
 
 - [x] Checkpoint 1（report）：全部测试全绿；记下实采样例与源码字段的差异（没有差异也记一句），然后继续
-  - 记录：`python3 -m unittest discover -s tests -v` → Ran 233 tests, OK（2026-10-16）；字段差异：唤醒记录多 `sentAt`（不影响解析）；按编号查的消息状态未能实采（见 Task 1）
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 232 tests, OK（2026-10-16）；字段差异：唤醒记录多 `sentAt`（不影响解析）；按编号查的消息状态未能实采（见 Task 1）
 
-- [ ] Task 3：`/flow` 的源头选择、10 类归类与结论段
+- [x] Task 3：`/flow` 的源头选择、10 类归类与结论段
   - 验收：Spec 验收 2（环）、3（挡住最多、并列取最早、被它挡住含间接）、4（10 类各一个场景，另加两类同时满足时的顺序用例）、5（流畅）；「（HH:MM 起）」三种取法
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`

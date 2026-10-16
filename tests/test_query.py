@@ -94,5 +94,108 @@ class LinesTest(QueryCase):
         self.assertTrue(rows[2].endswith("在等：你"))
 
 
+def flow_head(text: str) -> list[str]:
+    return text.split("\n\n")[0].split("\n")
+
+
+class FlowSourceTest(QueryCase):
+    def flow(self, agents=(), maps=None):
+        a, relay = self.assess(agents, maps)
+        return flow_head(query.render_flow(self.g, now=NOW, assessment=a, relay=relay, wakes={}))
+
+    def test_cycle(self):
+        self.wait("fe", "API", 30)
+        self.wait("api", "前端", 20)
+        third = self.wait("bg", "前端", 5)
+        head = self.flow()
+        self.assertEqual(head[0], f"停在哪：前端 ⇄ API（{hhmm(at(30))} 起）")
+        self.assertEqual(head[1:4], ["为什么：互等成环", "你要做：你来定谁先做（谁来做：用户）", f"被它挡住：后台（#{third}）"])
+
+    def test_most_blocked_with_indirect(self):
+        direct = self.wait("api", "前端", 10)
+        indirect = self.wait("bg", "API", 3)
+        head = self.flow([agent("fe", activity_ago=2)])
+        self.assertEqual(head[0], f"停在哪：前端（{hhmm(at(10))} 起）")
+        self.assertEqual(head[3], f"被它挡住：API（#{direct}）、后台（#{indirect}）")
+        self.assertEqual(head[4], "其他：前端负责人 无活动记录（agent-relay 没有它的数据）")
+
+    def test_tie_picks_earliest_waited(self):
+        self.wait("api", "前端", 10)
+        self.wait("bg", "前端负责人", 20)
+        self.assertTrue(self.flow()[0].startswith("停在哪：前端负责人（"))
+
+    def test_fluent(self):
+        head = self.flow([agent(n, activity_ago=1) for n in ("fe", "api", "bg", "owner")])
+        self.assertEqual(head, ["流畅：没有卡点"])
+
+    def test_without_graph_uses_priority(self):
+        maps = {"api": line_map([module(last_tick=at(150))])}
+        head = self.flow([agent("fe", state="stopped"), agent("api", activity_ago=150),
+                          agent("bg", activity_ago=1), agent("owner", activity_ago=1)], maps)
+        self.assertEqual(head[:3], ["停在哪：前端", "为什么：掉线",
+                                    "你要做：巡视会自动叫醒，叫不醒请打开「前端」（谁来做：插件，兜底用户）"])
+
+
+class FlowCategoryTest(QueryCase):
+    """Each source category with a session waiting on 前端 (requirement 7.1 table)."""
+
+    def verdict(self, fe_agent=None, maps=None, signals_from=()):
+        self.wait("api", "前端", 10)
+        agents = [fe_agent] if fe_agent else []
+        a, relay = self.assess(list(agents) + list(signals_from), maps)
+        return flow_head(query.render_flow(self.g, now=NOW, assessment=a, relay=relay, wakes={}))[1:3]
+
+    def test_needs_user(self):
+        fe = agent("fe", state="waiting-approval")
+        fe["presence"]["detail"] = "permission prompt"
+        self.assertEqual(self.verdict(fe), ["为什么：等你在原会话亲自确认（permission prompt）",
+                                            "你要做：打开「前端」会话，确认它弹出的请求（谁来做：用户）"])
+
+    def test_needs_user_wins_over_item(self):
+        no = self.ask("fe")
+        self.assertEqual(self.verdict(agent("fe", state="waiting-input"))[0], "为什么：等你在原会话亲自确认")
+        self.assertIsNotNone(no)
+
+    def test_item(self):
+        no = self.ask("fe")
+        self.assertEqual(self.verdict(), [f"为什么：等你决定 #{no}：支付页先接哪种支付方式",
+                                          f"你要做：回「{no} A 先接微信支付」（谁来做：用户）"])
+
+    def test_retired(self):
+        fe = agent("fe", state="unknown", activity_ago=300)
+        fe["retiredAt"] = at(100)
+        self.assertEqual(self.verdict(fe), ["为什么：身份失效（agent-relay 里这个身份已退役）",
+                                            "你要做：叫醒后用原名重登（谁来做：插件 + agent-relay）"])
+
+    def test_offline(self):
+        self.assertEqual(self.verdict(agent("fe", state="stopped"))[0], "为什么：掉线")
+
+    def test_delivered_not_picked(self):
+        api = agent("api", activity_ago=60, waiting=(1, ["fe"], 8))
+        self.assertEqual(self.verdict(agent("fe", activity_ago=60), signals_from=[api]),
+                         ["为什么：交付了没人接：前端 已发消息给 API，API 还没去取",
+                          "你要做：叫醒 API 去取前端的交付（谁来做：插件）"])
+
+    def test_stalled(self):
+        maps = {"fe": line_map([module(last_tick=at(150))])}
+        self.assertEqual(self.verdict(agent("fe", activity_ago=150), maps),
+                         ["为什么：悄悄停下：停住 2 小时，还有已批准的任务没做完",
+                          "你要做：叫醒 前端，要它继续或上抛（谁来做：插件）"])
+
+    def test_working(self):
+        self.assertEqual(self.verdict(agent("fe", activity_ago=2, since_ago=25)),
+                         ["为什么：正在忙长任务，已忙 25 分钟", "你要做：不打扰，等它做完这一轮（谁来做：—）"])
+
+    def test_external(self):
+        self.wait("fe", "设计组", 40, what="支付页设计稿")
+        self.assertEqual(self.verdict(agent("fe", activity_ago=60)),
+                         ["为什么：等别的线交付：等 设计组 的「支付页设计稿」", "你要做：交负责人跟进（谁来做：负责人）"])
+
+    def test_idle_but_waited_on(self):
+        self.assertEqual(self.verdict(agent("fe", activity_ago=200)),
+                         ["为什么：被等着但没在干活（3 小时无活动）",
+                          "你要做：问 前端 是否已交付，没交付就让它接着做（谁来做：用户）"])
+
+
 if __name__ == "__main__":
     unittest.main()
