@@ -270,7 +270,7 @@ def _register_step(relay_name: str) -> str:
 
 
 HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件自带的停止钩子"
-             "（Codex 在命令行版里按提示信任；Claude Code 在 /hooks 里确认）")
+             "（Codex 在命令行版里按提示信任；Claude Code 在启用插件后按它的提示确认）")
 
 
 def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str) -> Outcome:
