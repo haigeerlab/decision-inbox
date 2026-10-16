@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved f1e9130591fc -->
+<!-- spec-guard: review approved fecd7cfa9809 -->
 # Spec: review-registry
 
 > 能力图模块 `review-registry`。需求来源：`docs/requirements-record.md` 第 4.3 节、第 5.2 节、第 8.1 节信号 7、第 3.1～3.2 节，第 12 节第 8 项。
@@ -52,8 +52,10 @@ from decision_inbox import reviews
 
 reviews.register(g, session="fe-codex", reviewer="fe-owner",
                  nodes=("spec", "plan", "interface", "final"),
-                 approval_item=12, approval_note="用户原话：12 A")    # 修改也用它：整份替换并记新的生效时间
-reviews.unregister(g, session="fe-codex", approval_item=15, approval_note="...")
+                 approval_item=12, approval_note="用户原话：12 A",
+                 at=None)    # 修改也用它：整份替换并记新的生效时间；at 是生效时间，不传取当前时间
+reviews.unregister(g, session="fe-codex", approval_item=15, approval_note="...", at=None)
+# 登记不合格（角色、节点、批准依据为空、撤销时没有在用的登记）抛 reviews.InvalidRegistration，什么都不写
 reviews.registration_at(g, "fe-codex", at="2026-10-16T14:05:00+08:00")  # Registration 或 None
 
 label = reviews.display_label(g, session="fe-codex", message=msg, received_at="...")
@@ -63,7 +65,10 @@ label.highlight   # 「审查中，请勿先批」时为 True
 label.ref         # 审查编号，没有为 None
 label.mentions    # ⚠ 未标审查时，正文里提到「审查」的原行
 
-problems = reviews.record_conclusion(g, message=conclusion_msg, sender="fe-owner", at="...")
+result = reviews.record_conclusion(g, message=conclusion_msg, sender="fe-owner", at="...")
+result.recorded   # 是否计入轮数
+result.problems   # 不计入的原因（下方问题代码），计入时为空
+result.hints      # 计入但要提示用户的情况：重新打开已结束的审查时为 reopened
 stats = reviews.round_stats(g)
 stats.closed      # ((review_ref, submitter, node, rounds), ...)，已结束的审查
 stats.open        # 同样的元组，进行中的审查
@@ -86,6 +91,7 @@ stats.open        # 同样的元组，进行中的审查
   - `not-registered-reviewer`：发件人不是送审方登记的审查者；
   - `node-not-registered`：节点不在登记范围内；
   - `bad-conclusion`：消息本身不合格，具体原因见 message-protocol 给出的问题。
+- 提示代码（只增不改）：`reopened`，已结束的审查又收到结论，已重新打开并计入一轮。
 - 状态存放：group-store 的领域 `reviews`，快照 `state/reviews.json`，事件类型 `reviews.registered`、`reviews.unregistered`、`reviews.conclusion`。
 
 ## 依赖
