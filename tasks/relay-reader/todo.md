@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：`parse_agents` 基础解析
+- [x] Task 1：`parse_agents` 基础解析
   - 验收：Spec 验收 4（8 种在线状态归类、原值保留）、5（正文字段不出现在输出与 repr）、6（缺 name 跳过并警告；坏 JSON、缺 agents 数组抛 RelayDataError）、8（退役身份）、9（不 import 网络与子进程模块）
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/agents-0.6.10.json`、`tests/fixtures/relay/agents-edge.json`

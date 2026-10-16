@@ -1,0 +1,154 @@
+"""Read-only view of agent-relay facts (see spec/relay-reader.md).
+
+Input is the JSON text a session got back from the MCP tools `bridge_agents`
+and `bridge_outbox` (agent-relay >= 0.6.10, interface 2.x). Message bodies and
+previews are never copied into the output.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field
+
+MIN_VERSION = (0, 6, 10)
+_VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+_PRESENCE = {
+    "running": "active",
+    "waiting-input": "needs-user",
+    "waiting-approval": "needs-user",
+    "stopped": "offline",
+    "unreachable": "unreachable",
+}
+UPGRADE_HINT = "agent-relay 需升级到 0.6.10"
+
+
+class RelayDataError(ValueError):
+    """The relay output as a whole cannot be trusted; no partial result."""
+
+
+@dataclass(frozen=True)
+class AgentFact:
+    name: str
+    host_app: str | None
+    presence_raw: str | None
+    presence: str
+    presence_since: str | None
+    unread: int | None
+    waiting_count: int | None
+    waiting_from: tuple[str, ...]
+    waiting_ids: tuple[int, ...]
+    waiting_oldest_at: str | None
+    last_activity_at: str | None
+    wake_bound: bool | None
+    retired: bool
+
+
+@dataclass(frozen=True)
+class AgentsSnapshot:
+    relay_status: str
+    agents: dict[str, AgentFact]
+    warnings: tuple[str, ...] = field(default=())
+
+
+@dataclass(frozen=True)
+class MessageFact:
+    id: int
+    sender: str
+    recipient: str
+    sent_at: str | None
+    delivery_state: str | None
+    acknowledged_at: str | None
+    expires_at: str | None
+    reply_ids: tuple[int, ...]
+    reply_to: int | None
+
+
+@dataclass(frozen=True)
+class Outbox:
+    sender: str
+    messages: tuple[MessageFact, ...]
+    warnings: tuple[str, ...] = field(default=())
+
+
+def _load(text: str, key: str, tool: str) -> list:
+    try:
+        doc = json.loads(text)
+    except (TypeError, json.JSONDecodeError) as e:
+        raise RelayDataError(f"{tool} 的返回不是合法 JSON：{e}") from None
+    if not isinstance(doc, dict) or not isinstance(doc.get(key), list):
+        raise RelayDataError(f"{tool} 的返回缺少 {key} 数组")
+    return doc[key]
+
+
+def _int_or_none(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _str_or_none(value) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _parse_version(version: str | None, warnings: list[str]) -> tuple[int, int, int] | None:
+    if version is None:
+        return None
+    m = _VERSION_RE.match(version) if isinstance(version, str) else None
+    if not m:
+        warnings.append(f"给出的 agent-relay 版本号看不懂，已忽略：{version!r}")
+        return None
+    return tuple(int(x) for x in m.groups())  # type: ignore[return-value]
+
+
+def _relay_status(raw_agents: list[dict], version, warnings: list[str]) -> str:
+    """Evidence only (spec 关键决策 2): explicit version, else any oldestAt, else undetermined."""
+    if version is not None:
+        if version < MIN_VERSION:
+            warnings.append(UPGRADE_HINT)
+            return "too-old"
+        return "ok"
+    if any(isinstance(a.get("waiting"), dict) and "oldestAt" in a["waiting"] for a in raw_agents):
+        return "ok"
+    return "undetermined"
+
+
+def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
+    raw = _load(text, "agents", "bridge_agents")
+    warnings: list[str] = []
+    entries = [a for a in raw if isinstance(a, dict)]
+    status = _relay_status(entries, _parse_version(relay_version, warnings), warnings)
+    agents: dict[str, AgentFact] = {}
+    for a in entries:
+        name = a.get("name")
+        if not isinstance(name, str) or not name:
+            warnings.append("bridge_agents 有一条记录缺少 name，已跳过")
+            continue
+        host = a.get("host") if isinstance(a.get("host"), dict) else None
+        host_app = _str_or_none(host.get("app")) if host else None
+        presence = a.get("presence") if isinstance(a.get("presence"), dict) else {}
+        presence_raw = _str_or_none(presence.get("state"))
+        retired = a.get("retiredAt") is not None
+        waiting = a.get("waiting") if isinstance(a.get("waiting"), dict) else None
+        if retired:
+            count = 0
+        elif waiting is not None:
+            count = _int_or_none(waiting.get("count"))
+        elif host_app == "codex" or status == "ok":
+            count = 0
+        else:
+            count = None
+        agents[name] = AgentFact(
+            name=name,
+            host_app=host_app,
+            presence_raw=presence_raw,
+            presence=_PRESENCE.get(presence_raw, "unknown"),
+            presence_since=_str_or_none(presence.get("since")),
+            unread=_int_or_none(a.get("unread")),
+            waiting_count=count,
+            waiting_from=tuple(x for x in (waiting or {}).get("from", []) if isinstance(x, str)),
+            waiting_ids=tuple(x for x in (waiting or {}).get("ids", []) if _int_or_none(x) is not None),
+            waiting_oldest_at=_str_or_none((waiting or {}).get("oldestAt")),
+            last_activity_at=_str_or_none(a.get("lastActivity")),
+            wake_bound=(a["wake"] is not None) if "wake" in a else None,
+            retired=retired,
+        )
+    return AgentsSnapshot(relay_status=status, agents=agents, warnings=tuple(warnings))
