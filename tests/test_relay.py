@@ -74,6 +74,45 @@ class ParseAgentsTest(unittest.TestCase):
                     relay.parse_agents(bad)
 
 
+class VersionTest(unittest.TestCase):
+    def test_oldest_at_means_ok(self):
+        snap = relay.parse_agents(fixture("agents-0.6.10.json"))
+        self.assertEqual(snap.relay_status, "ok")
+        self.assertEqual(snap.agents["hub-claude"].waiting_count, 0)
+
+    def test_broadcast_unread_without_waiting_is_not_too_old(self):
+        doc = json.loads(fixture("agents-0.6.10.json"))
+        doc["agents"][0]["unread"] = 2  # hub-claude: unread broadcasts, no waiting
+        snap = relay.parse_agents(json.dumps(doc))
+        self.assertEqual(snap.relay_status, "ok")
+        self.assertEqual(snap.agents["hub-claude"].waiting_count, 0)
+        self.assertFalse(any(relay.UPGRADE_HINT in w for w in snap.warnings))
+
+    def test_explicit_old_version(self):
+        snap = relay.parse_agents(fixture("agents-0.6.10.json"), relay_version="0.6.1")
+        self.assertEqual(snap.relay_status, "too-old")
+        self.assertIn(relay.UPGRADE_HINT, snap.warnings)
+        for agent in snap.agents.values():
+            if agent.host_app == "claude":
+                self.assertIsNone(agent.waiting_count, agent.name)
+        self.assertEqual(snap.agents["fe-codex"].waiting_count, 0)
+
+    def test_undetermined_without_any_waiting(self):
+        snap = relay.parse_agents(fixture("agents-empty.json"))
+        self.assertEqual(snap.relay_status, "undetermined")
+        self.assertIsNone(snap.agents["hub-claude"].waiting_count)
+        self.assertEqual(snap.agents["fe-codex"].waiting_count, 0)
+        snap = relay.parse_agents(fixture("agents-empty.json"), relay_version="0.6.10")
+        self.assertEqual(snap.relay_status, "ok")
+        self.assertEqual(snap.agents["hub-claude"].waiting_count, 0)
+
+    def test_newer_version_and_bad_version_string(self):
+        self.assertEqual(relay.parse_agents(fixture("agents-empty.json"), relay_version="0.10.0").relay_status, "ok")
+        snap = relay.parse_agents(fixture("agents-empty.json"), relay_version="v0.6")
+        self.assertEqual(snap.relay_status, "undetermined")
+        self.assertTrue(any("版本号看不懂" in w for w in snap.warnings))
+
+
 class StaticScanTest(unittest.TestCase):
     def test_no_network_or_subprocess_imports(self):
         banned = {"socket", "subprocess", "urllib", "http"}

@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/agents-0.6.10.json`、`tests/fixtures/relay/agents-edge.json`
 
-- [ ] Task 2：版本判定
+- [x] Task 2：版本判定
   - 验收：Spec 验收 1、2（含新版里广播未读、无 waiting 不误报）、3（未定与显式版本）
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/agents-empty.json`

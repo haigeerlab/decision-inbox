@@ -130,6 +130,8 @@ def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
         waiting = a.get("waiting") if isinstance(a.get("waiting"), dict) else None
         if retired:
             count = 0
+        elif status == "too-old" and host_app != "codex":
+            count = None  # an old relay's Claude waiting list is not trustworthy
         elif waiting is not None:
             count = _int_or_none(waiting.get("count"))
         elif host_app == "codex" or status == "ok":

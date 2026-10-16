@@ -1,0 +1,11 @@
+{
+  "count": 2,
+  "agents": [
+    {"name": "hub-claude", "host": {"app": "claude", "sessionId": "session-hub", "verified": true},
+     "unread": 0, "lastActivity": "2026-10-16T05:00:00.000Z", "presence": {"state": "running"},
+     "wake": {"app": "claude", "sessionId": "session-hub"}},
+    {"name": "fe-codex", "host": {"app": "codex", "sessionId": "thread-fe", "verified": false},
+     "unread": 0, "lastActivity": "2026-10-16T04:00:00.000Z", "presence": {"state": "running"},
+     "wake": {"app": "codex", "sessionId": "thread-fe"}}
+  ]
+}
