@@ -115,5 +115,77 @@ class ParseTest(unittest.TestCase):
             specguard.parse_map(json.dumps({"schemaVersion": 1}))
 
 
+FAKE = """import json, sys, time
+from pathlib import Path
+b = json.loads((Path(__file__).parent / "behavior.json").read_text(encoding="utf-8"))
+time.sleep(b.get("sleep", 0))
+sys.stdout.write(b.get("stdout", ""))
+sys.stderr.write(b.get("stderr", ""))
+sys.exit(b.get("code", 0))
+"""
+
+
+class ReadLineTest(LocateCase):
+    def setUp(self):
+        super().setUp()
+        root = self.install("user", "0.63.0")
+        (root / "hooks" / "map_view.py").write_text(FAKE, encoding="utf-8")
+        self.behavior = root / "hooks" / "behavior.json"
+        self.write_records({"spec-guard@m": [{"scope": "user", "installPath": str(root), "version": "0.63.0"}]})
+
+    def behave(self, **kw):
+        self.behavior.write_text(json.dumps(kw), encoding="utf-8")
+        return specguard.read_line(project=str(self.project), timeout=kw.pop("timeout", 5) if "timeout" in kw else 5)
+
+    def test_ok(self):
+        r = self.behave(stdout=fixture("map-0.63.json"))
+        self.assertEqual((r.status, r.reason, r.exit_code), ("ok", None, 0))
+        self.assertEqual(r.map.generator_version, "0.63.0")
+
+    def test_exit_codes(self):
+        r = self.behave(code=2, stderr="map-view: 项目路径不存在或不是目录：/x\n")
+        self.assertEqual((r.status, r.exit_code), ("bad-args", 2))
+        self.assertIn("项目路径不存在", r.reason)
+        r = self.behave(code=3, stdout=json.dumps({"schemaVersion": 1, "error": "no-capability-map"}))
+        self.assertEqual((r.status, r.reason), ("no-map", "无能力图"))
+        r = self.behave(code=4, stdout=json.dumps({"schemaVersion": 1, "error": "unreadable", "detail": "todo 编码错误"}))
+        self.assertEqual(r.status, "unreadable")
+        self.assertIn("todo 编码错误", r.reason)
+        r = self.behave(code=1, stderr="Traceback " + "x" * 500)
+        self.assertEqual(r.status, "bad-output")
+        self.assertLessEqual(len(r.reason), 260)
+        self.assertIn("Traceback", r.reason)
+
+    def test_bad_json_and_schema(self):
+        self.assertEqual(self.behave(stdout="hello").status, "bad-output")
+        self.assertEqual(self.behave(stdout=json.dumps({"schemaVersion": 2, "modules": []})).status, "schema-mismatch")
+
+    def test_timeout(self):
+        self.behavior.write_text(json.dumps({"sleep": 3}), encoding="utf-8")
+        r = specguard.read_line(project=str(self.project), timeout=1)
+        self.assertEqual((r.status, r.exit_code), ("timeout", None))
+
+    def test_bad_project_does_not_spawn(self):
+        self.behavior.write_text(json.dumps({"stdout": fixture("map-0.63.json")}), encoding="utf-8")
+        for project in (str(self.tmp / "nope"), "relative/path"):
+            with self.subTest(project=project):
+                r = specguard.read_line(project=project)
+                self.assertEqual((r.status, r.exit_code), ("bad-args", None))
+
+    def test_not_installed(self):
+        self.write_records({})
+        r = specguard.read_line(project=str(self.project))
+        self.assertEqual((r.status, r.exit_code), ("not-installed", None))
+
+
+class NoShellTest(unittest.TestCase):
+    def test_no_shell_true(self):
+        import ast
+        tree = ast.parse((Path(specguard.__file__)).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.keyword) and node.arg == "shell":
+                self.fail("specguard.py must not pass shell=")
+
+
 if __name__ == "__main__":
     unittest.main()

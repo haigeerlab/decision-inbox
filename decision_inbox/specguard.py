@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -176,3 +178,47 @@ def parse_map(text: str) -> LineMap:
         )
     except (KeyError, TypeError, ValueError) as e:
         raise BadOutput(f"map_view.py 的输出缺少约定字段：{e}") from None
+
+
+DEFAULT_TIMEOUT = 15
+
+
+@dataclass(frozen=True)
+class ReadResult:
+    status: str
+    reason: str | None = None
+    exit_code: int | None = None
+    map: LineMap | None = None
+
+
+def read_line(project: str, timeout: float = DEFAULT_TIMEOUT) -> ReadResult:
+    """Run spec-guard's map_view.py for one line's repository and classify the outcome honestly."""
+    if not os.path.isabs(project) or not os.path.isdir(project):
+        return ReadResult("bad-args", f"仓库路径必须是存在的绝对路径目录：{project}")
+    found = locate(project)
+    if isinstance(found, Missing):
+        return ReadResult("not-installed", found.reason)
+    argv = [sys.executable, "-B", found.path, "--project", project, "--json"]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return ReadResult("timeout", f"map_view.py 超过 {timeout} 秒没有结束")
+    code, out, err = done.returncode, done.stdout, done.stderr.strip()
+    if code == 2:
+        return ReadResult("bad-args", err or "map_view.py 报参数或路径错误", code)
+    if code == 3:
+        return ReadResult("no-map", "无能力图", code)
+    if code == 4:
+        try:
+            detail = json.loads(out).get("detail")
+        except (json.JSONDecodeError, AttributeError):
+            detail = None
+        return ReadResult("unreadable", f"能力图或模块文件读不出：{detail or err or '未给原因'}", code)
+    if code != 0:
+        return ReadResult("bad-output", f"map_view.py 退出码 {code}：{err[:200]}", code)
+    try:
+        return ReadResult("ok", None, code, parse_map(out))
+    except SchemaMismatch as e:
+        return ReadResult("schema-mismatch", str(e), code)
+    except BadOutput as e:
+        return ReadResult("bad-output", str(e), code)

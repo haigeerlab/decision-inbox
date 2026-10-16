@@ -15,7 +15,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录：首次记录有误——提交 c74487c 时实际 152 个测试中 1 个失败（test_0_63_fields 的期望值与样例不符），命令链未拦住；修正测试期望后 `python3 -m unittest discover -s tests -v` → Ran 152 tests, OK（2026-10-16）
 
-- [ ] Task 3：子进程调用与结果分类
+- [x] Task 3：子进程调用与结果分类
   - 验收：Spec 验收 4（退出码 2／3／4／1）、5（非 JSON、版本 2）、6（超时）、9（路径不对不启动子进程）、11（无 shell=True）
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/specguard.py`、`tests/test_specguard.py`
