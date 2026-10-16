@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved d09f6f8ec992 -->
+<!-- spec-guard: review approved 8135a7e1e23e -->
 # Spec: spec-guard-reader
 
 > 能力图模块 `spec-guard-reader`。需求来源：`docs/requirements-record.md` 第 7 节「按 spec-guard 实际接口调整」第 3、5 条，第 10.2～10.3 节，第 13 节第 1～3 行。
@@ -72,6 +72,9 @@ result.status      # ok | not-installed | bad-args | no-map | unreadable | timeo
 result.reason      # 中文一句话；ok 时为 None
 result.exit_code   # 子进程退出码；没调用或超时为 None
 result.map         # status == "ok" 时为 LineMap，否则为 None
+
+line = specguard.parse_map(text)  # 只把 map_view.py 的 JSON 文本解析成 LineMap，不启动子进程；
+                                  # 不是合法 JSON 或缺约定字段抛 specguard.BadOutput，schemaVersion 不是 1 抛 specguard.SchemaMismatch
 ```
 
 ```python
