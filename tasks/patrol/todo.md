@@ -46,9 +46,10 @@
 - [x] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时协作组上用命令行实跑一轮 plan 和 record，记下计划文件和状态变化，然后继续
   - 记录（2026-10-16）：`python3 -m unittest discover -s tests -v` → OK。临时协作组实跑：第一轮 plan 出 `wake:fe-owner`（target `local_owner-0001`，文字「【decision-inbox 巡视】你有 2 条消息在等，请查看收件箱后继续。」），退出码 0；record `--done wake:fe-owner` 退出码 0，领域 patrol 记下 wakes.fe-owner，事件 `patrol.run`；马上再跑 plan 没有动作。实跑中发现补跑连跑时会在几秒后就报「叫不醒」，加了 5 分钟宽限（WAKE_GRACE_MINUTES）和对应测试，规格同步修订，待最终验收一并复审
 
-- [ ] Task 6：实测桌面通知与 `bridge_send`
+- [x] Task 6：实测桌面通知与 `bridge_send`
   - 验收：Spec 验收 14。先问用户：建一个一次性任务，发一条测试桌面通知，并给专门的测试身份发一条预警样例消息；结果写进 `spec/patrol.md` 的实测记录
   - 验证：任务运行记录、你是否看到通知、测试身份的收件箱
   - 文件：`spec/patrol.md`
+  - 记录（2026-10-16 22:30）：经用户同意建一次性任务；osascript 退出码 0，用户确认看到通知；bridge_send 第 3908 号消息送达并确认；无权限确认。详见规格实测记录
 
 - [ ] Checkpoint 3（gate）：模块最终验收——全部测试全绿、14 条验收标准逐条有测试或实测记录、列出实际改动文件、原样附上规格差异；停下等用户确认
