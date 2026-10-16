@@ -15,7 +15,7 @@
   - 验证：`python3 -m unittest tests.test_store_group -v`
   - 文件：`decision_inbox/store.py`、`decision_inbox/__main__.py`、`tests/test_store_group.py`
 
-- [ ] Task 3：快照读写、版本与损坏检测、事务回滚
+- [x] Task 3：快照读写、版本与损坏检测、事务回滚
   - 验收：Spec 验收 4、5（`show` 部分除外）、6
   - 验证：`python3 -m unittest tests.test_store_state -v`
   - 文件：`decision_inbox/store.py`、`tests/test_store_state.py`
