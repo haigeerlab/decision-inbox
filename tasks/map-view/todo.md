@@ -7,12 +7,13 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/protocol.py`、`decision_inbox/reviews.py`、`tests/test_protocol.py`、`tests/test_reviews.py`
 
-- [ ] Task 2：状态、Spec/Plan 评审、架构审查三列的写法
+- [x] Task 2：状态、Spec/Plan 评审、架构审查三列的写法
   - 验收：Spec 验收 2（6 种状态，in_progress 的 spec、plan、build 三种 step；挂起没原因写「未记原因」）、3（5 种评审标记）、4 的列内部分（两个节点用「 · 」连接；有须修改项写轮数；附建议写条数；没结论写「—」）
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 266 tests, OK（2026-10-16）
 
 - [ ] Task 3：表头 3～4 行与备注
   - 验收：Spec 验收 4 的表头部分（本线无审查者、未标模块计数）、6（外部等待写进当前模块备注，没有当前模块时写表头，等用户的单不算）、7（本线发起的与多线事项都列，没有就不出现）；关键卡点多个用「；」连接，没有写「无」；未合入、未推送为 null 时写「判断不了」
