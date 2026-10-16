@@ -1,6 +1,11 @@
+import json
 import unittest
+from pathlib import Path
 
-from decision_inbox import mapview
+from helpers import TempHomeTestCase
+from test_health import NOW, WAIT_USER, at
+
+from decision_inbox import items, mapview, protocol, reviews, specguard, store, tickets
 from decision_inbox.reviews import ModuleReview
 from decision_inbox.specguard import ModuleFact
 
@@ -47,6 +52,117 @@ class CellTest(unittest.TestCase):
         self.assertEqual(mapview.arch_cell(cells), "Spec 有须修改项（第 2 轮） · Plan 通过，附建议2条 · 接口提案 通过 · "
                                                    "最终验收 有须修改项（第 1 轮）")
         self.assertEqual(mapview.arch_cell(()), "—")
+
+
+MULTI = (Path(__file__).resolve().parent / "fixtures" / "protocol" / "wait-user-multiline.txt").read_text(encoding="utf-8")
+
+
+def module_doc(mid, position, status="done", step=None, done=3, total=3, reason=None, blocked_on=(), missing=(),
+               blocks=(), spec="approved", plan="approved", last_tick=None, responsibility=None):
+    return {"id": mid, "position": position, "responsibility": responsibility or f"{mid} 的作用", "dependsOn": [],
+            "status": status, "step": step, "progress": {"done": done, "total": total}, "suspendedReason": reason,
+            "blockedOn": list(blocked_on), "missingDeps": list(missing),
+            "blocks": {"count": len(blocks), "ids": list(blocks)}, "review": {"spec": spec, "plan": plan},
+            "lastTickAt": last_tick, "firstTickAt": None, "tickCommits": None, "suspendedAt": None}
+
+
+def make_map(modules, active=None, bottlenecks=(), unmerged=(91, "origin/main"), unpushed=None, stage="BUILDING"):
+    totals = {k: 0 for k in ("done", "in_progress", "suspended", "blocked", "ready", "not_ready")}
+    for m in modules:
+        totals[m["status"]] += 1
+    doc = {"schemaVersion": 1, "generatedAt": "2026-10-16T11:37:00+08:00",
+           "generator": {"name": "spec-guard", "version": "0.63.1"}, "project": {"root": "/r/fe", "title": "t"},
+           "head": {"sha": None, "branch": None,
+                    "unmerged": {"count": unmerged[0], "base": unmerged[1]} if unmerged else None,
+                    "unpushed": {"count": unpushed[0], "upstream": unpushed[1]} if unpushed else None},
+           "stage": stage, "activeModule": active, "nextGate": None, "history": "complete", "totals": totals,
+           "bottlenecks": [{"id": b, "suspendedReason": None, "blocks": list(ids)} for b, ids in bottlenecks],
+           "awaitingReview": [], "modules": modules}
+    return specguard.parse_map(json.dumps(doc))
+
+
+class MapCase(TempHomeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.g, _ = store.init_group("demo")
+        people = [("hub", "收件枢纽", "hub", [], "claude-desktop", None),
+                  ("fe-codex", "前端", "dev", ["前端"], "codex-desktop", "/r/fe"),
+                  ("api-codex", "API", "dev", ["API"], "codex-desktop", "/r/api"),
+                  ("bg-codex", "后台", "dev", ["后台"], "codex-desktop", "/r/bg"),
+                  ("fe-owner", "前端负责人", "owner", ["前端"], "claude-desktop", None),
+                  ("coord", "总协调", "coordinator", [], "codex-desktop", None)]
+        with self.g.transaction() as tx:
+            for name, short, role, line, host, repo in people:
+                entry = {"relayName": name, "shortName": short, "role": role, "line": line, "host": host}
+                if repo:
+                    entry["repo"] = repo
+                tx.add_session(entry)
+        self.fe = store.find_session(self.g, relay_name="fe-codex")
+
+    def register(self):
+        reviews.register(self.g, session="fe-codex", reviewer="fe-owner", nodes=("spec", "plan"),
+                         approval_item=None, approval_note="接入时用户确认", at=at(300))
+
+    def conclude(self, verdict, ref, node="Spec", module=None, minutes_ago=60):
+        extra = f"模块：{module}\n" if module else ""
+        msg = protocol.parse(f"【审查结论】\n审查编号：{ref}\n节点：{node}\n{extra}送审方：前端\n结论：{verdict}\n")
+        self.assertTrue(reviews.record_conclusion(self.g, msg, sender="fe-owner", at=at(minutes_ago)).recorded)
+
+    def wait(self, waiter, target, minutes_ago, what="订单接口"):
+        text = f"【等待其他会话】\n结束：无\n在等谁：{target}\n等什么：{what}\n"
+        return tickets.receive(self.g, text, sender=waiter, relay_id=1, sent_at=at(minutes_ago)).opened
+
+    def ask(self, sender="fe-codex", text=WAIT_USER):
+        return items.receive(self.g, text, sender=sender, relay_id=2, received_at=at(5)).item
+
+
+class HeaderTest(MapCase):
+    def test_three_lines(self):
+        self.register()
+        line = make_map([module_doc("a", 1), module_doc("pay", 2, "in_progress", "build", 6, 11),
+                         module_doc("cart", 3, "suspended", reason="等设计稿", blocks=("x", "y")),
+                         module_doc("x", 4, "blocked", blocked_on=("cart",)), module_doc("y", 5, "not_ready")],
+                        active="pay", bottlenecks=[("cart", ("x", "y")), ("z", ("q",))], unpushed=(2, "origin/fe"))
+        self.assertEqual(mapview.header_lines(self.g, NOW, self.fe, line), [
+            "前端 · 5 个模块 · ✅ 1 🔨 1 ⏸ 1 ⛔ 1 🟢 0 ○ 1 · 更新于 " + mapview._clock("2026-10-16T11:37:00+08:00"),
+            "关键卡点：cart 挂起 → 挡住 2 个模块；z 挂起 → 挡住 1 个模块",
+            "未合入主线：91 个提交（相对 origin/main）；未推送：2 个提交（相对 origin/fe）",
+        ])
+
+    def test_asks_unknowns_and_fourth_line(self):
+        own = self.ask("fe-codex")
+        multi = self.ask("coord", MULTI)
+        self.ask("api-codex")
+        self.wait("fe-codex", "API", 40)
+        self.wait("fe-codex", "用户", 40)
+        line = make_map([module_doc("a", 1)], active=None, unmerged=None)
+        head = mapview.header_lines(self.g, NOW, self.fe, line)
+        self.assertEqual(head[1], f"关键卡点：无 · 等你决定：#{own}、#{multi}")
+        self.assertEqual(head[2], "未合入主线：判断不了；未推送：判断不了")
+        self.assertEqual(head[3], "外部等待：等 API 交付「订单接口」（已等 40 分钟） · 架构审查：本线无审查者")
+
+    def test_unmarked_reviews(self):
+        self.register()
+        self.conclude("有须修改项", "R-1", module="pay")
+        self.conclude("有须修改项", "R-2")
+        self.conclude("通过", "R-3")
+        head = mapview.header_lines(self.g, NOW, self.fe, make_map([module_doc("pay", 1)], active="pay"))
+        self.assertEqual(head[3], "架构审查：未标模块的审查 2 个")
+
+    def test_no_fourth_line(self):
+        self.register()
+        self.wait("fe-codex", "API", 40)
+        head = mapview.header_lines(self.g, NOW, self.fe, make_map([module_doc("pay", 1, "in_progress", "build")],
+                                                                   active="pay"))
+        self.assertEqual(len(head), 3)
+
+    def test_note_only_on_current_module(self):
+        self.wait("fe-codex", "API", 90, what="订单接口的 Mock 数据，\n  交付后我才能接着做")
+        self.wait("fe-codex", "用户", 5)
+        line = make_map([module_doc("a", 1), module_doc("pay", 2, "in_progress", "build")], active="pay")
+        self.assertEqual(mapview.note_cell(self.g, NOW, self.fe, line, line.modules[1]),
+                         "外部等待：等 API 交付「订单接口的 Mock 数据，交付后我才能接着做」（已等 1 小时）")
+        self.assertEqual(mapview.note_cell(self.g, NOW, self.fe, line, line.modules[0]), "")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录：`python3 -m unittest discover -s tests -v` → Ran 266 tests, OK（2026-10-16）
 
-- [ ] Task 3：表头 3～4 行与备注
+- [x] Task 3：表头 3～4 行与备注
   - 验收：Spec 验收 4 的表头部分（本线无审查者、未标模块计数）、6（外部等待写进当前模块备注，没有当前模块时写表头，等用户的单不算）、7（本线发起的与多线事项都列，没有就不出现）；关键卡点多个用「；」连接，没有写「无」；未合入、未推送为 null 时写「判断不了」
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
