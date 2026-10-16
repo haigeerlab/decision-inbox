@@ -125,7 +125,9 @@ class CommandFilesTest(unittest.TestCase):
         for name in COMMANDS:
             meta, body = frontmatter(self.read(f"commands/{name}.md"))
             self.assertTrue(meta.get("description"), name)
-            self.assertIn("bin/decision-inbox", body, name)
+            # Claude Code substitutes only the literal ${CLAUDE_PLUGIN_ROOT} in command text (Task 6 实测).
+            self.assertIn('"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox"', body, name)
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT:-", body, name)
 
     def test_queries_show_output_as_is(self):
         for name in QUERIES:
