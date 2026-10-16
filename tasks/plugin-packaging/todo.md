@@ -30,7 +30,8 @@
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`README.md`、`tests/test_packaging.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿（Spec 验收 9）；在 scratchpad 里用复制出来的插件按 `hooks.json` 的命令手动跑一次放行和拦截，记下输出后继续
+- [x] Checkpoint 2（report）：全部测试全绿（Spec 验收 9）；在 scratchpad 里用复制出来的插件按 `hooks.json` 的命令手动跑一次放行和拦截，记下输出后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 429 tests, OK。scratchpad cp3 复制插件实跑 hooks.json 原始命令：~/.decision-inbox 不存在时 SessionStart 退出码 0、什么都没建；三个会话接入后转发脚本指向复制出的插件；whoami 在前端目录认出 cp3/fe-codex；Stop 没人等时放行（stderr 一行说明，stdout 空）、API 在等前端时输出 block JSON、stop_hook_active 时放行、两个插件目录变量都没有时退出码 0 无输出。README 里 agent-relay、spec-guard 的仓库地址已用本机 git remote 核对
 
 - [ ] Task 6：本机安装与实测
   - 验收：Spec 验收 10。先问用户。按规格测试策略的实测 4 步走；Codex 侧只验安装；结果写进 `spec/plugin-packaging.md` 的实测记录
