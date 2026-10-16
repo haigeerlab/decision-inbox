@@ -1,11 +1,13 @@
 import hashlib
 import unittest
 from datetime import datetime, timedelta
+from unittest import mock
 
 from helpers import TempHomeTestCase
 from test_health import NOW, agent, snapshot
 
 from decision_inbox import patrol, store
+from decision_inbox.health import Assessment, Signal
 
 HUB_DESKTOP = "local_00000000-0000-0000-0000-00000000hub0"
 OWNER_DESKTOP = "local_00000000-0000-0000-0000-0000000own1"
@@ -122,6 +124,73 @@ class RecordTest(PatrolCase):
         owner = agent("fe-owner", **STOPPED_OWNER)
         self.run_round(0, [owner], failed=["wake:fe-owner"])
         self.assertIn("notify:unwakeable:fe-owner", self.ids(self.run_round(5, [owner])))
+
+
+def with_signals(*signals):
+    """Patch line-health so a round sees exactly these signals."""
+    return mock.patch("decision_inbox.patrol.health.assess",
+                      lambda g, now, relay, maps, previous: Assessment({}, tuple(signals), {"version": 1, "at": now,
+                                                                                             "sessions": {}}))
+
+
+STALL = Signal(3, "silent-stop", ("fe",), "前端 停住 2 小时：当前模块 pay 还有 3 项没勾，也没在等任何人")
+
+
+class AlertTest(PatrolCase):
+    def rounds(self, signal, minutes_list, agents=(), failed=()):
+        out = []
+        with with_signals(signal):
+            for minutes in minutes_list:
+                out.append(self.ids(self.run_round(minutes, agents, failed=failed if minutes == minutes_list[0] else ())))
+        return out
+
+    def test_alert_wait_escalate_once(self):
+        key = "3|fe"
+        rounds = self.rounds(STALL, [0, 5, 29, 30, 35])
+        self.assertEqual(rounds[0], [f"alert:{key}"])
+        self.assertEqual(rounds[1:3], [[], []])
+        self.assertEqual(rounds[3], [f"notify:escalate:{key}"])
+        self.assertEqual(rounds[4], [])
+
+    def test_alert_text_and_target(self):
+        with with_signals(STALL):
+            p = self.run_round(0)
+        alert = p.actions[0]
+        self.assertEqual((alert.kind, alert.target), ("owner-alert", "fe-owner"))
+        self.assertEqual(alert.text, "【进度预警】前端：前端 停住 2 小时：当前模块 pay 还有 3 项没勾，也没在等任何人。"
+                                     "建议：问 前端 是否卡住，或让它继续或上抛")
+
+    def test_each_progress_signal_goes_to_owner(self):
+        for no in (3, 6, 7, 8, 9):
+            with self.subTest(no=no):
+                signal = Signal(no, "x", ("api",), f"API 的说明 {no}，等待单 #7")
+                with with_signals(signal):
+                    p = self.run_round(no * 100)
+                self.assertEqual([(a.kind, a.target) for a in p.actions], [("owner-alert", "api-owner")])
+
+    def test_cleared_signal_starts_over(self):
+        self.rounds(STALL, [0])
+        with with_signals():
+            self.run_round(5)
+        self.assertEqual(self.rounds(STALL, [10])[0], ["alert:3|fe"])
+
+    def test_no_owner_offline_owner_or_failed_alert_goes_to_user(self):
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "bg", "shortName": "后台", "role": "dev", "line": ["后台"],
+                            "host": "codex-desktop", "repo": "/tmp/bg"})
+        orphan = Signal(8, "slow-progress", ("bg",), "后台 的 jobs 已 3 小时没有新进展，明显慢于平时")
+        self.assertEqual(self.rounds(orphan, [0, 5]), [["notify:signal:8|bg"], []])
+        offline_owner = agent("fe-owner", state="stopped")
+        self.assertEqual(self.rounds(STALL, [10], agents=[offline_owner])[0], ["notify:signal:3|fe"])
+        with with_signals():
+            self.run_round(15)
+        self.assertEqual(self.rounds(STALL, [20, 25], failed=["alert:3|fe"]), [["alert:3|fe"], ["notify:signal:3|fe"]])
+
+    def test_other_signals_do_nothing(self):
+        for no in (2, 4, 5, 10):
+            with self.subTest(no=no):
+                with with_signals(Signal(no, "x", ("fe", "api"), "说明")):
+                    self.assertEqual(self.ids(self.run_round(no * 100)), [])
 
 
 if __name__ == "__main__":

@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, store
+from decision_inbox import health, store, view
 
 DOMAIN = "patrol"
 OFFLINE = ("offline", "unreachable")
+PROGRESS_SIGNALS = (3, 6, 7, 8, 9)
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,32 @@ def _wake_hub(ctx: _Context) -> None:
                                        "【decision-inbox 巡视】有新的事要告诉用户，请刷新收件枢纽主视图。"))
 
 
+def _owner(g: store.Group, session: str) -> dict | None:
+    """The first owner on the roster whose lines include this session's line (spec 关键决策 4)."""
+    entry = store.find_session(g, relay_name=session)
+    lines = set(entry.get("line", [])) if entry else set()
+    return next((e for e in store.roster(g) if e["role"] == "owner" and lines & set(e["line"])), None)
+
+
+def _alerts(ctx: _Context, signals) -> None:
+    """Progress signals: owner first, the user after ESCALATE_MINUTES or when no owner can take it."""
+    for signal in signals:
+        if signal.no not in PROGRESS_SIGNALS or not signal.sessions:
+            continue
+        key = signal_key(signal)
+        short = (store.find_session(ctx.g, relay_name=signal.sessions[0]) or {}).get("shortName", signal.sessions[0])
+        seen = ctx.state.get("signals", {}).get(key, {})
+        owner = _owner(ctx.g, signal.sessions[0])
+        owner_fact = _fact(ctx, owner["relayName"]) if owner else None
+        if owner is None or (owner_fact is not None and owner_fact.presence in OFFLINE) or seen.get("alertFailed"):
+            ctx.notify(f"signal:{key}", f"{short}：{signal.text}")
+        elif "alertedAt" not in seen:
+            text = f"【进度预警】{short}：{signal.text}。建议：{view.advice(ctx.g, signal)}"
+            ctx.plan.actions.append(Action(f"alert:{key}", "owner-alert", owner["relayName"], text))
+        elif (_instant(ctx.now) - _instant(seen["alertedAt"])).total_seconds() >= health.ESCALATE_MINUTES * 60:
+            ctx.notify(f"escalate:{key}", f"{short}：{signal.text}；负责人 {health.ESCALATE_MINUTES} 分钟没处理")
+
+
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
@@ -114,6 +141,7 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None) -> Plan
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
     ctx = _Context(g, now, relay, state, result)
     _wakes(ctx)
+    _alerts(ctx, assessment.signals)
     _wake_hub(ctx)
     return result
 
@@ -134,6 +162,10 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
             kind, _, key = action_id.partition(":")
             if kind == "wake":
                 wakes[key] = {"at": at}
+            elif kind == "alert" and key in signals and action_id in done:
+                signals[key]["alertedAt"] = at
+            elif kind == "alert" and key in signals:
+                signals[key]["alertFailed"] = True
             elif kind == "notify" and action_id in done:
                 notices[key] = at
         state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at)

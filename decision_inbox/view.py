@@ -113,6 +113,13 @@ _ADVICE = {
 }
 
 
+def advice(g: store.Group, signal) -> str:
+    """The fixed advice sentence for signals 3～10 (shared with patrol's owner alerts)."""
+    who = _short(g, signal.sessions[0]) if signal.sessions else "?"
+    found = re.search(r"等待单 #(\d+)", signal.text)
+    return _ADVICE[signal.no].format(who=who, ticket=found.group(1) if found else "编号")
+
+
 def _anomaly_row(g: store.Group, signal) -> str:
     """Signal advice table: who, where it is stuck, what to do."""
     who = _short(g, signal.sessions[0]) if signal.sessions else "?"
@@ -120,9 +127,7 @@ def _anomaly_row(g: store.Group, signal) -> str:
         target = _short(g, signal.sessions[1])
         return (f"- {who}：交付了没人接——{target} 已发消息给 {who}，{who} 还没去取。"
                 f"建议：提醒 {who} 去取{target}的交付")
-    found = re.search(r"等待单 #(\d+)", signal.text)
-    advice = _ADVICE[signal.no].format(who=who, ticket=found.group(1) if found else "编号")
-    return f"- {who}：{signal.text}。建议：{advice}"
+    return f"- {who}：{signal.text}。建议：{advice(g, signal)}"
 
 
 def _anomaly_section(g: store.Group, assessment) -> str | None:
