@@ -33,7 +33,7 @@
 - [x] Checkpoint 2（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条对应测试、问题代码表与 Spec 一致、列出实际改动文件；停下等用户确认
   - 记录：78 个测试全绿（连跑 2 次）；用户 2026-10-16 验收通过，并批准规格修订（补 item、EndMark.present、取代／并行编号缺失代码）
 
-- [ ] Task 6：增补【审查结论】（返工，2026-10-16）
+- [x] Task 6：增补【审查结论】（返工，2026-10-16）
   - 验收：Spec 验收 13；问题代码表含 `bad-node`、`bad-verdict` 且与 Spec 一致；已有 29 个本模块测试仍全绿
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/review-conclusion.txt`

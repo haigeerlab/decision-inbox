@@ -270,6 +270,44 @@ class UserReplyTest(unittest.TestCase):
                                               wait_user_text=fixture("wait-user.txt"))
 
 
+class ReviewConclusionTest(unittest.TestCase):
+    def test_parse(self):
+        msg = protocol.parse(fixture("review-conclusion.txt"))
+        self.assertEqual(msg.kind, "review-conclusion")
+        self.assertTrue(msg.ok, msg.problems)
+        c = msg.conclusion
+        self.assertEqual((c.ref, c.node, c.submitter, c.verdict, c.advice_count),
+                         ("R-3", "spec", "前端", "changes-required", None))
+
+    def test_nodes_and_verdicts(self):
+        base = fixture("review-conclusion.txt")
+        for written, node in (("Spec", "spec"), ("Plan", "plan"), ("接口提案", "interface"), ("最终验收", "final")):
+            with self.subTest(node=written):
+                msg = protocol.parse(base.replace("节点：Spec", f"节点：{written}"))
+                self.assertEqual(msg.conclusion.node, node)
+        for written, verdict, advice in (("通过", "passed", None), ("通过，附建议2条", "passed-with-advice", 2),
+                                         ("通过,附建议1条（命名）", "passed-with-advice", 1),
+                                         ("有须修改项", "changes-required", None)):
+            with self.subTest(verdict=written):
+                msg = protocol.parse(base.replace("结论：有须修改项", f"结论：{written}"))
+                self.assertTrue(msg.ok, msg.problems)
+                self.assertEqual((msg.conclusion.verdict, msg.conclusion.advice_count), (verdict, advice))
+
+    def test_problems(self):
+        base = fixture("review-conclusion.txt")
+        for line in ("审查编号：R-3\n", "节点：Spec\n", "送审方：前端\n", "结论：有须修改项\n"):
+            name = line.split("：")[0]
+            with self.subTest(drop=name):
+                msg = protocol.parse(base.replace(line, ""))
+                self.assertIn(f"missing-field:{name}", codes(msg.problems))
+                self.assertIsNone(msg.conclusion)
+        self.assertIn("bad-node", codes(protocol.parse(base.replace("节点：Spec", "节点：需求")).problems))
+        self.assertIn("bad-verdict", codes(protocol.parse(base.replace("结论：有须修改项", "结论：差不多")).problems))
+
+    def test_other_kinds_have_no_conclusion(self):
+        self.assertIsNone(protocol.parse(fixture("wait-user.txt")).conclusion)
+
+
 class CodeTableTest(unittest.TestCase):
     @staticmethod
     def family(code):
@@ -285,7 +323,9 @@ class CodeTableTest(unittest.TestCase):
         texts = [p.read_text(encoding="utf-8") for p in FIX.glob("*.txt")]
         texts += ["", "【等待用户】【取代】\n", "【已恢复】\n", "【撤回】\n", "【用户答复】\n", "【等待其他会话】\n",
                   fixture("wait-user.txt").replace("是否完全停住：是", "是否完全停住：大概"),
-                  fixture("wait-user-multiline.txt").replace("- 前端：", "- 后台：")]
+                  fixture("wait-user-multiline.txt").replace("- 前端：", "- 后台："),
+                  fixture("review-conclusion.txt").replace("节点：Spec", "节点：需求").replace("结论：有须修改项", "结论：?"),
+                  "【审查结论】\n"]
         for text in texts:
             msg = protocol.parse(text)
             for issue in msg.problems:

@@ -15,6 +15,7 @@ KIND_TAGS = {
     "等待其他会话": "wait-session",
     "已恢复": "resumed",
     "撤回": "withdraw",
+    "审查结论": "review-conclusion",
 }
 
 # Field names each kind knows, in the order they are usually written.
@@ -25,6 +26,7 @@ FIELDS = {
     "wait-session": ("在等谁", "等什么"),
     "resumed": (),
     "withdraw": ("事项", "原因"),
+    "review-conclusion": ("审查编号", "节点", "送审方", "结论", "来自", "要点"),
     "unknown": (),
 }
 # A terminal field takes every remaining line, whatever it looks like.
@@ -32,7 +34,8 @@ TERMINAL = {"原事项全文"}
 
 # Stable issue codes (spec 关键决策 5): only ever added to. A trailing ":" takes a suffix.
 PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-options", "bad-stop-flag",
-                 "scope-missing:", "scope-unknown:")
+                 "scope-missing:", "scope-unknown:", "bad-node", "bad-verdict")
+REVIEW_NODES = {"Spec": "spec", "Plan": "plan", "接口提案": "interface", "最终验收": "final"}
 HINT_CODES = ("no-consequence:", "no-recommendation")
 
 _TAG_RE = re.compile(r"【([^】]*)】")
@@ -102,6 +105,25 @@ def _review(raw: str | None) -> ReviewLine:
 
 
 @dataclass(frozen=True)
+class Conclusion:
+    ref: str
+    node: str
+    submitter: str
+    verdict: str
+    advice_count: int | None = None
+
+
+def _verdict(raw: str) -> tuple[str, int | None] | None:
+    value = raw.strip().replace(",", "，").replace("(", "（").replace(")", "）")
+    if value == "通过":
+        return "passed", None
+    if value == "有须修改项":
+        return "changes-required", None
+    m = re.match(r"^通过，附建议(\d+)条(（.*）)?$", value)
+    return ("passed-with-advice", int(m.group(1))) if m else None
+
+
+@dataclass(frozen=True)
 class Message:
     kind: str
     markers: tuple[tuple[str, int], ...]
@@ -118,6 +140,7 @@ class Message:
     lines_in_scope: tuple[str, ...] = ()
     scopes: dict[str, str] = field(default_factory=dict)
     review: ReviewLine = field(default_factory=lambda: ReviewLine("absent"))
+    conclusion: Conclusion | None = None
 
     @property
     def ok(self) -> bool:
@@ -268,6 +291,7 @@ def parse(text: str) -> Message:
     fields = _fields(kind, body)
     item = None
     hints: list[Issue] = []
+    conclusion = None
     options: tuple[Option, ...] = ()
     recommended = None
     stopped = None
@@ -321,6 +345,17 @@ def parse(text: str) -> Message:
         _require(fields, ("用户原话", "答复时间"), problems)
         if "多线事项" in fields.get("事项", ""):
             _require(fields, ("适用于你的范围", "原事项全文"), problems)
+    elif kind == "review-conclusion":
+        before = len(problems)
+        _require(fields, ("审查编号", "节点", "送审方", "结论"), problems)
+        node = REVIEW_NODES.get(fields.get("节点", "").strip())
+        if fields.get("节点", "").strip() and node is None:
+            problems.append(Issue("bad-node", "「节点」只能是 Spec、Plan、接口提案、最终验收之一"))
+        verdict = _verdict(fields.get("结论", "")) if fields.get("结论", "").strip() else None
+        if fields.get("结论", "").strip() and verdict is None:
+            problems.append(Issue("bad-verdict", "「结论」只能是 通过、通过，附建议N条、有须修改项之一"))
+        if len(problems) == before:
+            conclusion = Conclusion(fields["审查编号"].strip(), node, fields["送审方"].strip(), *verdict)
     elif kind == "withdraw":
         item = _item(fields.get("事项"))
         if item is None:
@@ -331,7 +366,8 @@ def parse(text: str) -> Message:
                    options=options, recommended=recommended,
                    suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
                    lines_in_scope=in_scope, scopes=scopes,
-                   review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"))
+                   review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
+                   conclusion=conclusion)
 
 
 def format_user_reply(item: int, original: str, answered_at: str, option_text: str | None = None) -> str:
