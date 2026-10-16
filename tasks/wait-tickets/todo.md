@@ -25,4 +25,5 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
 
-- [ ] Checkpoint 2（gate）：模块最终验收——全部测试全绿、10 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+- [x] Checkpoint 2（gate）：模块最终验收——全部测试全绿、10 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+  - 记录：Ran 146 tests，全绿；用户 2026-10-16 验收通过，并批准规格修订（被退回消息的结束行不关单，补测试 test_returned_message_does_not_close）

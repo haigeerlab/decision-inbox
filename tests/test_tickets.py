@@ -91,6 +91,16 @@ class OpenAndCloseTest(TicketsCase):
         self.assertIsNone(r.opened)
         self.assertEqual(r.closed, (kept.opened,))
 
+    def test_returned_message_does_not_close(self):
+        no = self.receive(wait_session()).opened
+        bad_wait_user = SINGLE.replace("结束：无", f"结束：#{no}").replace("要你决定：支付页先接哪种支付方式\n", "")
+        r = self.receive(bad_wait_user, relay_id=306)
+        self.assertEqual(r.closed, ())
+        self.assertIn("missing-field:要你决定", {p.code for p in r.problems})
+        bad_wait_session = f"【等待其他会话】\n结束：#{no}\n在等谁：API\n"
+        self.assertEqual(self.receive(bad_wait_session, relay_id=307).closed, ())
+        self.assertEqual(self.ticket(no)["status"], "open")
+
     def test_end_line_with_item_number_is_ignored(self):
         item = items.receive(self.g, SINGLE, sender="fe-codex", relay_id=1, received_at=SENT).item
         r = self.receive(f"【已恢复】\n结束：#{item}\n")
