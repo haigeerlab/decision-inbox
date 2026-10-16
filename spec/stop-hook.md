@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved ba6a21d75d97 -->
+<!-- spec-guard: review approved 3d306ad0a74a -->
 # Spec: stop-hook
 
 > 能力图模块 `stop-hook`。需求来源：`docs/requirements-record.md` 第 9 节、第 13.1 节第 2 行、第 12 节第 4、5 项。
@@ -133,6 +133,17 @@ python3 -m unittest discover -s tests -v
 ## 未决问题
 
 无。
+
+## 实测记录（Claude 桌面版，2026-10-16，验收标准 9）
+
+- 做法：在 scratchpad 的临时项目里，用项目级 `.claude/settings.json` 配了一个 Stop 钩子。钩子是测试包装脚本：先记下输入，再调用 `python3 -m decision_inbox hook stop --group probe`。临时协作组里，「等待方」开着一张单在等「探针」。经用户同意，在这个项目里开了一个新的桌面版会话，让它回一句「收到」就结束。
+- 结果：钩子被调用两次，同一个 `session_id`。
+  - 第一次：`stop_hook_active` 为 false，`last_assistant_message` 为「收到」。钩子拦下，会话在同一轮继续，复述了说明的第一行「【decision-inbox】收工前请先处理：有会话在等你。」。
+  - 第二次：`stop_hook_active` 为 true，钩子放行，会话结束。
+- 认会话：没传 `--session`，用 `cwd` 匹配名册里的 `repo` 认了出来。
+- 项目级钩子配置直接生效：桌面版没有弹信任提示，也没有弹权限确认。会话的权限模式是 auto，是从发起会话继承来的。
+- 实测看到的输入字段：`session_id`、`transcript_path`、`cwd`、`permission_mode`、`hook_event_name`、`stop_hook_active`、`last_assistant_message`、`background_tasks`、`session_crons`、`prompt_id`、`effort`、`scratchpad_dir`。本模块只用其中的 `cwd` 和 `stop_hook_active`。
+- 结论：假设 2 成立。Claude 桌面版的 Code 会话和 Codex 用同一套约定，规格不用改。
 
 ## 文档建议
 
