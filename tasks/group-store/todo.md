@@ -38,4 +38,5 @@
   - 验证：`python3 -m unittest discover -s tests -p test_store_roster.py -v`
   - 文件：`decision_inbox/store.py`、`tests/test_store_roster.py`
 
-- [ ] Checkpoint 3（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+- [x] Checkpoint 3（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+  - 记录：30 个测试全绿（连跑 3 次）；用户 2026-10-16 验收通过，并批准规格修订（事件类型前缀＝领域名、日志不可解析行只警告、补全 Python 接口）
