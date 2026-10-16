@@ -174,5 +174,46 @@ class StateTest(HealthCase):
         self.assertNotIn("未知", r.lines["fe"].text)
 
 
+def codes(r):
+    return [(x.no, x.code, x.sessions) for x in r.signals]
+
+
+class SessionSignalTest(HealthCase):
+    def test_all_waiting(self):
+        self.wait(waiter="fe", target="API")
+        quiet = snapshot(agent("fe", activity_ago=60), agent("api", activity_ago=60), agent("owner", activity_ago=60))
+        self.assertIn((1, "all-waiting", ("api", "fe", "owner")), codes(self.assess(quiet)))
+        busy = snapshot(agent("fe", activity_ago=60), agent("api", activity_ago=5), agent("owner", activity_ago=60))
+        self.assertNotIn("all-waiting", [x.code for x in self.assess(busy).signals])
+
+    def test_delivered_not_picked(self):
+        self.wait(waiter="fe", target="API")
+        r = self.assess(snapshot(agent("fe", activity_ago=60, waiting=(1, ["api"], 30)), agent("api", activity_ago=5)))
+        self.assertIn((2, "delivered-not-picked", ("fe", "api")), codes(r))
+        self.assertIn("API", [x for x in r.signals if x.code == "delivered-not-picked"][0].text)
+        r = self.assess(snapshot(agent("fe", activity_ago=60, waiting=(1, ["owner"], 30)), agent("api", activity_ago=5)))
+        self.assertNotIn("delivered-not-picked", [x.code for x in r.signals])
+
+    def test_offline_backlog(self):
+        r = self.assess(snapshot(agent("fe", state="stopped", waiting=(3, ["api"], 30))))
+        self.assertIn((4, "offline-backlog", ("fe",)), codes(r))
+        r = self.assess(snapshot(agent("fe", state="stopped")))
+        self.assertNotIn("offline-backlog", [x.code for x in r.signals])
+
+    def test_busy_backlog(self):
+        r = self.assess(snapshot(agent("api", since_ago=10, activity_ago=1, waiting=(2, ["fe"], 5))))
+        self.assertIn((5, "busy-backlog", ("api",)), codes(r))
+        r = self.assess(snapshot(agent("api", since_ago=9, activity_ago=1, waiting=(2, ["fe"], 5))))
+        self.assertNotIn("busy-backlog", [x.code for x in r.signals])
+
+    def test_codex_backlog(self):
+        r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 11))))
+        self.assertIn((10, "codex-backlog", ("fe",)), codes(r))
+        r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 9))))
+        self.assertNotIn("codex-backlog", [x.code for x in r.signals])
+        r = self.assess(snapshot(agent("fe", app="codex", state="running", waiting=(2, ["api"], 30))))
+        self.assertNotIn("codex-backlog", [x.code for x in r.signals])
+
+
 if __name__ == "__main__":
     unittest.main()

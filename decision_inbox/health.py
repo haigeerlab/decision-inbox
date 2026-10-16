@@ -163,6 +163,45 @@ def _state(f: _Facts, now: datetime) -> LineState:
     return LineState("idle", "无活动记录（agent-relay 没有它的数据）")
 
 
+def _short(f: _Facts) -> str:
+    return f.entry["shortName"]
+
+
+def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime) -> list[Signal]:
+    """Signals 1, 2, 4, 5 and 10: waiting chains and message backlogs."""
+    out = []
+    open_count = sum(len(f.tickets) for f in facts.values())
+    if open_count and all(state.word != "working" for state in lines.values()):
+        out.append(Signal(1, "all-waiting", tuple(sorted(facts)),
+                          f"全线互等：所有会话都没在干活，还有 {open_count} 张等待单没关"))
+    for name, f in facts.items():
+        fact = f.fact
+        for t in f.tickets:
+            target = t.get("targetRelay")
+            if (target and fact is not None and target in fact.waiting_from
+                    and lines[name].word != "working"):
+                out.append(Signal(2, "delivered-not-picked", (name, target),
+                                  f"交付了没人接：{t['target']} 已发消息给 {_short(f)}，"
+                                  f"{_short(f)} 还没去取（{_short(f)} 在等 {t['target']}）"))
+        if fact is None or not fact.waiting_count:
+            continue
+        if fact.presence in ("offline", "unreachable"):
+            out.append(Signal(4, "offline-backlog", (name,),
+                              f"{_short(f)} 掉线，有 {fact.waiting_count} 条消息送不进去"))
+        elif fact.presence_since is not None:
+            busy = (now - _instant(fact.presence_since)).total_seconds() / 60
+            if busy >= BUSY_MINUTES:
+                out.append(Signal(5, "busy-backlog", (name,),
+                                  f"{_short(f)} 已忙 {int(busy)} 分钟，还有 {fact.waiting_count} 条消息在等它"))
+        if fact.host_app == "codex" and fact.presence_raw != "running" and fact.waiting_oldest_at:
+            waited = (now - _instant(fact.waiting_oldest_at)).total_seconds() / 60
+            if waited >= BACKLOG_MINUTES:
+                out.append(Signal(10, "codex-backlog", (name,),
+                                  f"{_short(f)}（Codex）没被加载，有 {fact.waiting_count} 条消息积压，"
+                                  f"最早一条已等 {int(waited)} 分钟"))
+    return out
+
+
 def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
            previous: dict | None = None) -> Assessment:
     maps = maps or {}
@@ -170,4 +209,5 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap)
     lines = {name: _state(f, moment) for name, f in facts.items()}
-    return Assessment(lines, (), snap)
+    signals = _session_signals(facts, lines, moment)
+    return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)
