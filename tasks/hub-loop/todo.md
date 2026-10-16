@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/inbox.json`、`tests/fixtures/relay/inbox-truncated.json`
 
-- [ ] Task 2：`hub.receive` 分发、去重、没读全与 `bridge` 通知
+- [x] Task 2：`hub.receive` 分发、去重、没读全与 `bridge` 通知
   - 验收：
     - Spec 验收 1：七类消息各一条，分别入表、退回、开单、关单并结束事项、记一轮、告诉用户；`ack` 列出全部 7 条；
     - Spec 验收 2：同一批再交一次，没有新编号、没有要发的消息，`ack` 照列；
@@ -18,7 +18,8 @@
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-16）：`python3 -m unittest discover -s tests -v` → Ran 332 tests in 6.772s, OK。Task 2 的测试先因模块不存在而失败（只是导入失败）；补做两处变异检查（去掉去重、不跳过没读全的消息），各被 1 个测试抓住
 
 - [ ] Task 3：要发的消息留存与 `hub.sent`
   - 验收：
