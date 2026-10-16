@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved a1d628ff05c8 -->
+<!-- spec-guard: review approved 1329cd756d8f -->
 # Spec: onboarding
 
 > 能力图模块 `onboarding`。需求来源：`docs/requirements-record.md` 第 10.4 节（接入）、第 4 节（事项与消息约定）、第 5 节（负责人工作模式）、第 3.3.3～3.3.5 节（总协调、负责人、开发线的职责）、第 12 节第 9、10 项。
