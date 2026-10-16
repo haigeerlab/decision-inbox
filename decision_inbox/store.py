@@ -87,23 +87,26 @@ def _read_json(path: Path, default: dict | None = None) -> dict:
 def _scan_log(path: Path) -> tuple[list[dict], list[str], bool]:
     """Parse events.jsonl. Returns (events, warnings, ends_with_newline).
 
-    Only the last line may be incomplete (a crash mid-append); it is skipped
-    with a warning. A bad line anywhere else means the log is corrupt.
+    A crash mid-append leaves a partial last line; the next append closes it
+    with a newline, so it later sits mid-file. Unparsable lines are therefore
+    skipped with a warning rather than treated as corruption.
     """
     raw = path.read_bytes()
     lines = raw.split(b"\n")
-    complete, tail = lines[:-1], lines[-1]
     events: list[dict] = []
     warnings: list[str] = []
-    for i, line in enumerate(complete, start=1):
+    for i, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
-            events.append(json.loads(line.decode("utf-8")))
+            doc = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            raise StoreCorrupt(f"事件日志第 {i} 行无法解析：{path}") from None
-    if tail.strip():
-        warnings.append(f"事件日志末尾有一行不完整，已跳过：{path}")
+            doc = None
+        if not isinstance(doc, dict) or not isinstance(doc.get("seq"), int):
+            where = "末尾" if i == len(lines) else f"第 {i} 行"
+            warnings.append(f"事件日志{where}有一行不完整或无法解析，已跳过：{path}")
+            continue
+        events.append(doc)
     return events, warnings, raw == b"" or raw.endswith(b"\n")
 
 
@@ -215,6 +218,17 @@ class Group:
 
     def transaction(self) -> Transaction:
         return Transaction(self)
+
+
+def read_events(group: Group, ref: int | None = None,
+                warnings: list[str] | None = None) -> list[dict]:
+    """Lock-free read of the event log, sorted by seq; optionally one ref only."""
+    events, found, _ = _scan_log(group.path / "events.jsonl")
+    if warnings is not None:
+        warnings.extend(found)
+    if ref is not None:
+        events = [e for e in events if e.get("ref") == ref]
+    return sorted(events, key=lambda e: e["seq"])
 
 
 def read_state(group: Group, domain: str) -> dict:
