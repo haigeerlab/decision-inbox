@@ -270,6 +270,63 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
     return tuple(out)
 
 
+PROGRESS = ("forwarded", "picked", "acknowledged")
+
+
+def record_sent(g: store.Group, item: int, to: str, relay_id, at: str) -> None:
+    """Remember the agent-relay id of a reply the hub sent, so /item can prove who sent it."""
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        doc["items"][str(item)]["sent"].append({"to": to, "relayId": relay_id, "at": at,
+                                                "state": None, "ackAt": None})
+        tx.append_event("items.sent", ref=item, actor="hub", data={"to": to, "relayId": relay_id})
+        tx.write_state(DOMAIN, doc)
+
+
+def _progress(it: dict) -> str:
+    """The slowest recipient decides (spec 假设 2)."""
+    level = {}
+    for sent in it["sent"]:
+        level[sent["to"]] = 2 if sent["ackAt"] else 1 if sent["state"] == "accepted" else 0
+    return PROGRESS[min(level.get(r, 0) for r in it["recipients"])] if it["recipients"] else "forwarded"
+
+
+def update_delivery(g: store.Group, facts: dict, at: str) -> None:
+    """facts: agent-relay message id -> (deliveryState, acknowledgedAt). Status only moves forward."""
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for key, it in doc["items"].items():
+            if it["status"] not in PROGRESS:
+                continue
+            for sent in it["sent"]:
+                if sent["relayId"] in facts:
+                    sent["state"], sent["ackAt"] = facts[sent["relayId"]]
+            new = _progress(it)
+            if PROGRESS.index(new) > PROGRESS.index(it["status"]):
+                _set_status(doc, key, new, at)
+                tx.append_event("items.delivery", ref=int(key), actor="relay", data={"status": new})
+        tx.write_state(DOMAIN, doc)
+
+
+def on_resumed(g: store.Group, message, sender: str, at: str) -> tuple[int, ...]:
+    """【已恢复】 from the proposer closes its own answered items named in 结束."""
+    closed = []
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for no in message.ends.ids:
+            it = doc["items"].get(str(no))
+            if it is not None and it["sender"] == sender and it["status"] in PROGRESS:
+                _set_status(doc, no, "closed", at)
+                tx.append_event("items.closed", ref=no, actor=sender, data={})
+                closed.append(no)
+        tx.write_state(DOMAIN, doc)
+    return tuple(closed)
+
+
+def history(g: store.Group, item: int) -> list[dict]:
+    return [e for e in store.read_events(g, ref=item) if str(e.get("type", "")).startswith("items.")]
+
+
 def receive(g: store.Group, text: str, sender: str, relay_id, received_at: str) -> ReceiveResult:
     """Take one incoming message; only 【等待用户】 and 【撤回】 belong here."""
     msg = protocol.parse(text)

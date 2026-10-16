@@ -264,5 +264,62 @@ class AnswerTest(ItemsCase):
             items.answer(self.g, answers, answered_at=T3)
 
 
+class LifecycleTest(ItemsCase):
+    def answered(self, text=SINGLE, sender="fe-codex"):
+        no = self.receive(text, sender=sender).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        for i, o in enumerate(out):
+            items.record_sent(self.g, item=no, to=o.to, relay_id=500 + i, at=T2)
+        return no, out
+
+    def test_single_recipient_progress(self):
+        no, _ = self.answered()
+        self.assertEqual(self.item(no)["sent"][0]["relayId"], 500)
+        items.update_delivery(self.g, {500: ("accepted", None)}, at=T3)
+        self.assertEqual(self.item(no)["status"], "picked")
+        items.update_delivery(self.g, {500: ("accepted", "2026-10-16T05:10:00Z")}, at=T3)
+        self.assertEqual(self.item(no)["status"], "acknowledged")
+        items.update_delivery(self.g, {500: ("queued", None)}, at=T3)
+        self.assertEqual(self.item(no)["status"], "acknowledged")  # never moves back
+
+    def test_multi_recipient_waits_for_slowest(self):
+        no, out = self.answered(MULTI, sender="coord")
+        self.assertEqual(len(out), 3)
+        items.update_delivery(self.g, {500: ("accepted", "t"), 501: ("accepted", "t")}, at=T3)
+        self.assertEqual(self.item(no)["status"], "forwarded")
+        items.update_delivery(self.g, {502: ("accepted", None)}, at=T3)
+        self.assertEqual(self.item(no)["status"], "picked")
+        items.update_delivery(self.g, {502: ("accepted", "t")}, at=T3)
+        self.assertEqual(self.item(no)["status"], "acknowledged")
+
+    def test_resumed_closes_only_own_answered_item(self):
+        no, _ = self.answered()
+        waiting = self.receive(SINGLE, relay_id=200).item
+        other = protocol.parse(f"【已恢复】\n结束：#{no}\n")
+        items.on_resumed(self.g, other, sender="api-codex", at=T3)
+        self.assertEqual(self.item(no)["status"], "forwarded")
+        mine = protocol.parse(f"【已恢复】\n结束：#{no}、#{waiting}\n")
+        items.on_resumed(self.g, mine, sender="fe-codex", at=T3)
+        self.assertEqual(self.item(no)["status"], "closed")
+        self.assertEqual(self.item(waiting)["status"], "pending")  # not answered yet: untouched
+
+    def test_invalidated_items_do_not_move(self):
+        no = self.receive(SINGLE).item
+        self.receive(f"【撤回】\n事项：#{no}\n")
+        items.update_delivery(self.g, {999: ("accepted", "t")}, at=T3)
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{no}\n"), sender="fe-codex", at=T3)
+        self.assertEqual(self.item(no)["status"], "withdrawn")
+
+    def test_history_and_consistency(self):
+        no, _ = self.answered()
+        items.update_delivery(self.g, {500: ("accepted", "t")}, at=T3)
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{no}\n"), sender="fe-codex", at=T3)
+        types = [e["type"] for e in items.history(self.g, item=no)]
+        self.assertEqual(types, ["items.received", "items.answered", "items.sent", "items.delivery", "items.closed"])
+        sent = [e for e in items.history(self.g, item=no) if e["type"] == "items.sent"][0]
+        self.assertEqual(sent["data"]["relayId"], 500)
+        self.assertEqual(store.check(self.g)["problems"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
