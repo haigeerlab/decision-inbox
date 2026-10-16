@@ -6,9 +6,13 @@ as plain text, so everything outside the block stays byte for byte.
 
 from __future__ import annotations
 
+import os
 import re
+from dataclasses import dataclass, field
+from pathlib import Path
 
-from decision_inbox import hub
+from decision_inbox import hub as hub_loop
+from decision_inbox import patrol, store
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
 
@@ -202,7 +206,7 @@ _ROLE_RULES = {"dev": _DEV, "owner": _OWNER, "coordinator": _COORDINATOR}
 def block(role: str, group: str, hub_relay: str) -> str:
     """The convention block for one role, wrapped in BEGIN/END markers."""
     if role == "hub":
-        return hub.convention(group)
+        return hub_loop.convention(group)
     examples = [_SINGLE.format(short="前端" if role == "dev" else ROLE_NAMES[role])]
     if role in ("owner", "coordinator"):
         examples.append(_MULTI.format(short=ROLE_NAMES[role]))
@@ -210,3 +214,85 @@ def block(role: str, group: str, hub_relay: str) -> str:
     body = _COMMON.format(group=group, hub=hub_relay, role_name=ROLE_NAMES[role], templates=templates)
     return (f"<!-- BEGIN decision-inbox {role} -->\n{body}\n{_ROLE_RULES[role]}"
             f"<!-- END decision-inbox {role} -->\n")
+
+
+DOMAIN = "onboarding"
+CLI = "python3 -m decision_inbox"
+RULES_FILES = {"claude-desktop": "CLAUDE.md", "codex-desktop": "AGENTS.md"}
+PATROL_CRON = "*/5 * * * *"
+
+
+@dataclass
+class Outcome:
+    file: Path
+    before: str
+    after: str
+    changed: bool
+    entry: dict
+    steps: list = field(default_factory=list)
+    patrol_prompt: str | None = None
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def _check_entry(group: str, entry: dict) -> None:
+    """Validate against the current roster (empty for a group not yet created), replacing the same name."""
+    try:
+        roster = store.roster(store.open_group(group))
+    except store.GroupNotFound:
+        roster = []
+    store._validate_session(entry, [e for e in roster if e["relayName"] != entry["relayName"]])
+
+
+def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> None:
+    """Roster and records first, then the rules file (a rerun repairs a half-done join)."""
+    with g.transaction() as tx:
+        if store.find_session(g, relay_name=entry["relayName"]) is None:
+            tx.add_session(entry)
+        else:
+            tx.replace_session(entry)
+        doc = tx.read_state(DOMAIN)
+        doc.setdefault("files", {})[entry["relayName"]] = str(rules)
+        tx.write_state(DOMAIN, doc)
+        tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"],
+                        data={"role": entry["role"], "file": str(rules), "at": now})
+    store._atomic_write_bytes(rules, after.encode("utf-8"))
+
+
+def _register_step(relay_name: str) -> str:
+    return f"在 agent-relay 登记本会话：bridge_register，agent 为 {relay_name}，wake: \"auto\"（已登记过也再登记一次，绑定唤醒）"
+
+
+HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件自带的停止钩子"
+             "（Codex 在命令行版里按提示信任；Claude Code 在 /hooks 里确认）")
+
+
+def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str) -> Outcome:
+    """The hub joins first: group, roster entry, its own block, and the patrol task to create."""
+    store.validate_name(group)
+    entry = {"relayName": relay_name, "shortName": "收件枢纽", "role": "hub", "line": [],
+             "host": "claude-desktop", "desktopSession": desktop_session}
+    _check_entry(group, entry)
+    rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
+    before = _read(rules)
+    after = place(before, "hub", block("hub", group, relay_name))
+    task_id = f"decision-inbox-patrol-{group}"
+    steps = [
+        _register_step(relay_name),
+        f"用桌面版定时任务工具 create_scheduled_task 建巡视任务：taskId 用 {task_id}，"
+        f"cronExpression 用 \"{PATROL_CRON}\"，prompt 用下面打印的巡视提示词原文",
+        f"运行 {CLI} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
+        "请用户在定时任务列表里手动「立即运行」一次这个任务，把 Bash 和 agent-relay 工具的权限批一遍",
+        HOOK_STEP,
+        f"其他会话各自接入：负责人先接入，再接开发线和总协调，例如 {CLI} onboard join {group} --role dev "
+        f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
+        "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
+    ]
+    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group))
+    if confirm:
+        g, _ = store.init_group(group)
+        (g.path / "io").mkdir(mode=0o700, exist_ok=True)
+        _commit(g, entry, rules, after, now)
+    return out

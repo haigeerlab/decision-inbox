@@ -15,7 +15,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 375 tests, OK。Task 1、2 的测试都先失败（模块或函数不存在）；变异检查：去掉「末尾块连同前面空行删除」被 2 个测试抓住，审查结论模板改成不合规写法被 1 个测试抓住
 
-- [ ] Task 3：`hub`
+- [x] Task 3：`hub`
   - 验收：Spec 验收 4（预览不建组、不写文件；`--confirm` 建组、登记收件枢纽含 `desktopSession`、写 `CLAUDE.md`、步骤含巡视提示词、`*/5 * * * *`、建议任务编号、手动立即运行一次）；Spec 验收 10 中适用于收件枢纽的提示
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`

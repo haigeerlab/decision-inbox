@@ -3,7 +3,7 @@ import unittest
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import hub, onboard, protocol
+from decision_inbox import hub, onboard, patrol, protocol, reviews, store
 
 DEV = "<!-- BEGIN decision-inbox dev -->\n## dev rules\n<!-- END decision-inbox dev -->\n"
 DEV2 = "<!-- BEGIN decision-inbox dev -->\n## dev rules v2\nmore\n<!-- END decision-inbox dev -->\n"
@@ -117,6 +117,84 @@ class BlockTextTest(unittest.TestCase):
 
     def test_hub_block_is_hub_loop_convention(self):
         self.assertEqual(onboard.block("hub", group="demo", hub_relay="di-hub"), hub.convention("demo"))
+
+
+NOW = "2026-10-17T01:00:00Z"
+HUB_DESKTOP = "local_00000000-0000-0000-0000-00000000hub0"
+
+
+class OnboardCase(TempHomeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.project = self.home / "projects"
+        self.project.mkdir()
+
+    def dir(self, name):
+        path = self.project / name
+        path.mkdir(exist_ok=True)
+        return path
+
+    def files(self):
+        return {str(f.relative_to(self.home)): f.read_bytes() for f in sorted(self.home.rglob("*")) if f.is_file()}
+
+    def hub(self, confirm=True, **kw):
+        args = dict(relay_name="di-hub", desktop_session=HUB_DESKTOP, project=self.dir("hub"), confirm=confirm, now=NOW)
+        args.update(kw)
+        return onboard.hub("demo", **args)
+
+
+class HubTest(OnboardCase):
+    def test_preview_changes_nothing(self):
+        before = self.files()
+        out = self.hub(confirm=False)
+        self.assertEqual(self.files(), before)
+        self.assertFalse((self.home / "demo").exists())
+        self.assertEqual(out.file, self.project / "hub" / "CLAUDE.md")
+        self.assertTrue(out.changed)
+        self.assertIn("<!-- BEGIN decision-inbox hub -->", out.after)
+
+    def test_confirm(self):
+        (self.dir("hub") / "CLAUDE.md").write_text("# 我的规则\n", encoding="utf-8")
+        out = self.hub()
+        g = store.open_group("demo")
+        entry = store.find_session(g, relay_name="di-hub")
+        self.assertEqual((entry["role"], entry["host"], entry["desktopSession"]), ("hub", "claude-desktop", HUB_DESKTOP))
+        text = (self.project / "hub" / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("# 我的规则\n\n<!-- BEGIN decision-inbox hub -->"))
+        self.assertEqual(text, onboard.place("# 我的规则\n", "hub", hub.convention("demo")))
+        self.assertTrue((g.path / "io").is_dir())
+        self.assertEqual(out.patrol_prompt, patrol.prompt("demo"))
+        steps = "\n".join(out.steps)
+        for needle in ("create_scheduled_task", "decision-inbox-patrol-demo", "*/5 * * * *", "onboard task demo",
+                       "立即运行", "bridge_register", "wake: \"auto\"", "di-hub", "停止钩子", "Claude Code", "Codex",
+                       "onboard join demo"):
+            self.assertIn(needle, steps)
+        state = store.read_state(g, "onboarding")
+        self.assertEqual(state["files"]["di-hub"], str(self.project / "hub" / "CLAUDE.md"))
+
+    def test_rerun_replaces_block_and_entry(self):
+        self.hub()
+        self.hub(desktop_session="local_00000000-0000-0000-0000-00000000hub9")
+        g = store.open_group("demo")
+        self.assertEqual(store.find_session(g, relay_name="di-hub")["desktopSession"],
+                         "local_00000000-0000-0000-0000-00000000hub9")
+        self.assertEqual((self.project / "hub" / "CLAUDE.md").read_text(encoding="utf-8").count("BEGIN decision-inbox"), 1)
+
+    def test_second_hub_or_bad_session_rejected_without_writes(self):
+        self.hub()
+        before = self.files()
+        with self.assertRaises(store.InvalidSession):
+            self.hub(relay_name="di-hub-2", project=self.dir("hub2"))
+        with self.assertRaises(store.InvalidSession):
+            onboard.hub("other", relay_name="x", desktop_session="nope", project=self.dir("x"), confirm=True, now=NOW)
+        self.assertEqual(self.files(), before)
+        self.assertFalse((self.home / "other").exists())
+
+    def test_conflicting_block_rejected(self):
+        (self.dir("hub") / "CLAUDE.md").write_text(OWNER, encoding="utf-8")
+        with self.assertRaises(onboard.BlockConflict):
+            self.hub()
+        self.assertFalse((self.home / "demo").exists())
 
 
 if __name__ == "__main__":
