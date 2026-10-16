@@ -15,7 +15,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 414 tests, OK。Task 1、2 的测试都先失败；Task 1 改默认路径后，hub-loop 一条写死 `python3 -m decision_inbox` 的旧断言按计划改为固定路径；变异检查：查找只认仓库本身、不认子目录，被 1 个测试抓住
 
-- [ ] Task 3：`hooks.json`、两份清单、`marketplace.json`
+- [x] Task 3：`hooks.json`、两份清单、`marketplace.json`
   - 验收：Spec 验收 5（名字、版本一致；Codex 清单含 `skills`、`hooks`；marketplace 指向仓库根目录）、Spec 验收 6（两条钩子命令在 `PLUGIN_ROOT` 或 `CLAUDE_PLUGIN_ROOT` 下都能跑；两者都没有时退出码 0、没有 stdout；有人在等时输出 block JSON）
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`hooks/hooks.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.codex-plugin/plugin.json`、`tests/test_packaging.py`、`tests/test_package.py`
