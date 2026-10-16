@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved e635f311169e -->
+<!-- spec-guard: review approved b065c728c792 -->
 # Spec: hub-loop
 
 > 能力图模块 `hub-loop`。需求来源：`docs/requirements-record.md` 第 3.3.1 节（用户经收件枢纽的操作）、第 3.3.2 节（收件枢纽）、第 4 节（事项与消息约定，尤其 4.6 边界、4.7 通信通道）、第 6.4 节（用户回复）。

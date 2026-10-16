@@ -61,4 +61,5 @@
   - 文件：`spec/hub-loop.md`
   - 记录（2026-10-17 00:04–00:06）：经用户同意，用测试身份 di-hub-probe、di-dev-probe 跑通一轮（消息 3982、3983），正文逐字一致、replyTo 正确、状态推进到 acknowledged。发现 bridge_outbox 默认不列已确认消息，约定块改为带 includeAcknowledged: true（先补测试再改）；真实返回存为 real-inbox.json 样例。详见规格实测记录
 
-- [ ] Checkpoint 3（gate）：模块最终验收——全部测试全绿、13 条验收标准逐条有测试或实测记录、列出实际改动文件、原样附上规格差异；停下等用户确认
+- [x] Checkpoint 3（gate）：模块最终验收——全部测试全绿、13 条验收标准逐条有测试或实测记录、列出实际改动文件、原样附上规格差异；停下等用户确认
+  - 记录：358 个测试全绿（连跑 2 次），本模块 43 个；用户 2026-10-17 验收通过，并批准修订后的规格（正文文件保留、读发件箱带 includeAcknowledged、实测记录）；测试身份 di-hub-probe 已由用户退役，di-dev-probe 待退役
