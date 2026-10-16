@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：审查者登记
+- [x] Task 1：审查者登记
   - 验收：Spec 验收 1（生效前后、事件带批准依据）、2（审查者不是负责人、送审方是收件枢纽、第五类节点、批准依据为空都被拒且状态不变）；修改登记保留旧记录并写 `until`；撤销后 `registration_at` 返回 None
   - 验证：`python3 -m unittest discover -s tests -p test_reviews.py -v`
   - 文件：`decision_inbox/reviews.py`、`tests/test_reviews.py`
