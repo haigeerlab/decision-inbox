@@ -178,6 +178,25 @@ class ReadLineTest(LocateCase):
         self.assertEqual((r.status, r.exit_code), ("not-installed", None))
 
 
+class IntegrationTest(unittest.TestCase):
+    """Runs the spec-guard actually installed on this machine against this repository."""
+
+    def test_real_spec_guard_reads_this_repo(self):
+        repo = str(Path(__file__).resolve().parent.parent)
+        old = os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        try:
+            found = specguard.locate(project=repo)
+            if isinstance(found, specguard.Missing):
+                self.skipTest(f"本机没有可用的 spec-guard：{found.reason}")
+            r = specguard.read_line(project=repo)
+        finally:
+            if old is not None:
+                os.environ["DECISION_INBOX_PLUGINS_FILE"] = old
+        self.assertEqual(r.status, "ok", r.reason)
+        self.assertEqual(r.map.generator_version, found.version)
+        self.assertIn("group-store", [m.id for m in r.map.modules])
+
+
 class NoShellTest(unittest.TestCase):
     def test_no_shell_true(self):
         import ast

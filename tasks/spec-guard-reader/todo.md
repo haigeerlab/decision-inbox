@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/specguard.py`、`tests/test_specguard.py`
 
-- [ ] Task 4：本机 spec-guard 集成测试
+- [x] Task 4：本机 spec-guard 集成测试
   - 验收：Spec 验收 10（读本仓库得 ok、版本与安装记录一致；没装时跳过）
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`tests/test_specguard.py`
