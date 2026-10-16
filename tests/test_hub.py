@@ -317,3 +317,26 @@ class ReplyTest(HubCase):
         lines = text.split("\n")
         self.assertEqual(lines[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
         self.assertEqual(lines[1], "⚠ 读不到 agent-relay，各线状态不全")
+
+
+class ConventionTest(HubCase):
+    def test_block(self):
+        text = hub.convention("demo", cli="python3 -m decision_inbox", workdir="/abs/io")
+        lines = text.strip().split("\n")
+        self.assertEqual(lines[0], "<!-- BEGIN decision-inbox hub -->")
+        self.assertEqual(lines[-1], "<!-- END decision-inbox hub -->")
+        for needle in ("协作组「demo」",
+                       "bridge_inbox", "python3 -m decision_inbox inbox receive demo --inbox /abs/io/inbox.json",
+                       "bodyFile", "replyTo", "inbox sent demo", "bridge_ack",
+                       "python3 -m decision_inbox view demo --agents /abs/io/agents.json --outbox /abs/io/outbox.json",
+                       "bridge_agents", "/abs/io/said.txt",
+                       "python3 -m decision_inbox inbox reply demo --text-file /abs/io/said.txt --agents /abs/io/agents.json",
+                       "X 称", "原会话", "不替用户决定", "不改写选项", "不补后果", "不改任何项目的文件",
+                       "以后", "先向用户确认收件人", "一字不改", "maxChars"):
+            self.assertIn(needle, text)
+
+    def test_no_other_markers_inside(self):
+        text = hub.convention("demo")
+        self.assertEqual(text.count("<!-- BEGIN"), 1)
+        self.assertEqual(text.count("<!-- END"), 1)
+        self.assertIn("python3 -m decision_inbox inbox receive demo", text)

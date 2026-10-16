@@ -37,7 +37,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
 
-- [ ] Task 5：约定块 `hub.convention`
+- [x] Task 5：约定块 `hub.convention`
   - 验收：Spec 验收 11（BEGIN/END 标记、协作组名、两个流程的命令、需求 4.6 的边界、改规则发前确认收件人）
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
