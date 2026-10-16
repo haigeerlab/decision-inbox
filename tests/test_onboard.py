@@ -298,5 +298,113 @@ class JoinTest(OnboardCase):
         self.assertIn("get_session", claude)
 
 
+class LeaveTest(OnboardCase):
+    def setUp(self):
+        super().setUp()
+        (self.dir("hub") / "CLAUDE.md").write_text("# 枢纽规则\n", encoding="utf-8")
+        (self.dir("fe") / "AGENTS.md").write_text("# 前端规则\n", encoding="utf-8")
+        self.hub()
+        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        self.g = store.open_group("demo")
+
+    def group_files(self):
+        return {str(f.relative_to(self.g.path)): f.read_bytes() for f in sorted(self.g.path.rglob("*")) if f.is_file()}
+
+    def test_task_recorded_and_printed_on_teardown(self):
+        onboard.record_task("demo", "decision-inbox-patrol-demo-2", now=NOW)
+        self.assertEqual(store.read_state(self.g, "onboarding")["patrolTask"], "decision-inbox-patrol-demo-2")
+        steps = "\n".join(onboard.teardown("demo", project=None, confirm=False, now=NOW).steps)
+        self.assertIn("delete_scheduled_task", steps)
+        self.assertIn("decision-inbox-patrol-demo-2", steps)
+        self.assertNotIn("list_scheduled_tasks", steps)
+
+    def test_teardown_without_recorded_task_suggests_and_checks(self):
+        steps = "\n".join(onboard.teardown("demo", project=None, confirm=False, now=NOW).steps)
+        self.assertIn("decision-inbox-patrol-demo", steps)
+        self.assertIn("list_scheduled_tasks", steps)
+
+    def test_leave_preview_then_confirm(self):
+        before = self.files()
+        out = onboard.leave("demo", relay_name="fe-codex", project=None, confirm=False, now=NOW)
+        self.assertEqual(self.files(), before)
+        self.assertEqual((out.file, out.after, out.changed), (self.project / "fe" / "AGENTS.md", "# 前端规则\n", True))
+        roster = store.roster(self.g)
+        onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
+        self.assertEqual((self.project / "fe" / "AGENTS.md").read_text(encoding="utf-8"), "# 前端规则\n")
+        self.assertEqual(store.roster(self.g), roster)
+
+    def test_teardown_keeps_state_and_roster(self):
+        state_before = {k: v for k, v in self.group_files().items() if k != "events.jsonl"}
+        onboard.teardown("demo", project=None, confirm=True, now=NOW)
+        self.assertEqual((self.project / "hub" / "CLAUDE.md").read_text(encoding="utf-8"), "# 枢纽规则\n")
+        after = self.group_files()
+        for name, data in state_before.items():
+            if name != "state/onboarding.json":
+                self.assertEqual(after[name], data, name)
+        self.assertTrue(set(state_before) <= set(after))
+        self.assertEqual(store.check(self.g)["problems"], [])
+
+    def test_leave_with_explicit_project_and_unknown_session(self):
+        out = onboard.leave("demo", relay_name="fe-codex", project=self.dir("fe"), confirm=False, now=NOW)
+        self.assertEqual(out.file, self.project / "fe" / "AGENTS.md")
+        with self.assertRaises(onboard.JoinError):
+            onboard.leave("demo", relay_name="nobody", project=None, confirm=False, now=NOW)
+
+    def test_leave_twice_is_a_no_op(self):
+        onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
+        out = onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
+        self.assertFalse(out.changed)
+
+
+class CommandLineTest(OnboardCase):
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_flow(self):
+        hub_dir, fe_dir = str(self.dir("hub")), str(self.dir("fe"))
+        code, out, _ = self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                                    "--project", hub_dir)
+        self.assertEqual(code, 0)
+        self.assertIn("预览", out)
+        self.assertFalse((self.home / "demo").exists())
+        code, out, _ = self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                                    "--project", hub_dir, "--confirm")
+        self.assertEqual(code, 0)
+        for needle in ("已写入", "CLAUDE.md", "巡视提示词", "patrol plan demo", "create_scheduled_task"):
+            self.assertIn(needle, out)
+        code, out, _ = self.run_cli("onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-codex",
+                                    "--short-name", "前端", "--host", "codex-desktop", "--line", "前端",
+                                    "--project", fe_dir, "--confirm")
+        self.assertEqual(code, 0)
+        self.assertIn("AGENTS.md", out)
+        self.assertEqual(self.run_cli("onboard", "task", "demo", "--task-id", "decision-inbox-patrol-demo")[0], 0)
+        code, out, _ = self.run_cli("onboard", "leave", "demo", "--relay-name", "fe-codex", "--confirm")
+        self.assertEqual(code, 0)
+        code, out, _ = self.run_cli("onboard", "teardown", "demo", "--confirm")
+        self.assertEqual(code, 0)
+        self.assertIn("delete_scheduled_task", out)
+        self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
+
+    def test_errors_exit_2(self):
+        hub_dir = str(self.dir("hub"))
+        self.assertEqual(self.run_cli("onboard", "join", "nope", "--role", "dev", "--relay-name", "x", "--short-name", "x",
+                                      "--host", "codex-desktop", "--line", "x")[0], 2)
+        self.assertEqual(self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", "bad",
+                                      "--project", hub_dir, "--confirm")[0], 2)
+        (self.dir("hub") / "CLAUDE.md").write_text("<!-- BEGIN decision-inbox dev -->\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                                      "--project", hub_dir, "--confirm")[0], 2)
+        self.assertEqual(self.run_cli("onboard", "bogus")[0], 2)
+        self.assertEqual(self.run_cli("onboard", "task", "nope", "--task-id", "x")[0], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

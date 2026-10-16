@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-from decision_inbox import health, hub, items, mapview, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import health, hub, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
@@ -11,7 +11,8 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
-         "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]")
+         "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
+         "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...")
 
 
 def _init(name: str) -> int:
@@ -339,7 +340,86 @@ def _view(argv: list[str]) -> int:
     return 0
 
 
+def _print_outcome(out, confirm: bool) -> None:
+    if not out.changed:
+        state = "没有变化"
+    else:
+        state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
+    print(f"规则文件：{out.file}（{state}）")
+    print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
+    if out.changed:
+        print("改动后的规则文件全文：")
+        print(out.after, end="" if out.after.endswith("\n") else "\n")
+    if out.steps:
+        print("后续步骤：")
+        for i, step in enumerate(out.steps, 1):
+            print(f"{i}. {step}")
+    if out.patrol_prompt:
+        print("巡视提示词：")
+        print(out.patrol_prompt)
+
+
+def _onboard(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox onboard")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("hub")
+    p.add_argument("group")
+    p.add_argument("--relay-name", required=True)
+    p.add_argument("--desktop-session", required=True)
+    p.add_argument("--project", default=".")
+    p.add_argument("--confirm", action="store_true")
+    p = sub.add_parser("join")
+    p.add_argument("group")
+    p.add_argument("--role", required=True)
+    p.add_argument("--relay-name", required=True)
+    p.add_argument("--short-name", required=True)
+    p.add_argument("--host", required=True, choices=list(onboard.RULES_FILES))
+    p.add_argument("--line", action="append", default=[])
+    p.add_argument("--desktop-session")
+    p.add_argument("--project", default=".")
+    p.add_argument("--reviewer")
+    p.add_argument("--nodes", default="")
+    p.add_argument("--confirm", action="store_true")
+    p = sub.add_parser("task")
+    p.add_argument("group")
+    p.add_argument("--task-id", required=True)
+    for name in ("leave", "teardown"):
+        p = sub.add_parser(name)
+        p.add_argument("group")
+        if name == "leave":
+            p.add_argument("--relay-name", required=True)
+        p.add_argument("--project")
+        p.add_argument("--confirm", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    now = store.now()
+    try:
+        if args.command == "hub":
+            out = onboard.hub(args.group, args.relay_name, args.desktop_session, args.project, args.confirm, now)
+        elif args.command == "join":
+            nodes = [n for n in args.nodes.split(",") if n]
+            out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
+                               args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now)
+        elif args.command == "task":
+            onboard.record_task(args.group, args.task_id, now)
+            print(f"已记下巡视任务编号：{args.task_id}")
+            return 0
+        elif args.command == "leave":
+            out = onboard.leave(args.group, args.relay_name, args.project, args.confirm, now)
+        else:
+            out = onboard.teardown(args.group, args.project, args.confirm, now)
+    except (store.StoreError, onboard.JoinError, onboard.BlockConflict) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    _print_outcome(out, args.confirm)
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["onboard"]:
+        return _onboard(argv[1:])
     if argv[:1] == ["inbox"]:
         return _inbox(argv[1:])
     if argv[:1] == ["view"]:

@@ -350,3 +350,56 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
     return out
+
+
+def record_task(group: str, task_id: str, now: str) -> None:
+    """Remember the patrol task actually created, so teardown can name it."""
+    g = store.open_group(group)
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        doc["patrolTask"] = task_id
+        tx.write_state(DOMAIN, doc)
+        tx.append_event("onboarding.task", ref=None, actor="hub", data={"taskId": task_id, "at": now})
+
+
+def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Outcome:
+    """Strip the block from the rules file; the roster and every state file stay (spec 已定事项 2)."""
+    recorded = store.read_state(g, DOMAIN).get("files", {}).get(entry["relayName"])
+    if project is not None:
+        rules = Path(os.path.abspath(project)) / RULES_FILES[entry["host"]]
+    elif recorded:
+        rules = Path(recorded)
+    else:
+        raise JoinError(f"没有记下 {entry['relayName']} 的规则文件，请用 --project 指出项目目录")
+    before = _read(rules)
+    after, changed = strip(before)
+    out = Outcome(rules, before, after, changed, entry)
+    if confirm and changed:
+        store._atomic_write_bytes(rules, after.encode("utf-8"))
+        with g.transaction() as tx:
+            tx.write_state(DOMAIN, tx.read_state(DOMAIN))  # the snapshot must cover its own event
+            tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
+    return out
+
+
+def leave(group: str, relay_name: str, project, confirm: bool, now: str) -> Outcome:
+    g = store.open_group(group)
+    entry = store.find_session(g, relay_name=relay_name)
+    if entry is None:
+        raise JoinError(f"名册里没有 {relay_name}")
+    return _leave(g, entry, project, confirm, now)
+
+
+def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
+    """The hub leaves; the patrol task is deleted by the session with the scheduled-task tool."""
+    g = store.open_group(group)
+    entry = store.find_session(g, relay_name=_hub_relay(g))
+    out = _leave(g, entry, project, confirm, now)
+    task_id = store.read_state(g, DOMAIN).get("patrolTask")
+    if task_id:
+        out.steps.append(f"用定时任务工具 delete_scheduled_task 删除巡视任务 {task_id}")
+    else:
+        out.steps.append(f"没有记下巡视任务编号：先用 list_scheduled_tasks 核对，通常是 decision-inbox-patrol-{group}，"
+                         "再用 delete_scheduled_task 删除")
+    out.steps.append("协作组的状态目录保留，不删")
+    return out

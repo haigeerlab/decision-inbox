@@ -25,7 +25,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
 
-- [ ] Task 5：`task`、`leave`、`teardown` 与命令行 `onboard`
+- [x] Task 5：`task`、`leave`、`teardown` 与命令行 `onboard`
   - 验收：Spec 验收 8（记编号；teardown 打印编号和 `delete_scheduled_task`；没记过时给建议编号并提示 `list_scheduled_tasks`）、Spec 验收 9（不改名册、不删状态文件）、Spec 验收 11（领域 `onboarding` 只由 `onboard.py` 写；原有子命令不受影响）；命令行每个子命令的退出码按规格
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/onboard.py`、`decision_inbox/__main__.py`、`tests/test_onboard.py`
