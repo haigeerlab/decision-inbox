@@ -8,12 +8,13 @@
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/`
   - 实采记录（2026-10-16）：不带参数的 `bridge_wake_status` 采到 100 条唤醒记录，脱敏后取 5 条为 `real-wake-jobs.json`；比 0.6.1 源码多一个 `sentAt` 字段，其余一致。按编号查（#3493）被 agent-relay 拒绝：只许发件人或收件人在自己的会话里查，本会话不是任何一方；按计划不绕过，`message-status.json` 为按源码 `MessageStatus` 合成的样例
 
-- [ ] Task 2：等待图与 `/lines`
+- [x] Task 2：等待图与 `/lines`
   - 验收：Spec 验收 1（按名册顺序、跳过收件枢纽；状态、当前模块与已勾数、最后产出、未读、在等；spec-guard 读不出写原因；未读未知；「你（#N）」；没有在等写「—」）
   - 验证：`python3 -m unittest discover -s tests -p test_query.py -v`
   - 文件：`decision_inbox/query.py`、`tests/test_query.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿；记下实采样例与源码字段的差异（没有差异也记一句），然后继续
+- [x] Checkpoint 1（report）：全部测试全绿；记下实采样例与源码字段的差异（没有差异也记一句），然后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 233 tests, OK（2026-10-16）；字段差异：唤醒记录多 `sentAt`（不影响解析）；按编号查的消息状态未能实采（见 Task 1）
 
 - [ ] Task 3：`/flow` 的源头选择、10 类归类与结论段
   - 验收：Spec 验收 2（环）、3（挡住最多、并列取最早、被它挡住含间接）、4（10 类各一个场景，另加两类同时满足时的顺序用例）、5（流畅）；「（HH:MM 起）」三种取法
