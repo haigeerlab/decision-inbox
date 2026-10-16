@@ -46,3 +46,29 @@ def write_shim(root, if_installed: bool = False) -> bool:
     store._atomic_write_bytes(path, text.encode("utf-8"))
     os.chmod(path, 0o755)
     return True
+
+
+def _inside(path: str, root: str) -> bool:
+    path, root = os.path.realpath(path), os.path.realpath(root)
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def locate(cwd: str) -> list[tuple[str, dict]]:
+    """Every (group, roster entry) this directory belongs to: a dev line's repo, or a recorded rules file's folder."""
+    found = []
+    home = store.root_dir()
+    if not home.is_dir():
+        return found
+    for folder in sorted(p for p in home.iterdir() if (p / "group.json").is_file()):
+        try:
+            g = store.open_group(folder.name)
+            files = store.read_state(g, "onboarding").get("files", {})
+            for entry in store.roster(g):
+                repo = entry.get("repo")
+                rules = files.get(entry["relayName"])
+                if (repo and _inside(cwd, repo)) or (
+                        rules and os.path.realpath(cwd) == os.path.realpath(os.path.dirname(rules))):
+                    found.append((g.name, entry))
+        except store.StoreError:
+            continue  # a broken or foreign folder is not ours to judge here
+    return found

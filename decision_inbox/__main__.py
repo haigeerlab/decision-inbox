@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -8,12 +9,13 @@ from decision_inbox import health, hub, install, items, mapview, onboard, patrol
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
-         "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]\n"
+         "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
          "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...\n"
-         "      python3 -m decision_inbox shim [--if-installed]")
+         "      python3 -m decision_inbox shim [--if-installed]\n"
+         "      python3 -m decision_inbox whoami [--cwd <目录>]")
 
 
 def _init(name: str) -> int:
@@ -150,13 +152,25 @@ def _hook(argv: list[str]) -> int:
     try:
         parser = argparse.ArgumentParser(prog="python3 -m decision_inbox hook", add_help=False)
         parser.add_argument("event", choices=["stop"])
-        parser.add_argument("--group", required=True)
+        parser.add_argument("--group")
         parser.add_argument("--session")
         args, _ = parser.parse_known_args(argv)
         payload = json.loads(sys.stdin.read())
         if not isinstance(payload, dict):
             raise ValueError("钩子输入不是 JSON 对象")
-        d = stophook.decide(store.open_group(args.group), payload, session=args.session)
+        session = args.session
+        if args.group:
+            g = store.open_group(args.group)
+        else:
+            found = install.locate(str(payload.get("cwd") or ""))
+            if not found:
+                return 0  # this project has not joined any group
+            if len(found) > 1:
+                print("decision-inbox 停止钩子放行：工作目录同时属于 " + "、".join(
+                    f"{name}/{e['relayName']}" for name, e in found) + "，请检查名册", file=sys.stderr)
+                return 0
+            g, session = store.open_group(found[0][0]), session or found[0][1]["relayName"]
+        d = stophook.decide(g, payload, session=session)
     except SystemExit:
         print("decision-inbox 停止钩子：参数不对，已放行", file=sys.stderr)
         return 0
@@ -418,7 +432,29 @@ def _onboard(argv: list[str]) -> int:
     return 0
 
 
+def _whoami(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox whoami")
+    parser.add_argument("--cwd", default=".")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    found = install.locate(os.path.abspath(args.cwd))
+    if not found:
+        print(f"{os.path.abspath(args.cwd)} 没有接入任何协作组", file=sys.stderr)
+        return 4
+    if len(found) > 1:
+        print("工作目录同时属于 " + "、".join(f"{name}/{e['relayName']}" for name, e in found) + "，请检查名册",
+              file=sys.stderr)
+        return 5
+    name, entry = found[0]
+    print(json.dumps({"group": name, "relayName": entry["relayName"], "role": entry["role"]}, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["whoami"]:
+        return _whoami(argv[1:])
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):
         # Silent on purpose: SessionStart runs it in every session.
         install.write_shim(install.plugin_root(), if_installed=argv[1:] == ["--if-installed"])

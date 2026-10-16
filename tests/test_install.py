@@ -98,3 +98,92 @@ class FixedCliTest(TempHomeTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocateCase(TempHomeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.hub_dir, self.fe_dir, self.api_dir = (self.home / n for n in ("hub", "fe", "api"))
+        for d in (self.hub_dir, self.fe_dir, self.api_dir):
+            d.mkdir()
+        self.group("demo")
+
+    def group(self, name, fe_dir=None):
+        hub_dir = self.hub_dir if name == "demo" else self.home / f"hub-{name}"
+        hub_dir.mkdir(exist_ok=True)
+        onboard.hub(name, "di-hub", HUB_DESKTOP, hub_dir, True, NOW)
+        onboard.join(name, "dev", "fe-codex", "前端", "codex-desktop", ["前端"], None, fe_dir or self.fe_dir,
+                     None, [], True, NOW)
+        onboard.join(name, "dev", "api-codex", "API", "codex-desktop", ["API"], None, self.api_dir, None, [], True, NOW)
+
+    def run_cli(self, *argv, stdin=""):
+        import contextlib
+        import io
+        import sys
+        from unittest import mock
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+
+class LocateTest(LocateCase):
+    def test_repo_subdir_and_rules_dir(self):
+        sub = self.fe_dir / "src" / "pages"
+        sub.mkdir(parents=True)
+        self.assertEqual([(g, e["relayName"]) for g, e in install.locate(str(self.fe_dir))], [("demo", "fe-codex")])
+        self.assertEqual([(g, e["relayName"]) for g, e in install.locate(str(sub))], [("demo", "fe-codex")])
+        self.assertEqual([(g, e["relayName"]) for g, e in install.locate(str(self.hub_dir))], [("demo", "di-hub")])
+        self.assertEqual(install.locate(str(self.home)), [])
+
+    def test_symlinked_path(self):
+        link = self.home / "link-to-fe"
+        os.symlink(self.fe_dir, link)
+        self.assertEqual([e["relayName"] for _, e in install.locate(str(link))], ["fe-codex"])
+
+    def test_whoami(self):
+        import json
+        code, out, _ = self.run_cli("whoami", "--cwd", str(self.fe_dir))
+        self.assertEqual((code, json.loads(out)), (0, {"group": "demo", "relayName": "fe-codex", "role": "dev"}))
+        self.assertEqual(self.run_cli("whoami", "--cwd", str(self.home))[0], 4)
+        self.group("other", fe_dir=self.fe_dir)
+        code, _, err = self.run_cli("whoami", "--cwd", str(self.fe_dir))
+        self.assertEqual(code, 5)
+        self.assertIn("demo", err)
+        self.assertIn("other", err)
+
+
+class HookWithoutGroupTest(LocateCase):
+    def payload(self, cwd):
+        import json
+        return json.dumps({"cwd": str(cwd), "stop_hook_active": False})
+
+    def waiting_on_fe(self, group="demo"):
+        from decision_inbox import store, tickets
+        tickets.receive(store.open_group(group), "【等待其他会话】\n结束：无\n在等谁：前端\n等什么：Mock 数据\n",
+                        sender="api-codex", relay_id=1, sent_at=NOW)
+
+    def test_blocks_when_someone_waits(self):
+        import json
+        self.waiting_on_fe()
+        code, out, _ = self.run_cli("hook", "stop", stdin=self.payload(self.fe_dir))
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["decision"], "block")
+
+    def test_not_joined_passes_silently(self):
+        self.assertEqual(self.run_cli("hook", "stop", stdin=self.payload(self.home)), (0, "", ""))
+
+    def test_several_groups_pass_with_note(self):
+        self.group("other", fe_dir=self.fe_dir)
+        self.waiting_on_fe()
+        code, out, err = self.run_cli("hook", "stop", stdin=self.payload(self.fe_dir))
+        self.assertEqual((code, out), (0, ""))
+        self.assertIn("demo", err)
+        self.assertIn("other", err)
+
+    def test_with_group_unchanged(self):
+        import json
+        self.waiting_on_fe()
+        code, out, _ = self.run_cli("hook", "stop", "--group", "demo", stdin=self.payload(self.fe_dir))
+        self.assertEqual(json.loads(out)["decision"], "block")
