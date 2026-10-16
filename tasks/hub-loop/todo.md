@@ -28,7 +28,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
 
-- [ ] Task 4：`hub.reply` 的识别与答复
+- [x] Task 4：`hub.reply` 的识别与答复
   - 验收：
     - Spec 验收 6：「12 B」生成答复、`replyTo` 为原事项编号；多线事项另给各适用会话一条；对不上的回复返回问题、不发消息、事项仍在待答；
     - Spec 验收 7：「12 详情」「看等待」「看已关闭」「看已关闭 2026-10-15」「看失效」「关掉 #5 已经不需要」「关掉 #12」（事项）各得对应显示或问题；「N 原文」显示认不出类型的那条全文；

@@ -8,6 +8,7 @@ from decision_inbox import hub, items, relay, reviews, store
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 WAIT_USER = (PROTO / "wait-user.txt").read_text(encoding="utf-8")
+MULTI = (PROTO / "wait-user-multiline.txt").read_text(encoding="utf-8")
 NOW = "2026-10-16T05:30:00Z"
 SENT = "2026-10-16T05:00:00.000Z"
 
@@ -41,6 +42,7 @@ class HubCase(TempHomeTestCase):
             ("fe-codex", "前端", "dev", ["前端"], "codex-desktop"),
             ("api-codex", "API", "dev", ["API"], "codex-desktop"),
             ("fe-owner", "前端负责人", "owner", ["前端"], "claude-desktop"),
+            ("coord", "总协调", "coordinator", [], "codex-desktop"),
         ]
         with self.g.transaction() as tx:
             for name, short, role, line, host in people:
@@ -225,3 +227,93 @@ class SentTest(HubCase):
         hub.sent(self.g, done={"out:1": 3960}, failed=[], at=NOW)
         self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:1"]["relayId"], 3960)
         self.assertTrue(Path(r.sends[0]["bodyFile"]).exists())
+
+
+class ReplyTest(HubCase):
+    def setUp(self):
+        super().setUp()
+        self.receive(message(1301, "fe-codex", WAIT_USER))                                    # item #1
+        self.receive(message(1302, "api-codex", wait_session(target="前端")))                 # ticket #2
+
+    def reply(self, text):
+        return hub.reply(self.g, text, now=NOW)
+
+    def bodies(self, r):
+        return [Path(s["bodyFile"]).read_text(encoding="utf-8") for s in r.sends]
+
+    def test_letter_answer(self):
+        r = self.reply("1 B")
+        self.assertEqual([(s["to"], s["replyTo"], s["kind"]) for s in r.sends], [("fe-codex", 1301, "answer")])
+        self.assertIn("用户原话：1 B", self.bodies(r)[0])
+        self.assertEqual(items.get(self.g, 1)["status"], "forwarded")
+        self.assertIn("已转达：#1 → 前端", r.show)
+        self.assertNotIn("没发出去", r.show)
+        self.assertIn("等你决定 0 项", r.show)
+
+    def test_multiline_answer_goes_to_each_line(self):
+        self.receive(message(1303, "coord", MULTI))                                          # item #3
+        r = self.reply("3 A")
+        self.assertEqual([(s["to"], s["replyTo"]) for s in r.sends],
+                         [("coord", 1303), ("fe-codex", None), ("api-codex", None)])
+        self.assertIn("适用于你的范围：只改类型定义和展示映射", self.bodies(r)[1])
+
+    def test_unmatched_reply_asks_and_sends_nothing(self):
+        r = self.reply("1 D")
+        self.assertEqual(r.sends, [])
+        self.assertEqual(r.show, "#1 没有选项 D，请确认。")
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
+
+    def test_original_words_kept_exactly(self):
+        words = "1 A，但「支付页」先别上线；\n上线前再问我 \"一次\""
+        r = self.reply(words)
+        self.assertIn(f"用户原话：{words}", self.bodies(r)[0])
+
+    def test_views(self):
+        self.assertTrue(self.reply("1 详情").show.startswith("#1 详情 · 前端"))
+        self.assertTrue(self.reply("#1 详情").show.startswith("#1 详情"))
+        self.assertTrue(self.reply("看等待").show.startswith("#2 API 等 前端"))
+        self.assertEqual(self.reply("看已关闭").show, "2026-10-16 没有关闭的等待单")
+        self.assertEqual(self.reply("看已关闭 2026-10-15").show, "2026-10-15 没有关闭的等待单")
+        self.assertEqual(self.reply("看失效").show, "没有失效的事项")
+
+    def test_original_of_unknown_message(self):
+        self.receive(message(1304, "fe-codex", "随便说一句\n第二行"))
+        self.assertEqual(self.reply("1304 原文").show, "前端 发来的 #1304 原文：\n随便说一句\n第二行")
+        self.assertEqual(self.reply("1301 原文").show, "没有记下 #1301 这条消息的原文（只记认不出类型的消息）")
+
+    def test_close_ticket(self):
+        r = self.reply("关掉 #2 已经不需要")
+        self.assertTrue(r.show.startswith("已关掉 #2（已经不需要）"))
+        self.assertEqual(self.tickets()["2"]["close"]["basis"], "已经不需要")
+        self.assertEqual(r.sends, [])
+
+    def test_close_several_without_reason(self):
+        self.receive(message(1305, "api-codex", wait_session(target="收件枢纽", what="别的")))   # ticket #3
+        r = self.reply("关掉 #2、#3")
+        self.assertTrue(r.show.startswith("已关掉 #2、#3（用户关闭）"))
+
+    def test_close_item_or_closed_ticket_is_a_question(self):
+        r = self.reply("关掉 #1")
+        self.assertEqual(r.show, "#1 是事项，不是等待单；要放弃事项请让提出方发【撤回】")
+        self.reply("关掉 #2")
+        self.assertEqual(self.reply("关掉 #2、#9").show, "#2 不是开着的等待单，请确认编号")
+        self.assertEqual(self.tickets()["2"]["status"], "closed")
+
+    def test_close_checks_all_before_closing_any(self):
+        self.reply("关掉 #2、#1")
+        self.assertEqual(self.tickets()["2"]["status"], "open")
+
+    def test_resend(self):
+        self.assertEqual(self.reply("重发").show, "没有没发出去的消息")
+        self.reply("1 A")
+        hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+        r = self.reply("重发")
+        self.assertEqual([s["id"] for s in r.sends], ["out:1"])
+        self.assertEqual(r.show, "重新列出 1 条没发出去的消息")
+
+    def test_main_view_warns_unsent_and_unreadable_relay(self):
+        self.reply("1 A")
+        text = hub.main_view(self.g, now=NOW, relay=None)
+        lines = text.split("\n")
+        self.assertEqual(lines[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
+        self.assertEqual(lines[1], "⚠ 读不到 agent-relay，各线状态不全")
