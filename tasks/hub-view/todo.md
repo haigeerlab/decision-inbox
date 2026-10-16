@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/relay.py`、`decision_inbox/items.py`、`tests/test_relay.py`、`tests/test_items.py`
 
-- [ ] Task 2：零件——时间写法、截断、复制块、第一行推送、「各线」、总览、最后一行计数
+- [x] Task 2：零件——时间写法、截断、复制块、第一行推送、「各线」、总览、最后一行计数
   - 验收：Spec 验收 1（空状态只有三部分）、3（全线停住与「卡在哪见 /flow」，含并列时）、7（刚转达 10 分钟内列、11 分钟不列；多个用「、」，多收件人用「＋」）、8（59 分钟 / 60 分钟 / 25 小时）；复制块三种写法（已定事项 8）；「阻塞：等 X」去空格
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
