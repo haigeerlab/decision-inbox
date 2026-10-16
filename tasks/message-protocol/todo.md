@@ -38,4 +38,5 @@
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/review-conclusion.txt`
 
-- [ ] Checkpoint 3（gate）：返工验收——全部测试全绿、验收 13 对应测试、列出返工改动文件；停下等用户确认
+- [x] Checkpoint 3（gate）：返工验收——全部测试全绿、验收 13 对应测试、列出返工改动文件；停下等用户确认
+  - 记录：82 个测试全绿（连跑 2 次），本模块 33 个；用户 2026-10-16 返工验收通过
