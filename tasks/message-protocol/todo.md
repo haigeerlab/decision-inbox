@@ -12,7 +12,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-user.txt`
 
-- [ ] Task 3：多线事项的适用会话与各线范围
+- [x] Task 3：多线事项的适用会话与各线范围
   - 验收：Spec 验收 4（`scope-missing`、`scope-unknown`、`missing-field:各线范围`，写齐时原样保留）
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`、`tests/fixtures/protocol/wait-user-multiline.txt`

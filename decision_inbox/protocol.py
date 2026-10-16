@@ -38,6 +38,8 @@ _NUM_RE = re.compile(r"#\s*(\d+)")
 _OPTION_RE = re.compile(r"^(推荐\s*)?([A-Z])\s*[：:.、)）]\s*(.*)$")
 _RECOMMEND_RE = re.compile(rf"^推荐\s*{_COLON}?\s*([A-Z])\s*$")
 _CONSEQUENCE_RE = re.compile(rf"^选了会怎样\s*{_COLON}\s*(.*)$")
+_SCOPE_RE = re.compile(rf"^[-*•·]?\s*([^\s：:]+)\s*{_COLON}\s*(.*)$")
+_SESSION_SEP = re.compile(r"[、,，+＋\s]+")
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,8 @@ class Message:
     recommended: str | None = None
     suggested_reply: str | None = None
     fully_stopped: bool | None = None
+    lines_in_scope: tuple[str, ...] = ()
+    scopes: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -188,6 +192,23 @@ def _options(block: str) -> tuple[tuple[Option, ...], str | None]:
     ), recommended
 
 
+def _scopes(block: str) -> dict[str, str]:
+    """各线范围: one 「会话：范围」 entry per line, later lines continue the entry."""
+    scopes: dict[str, list[str]] = {}
+    last = None
+    for raw in block.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        m = _SCOPE_RE.match(line)
+        if m:
+            last = m.group(1)
+            scopes.setdefault(last, []).append(m.group(2).strip())
+        elif last is not None:
+            scopes[last].append(line)
+    return {k: "\n".join(v) for k, v in scopes.items()}
+
+
 def parse(text: str) -> Message:
     tags, end, reply_to, body = _split(text or "")
     kind = "unknown"
@@ -211,6 +232,8 @@ def parse(text: str) -> Message:
     options: tuple[Option, ...] = ()
     recommended = None
     stopped = None
+    in_scope: tuple[str, ...] = ()
+    scopes: dict[str, str] = {}
 
     if kind == "unknown":
         problems.append(Issue("unknown-kind", "认不出消息类型"))
@@ -233,6 +256,18 @@ def parse(text: str) -> Message:
                 hints.append(Issue(f"no-consequence:{o.letter}", f"选项 {o.letter} 没写「选了会怎样」"))
         if options and recommended is None:
             hints.append(Issue("no-recommendation", "提出方没写推荐哪个"))
+        if fields.get("适用会话", "").strip():
+            in_scope = tuple(x for x in _SESSION_SEP.split(fields["适用会话"].strip()) if x)
+            if not fields.get("各线范围", "").strip():
+                problems.append(Issue("missing-field:各线范围", "写了「适用会话」却没写「各线范围」"))
+            else:
+                scopes = _scopes(fields["各线范围"])
+                for name in in_scope:
+                    if not scopes.get(name, "").strip():
+                        problems.append(Issue(f"scope-missing:{name}", f"「各线范围」缺少写给 {name} 的一条"))
+                for name in scopes:
+                    if name not in in_scope:
+                        problems.append(Issue(f"scope-unknown:{name}", f"「各线范围」里的 {name} 不在「适用会话」中"))
     elif kind == "wait-session":
         if not end.present:
             problems.append(Issue("missing-end", "开头缺少「结束：#编号」或「结束：无」"))
@@ -248,4 +283,5 @@ def parse(text: str) -> Message:
     return Message(kind=kind, markers=tuple(markers), ends=end, reply_to=reply_to,
                    fields=fields, item=item, problems=tuple(problems), hints=tuple(hints),
                    options=options, recommended=recommended,
-                   suggested_reply=fields.get("你该回") or None, fully_stopped=stopped)
+                   suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
+                   lines_in_scope=in_scope, scopes=scopes)

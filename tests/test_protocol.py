@@ -147,5 +147,34 @@ class WaitUserTest(unittest.TestCase):
                 self.assertEqual(msg.recommended, "B")
 
 
+class MultilineTest(unittest.TestCase):
+    def test_complete_scopes(self):
+        msg = protocol.parse(fixture("wait-user-multiline.txt"))
+        self.assertTrue(msg.ok, msg.problems)
+        self.assertEqual(msg.lines_in_scope, ("前端", "API"))
+        self.assertEqual(msg.scopes["前端"], "只改类型定义和展示映射，不改接口调用")
+        self.assertEqual(msg.scopes["API"], "改响应字段名并补兼容期旧字段，\n兼容期两周")
+
+    def test_scope_missing(self):
+        text = fixture("wait-user-multiline.txt").replace(
+            "- API：改响应字段名并补兼容期旧字段，\n  兼容期两周\n", "")
+        self.assertIn("scope-missing:API", codes(protocol.parse(text).problems))
+
+    def test_scope_unknown(self):
+        text = fixture("wait-user-multiline.txt").replace(
+            "选项与我的建议：", "- 后台：顺便改报表\n选项与我的建议：")
+        self.assertIn("scope-unknown:后台", codes(protocol.parse(text).problems))
+
+    def test_scope_section_missing(self):
+        base = fixture("wait-user-multiline.txt")
+        text = base[:base.index("各线范围")] + base[base.index("选项与我的建议"):]
+        msg = protocol.parse(text)
+        self.assertIn("missing-field:各线范围", codes(msg.problems))
+
+    def test_single_line_message_has_no_scope(self):
+        msg = protocol.parse(fixture("wait-user.txt"))
+        self.assertEqual((msg.lines_in_scope, msg.scopes), ((), {}))
+
+
 if __name__ == "__main__":
     unittest.main()
