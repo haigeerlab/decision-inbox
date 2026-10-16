@@ -6,6 +6,7 @@ decision-queue, tickets from wait-tickets. Nothing here judges or writes.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import datetime
 
@@ -92,6 +93,35 @@ def _anomalies(assessment) -> list:
     return [s for s in assessment.signals if s.no != 1]
 
 
+_ADVICE = {
+    3: "问 {who} 是否卡住，或让它继续或上抛",
+    4: "打开 {who} 让它恢复",
+    5: "先等它做完这一轮；要插队就去它的会话说明",
+    6: "看挂起原因是否已经解决",
+    7: "看一下这次审查的分歧点",
+    8: "问 {who} 进展，或交负责人跟进",
+    9: "确认旧等待是否还需要，不需要就说「关掉 #{ticket}」",
+    10: "在 Codex 里点开 {who} 让它加载",
+}
+
+
+def _anomaly_row(g: store.Group, signal) -> str:
+    """Signal advice table: who, where it is stuck, what to do."""
+    who = _short(g, signal.sessions[0]) if signal.sessions else "?"
+    if signal.no == 2:
+        target = _short(g, signal.sessions[1])
+        return (f"- {who}：交付了没人接——{target} 已发消息给 {who}，{who} 还没去取。"
+                f"建议：提醒 {who} 去取{target}的交付")
+    found = re.search(r"等待单 #(\d+)", signal.text)
+    advice = _ADVICE[signal.no].format(who=who, ticket=found.group(1) if found else "编号")
+    return f"- {who}：{signal.text}。建议：{advice}"
+
+
+def _anomaly_section(g: store.Group, assessment) -> str | None:
+    rows = [_anomaly_row(g, s) for s in _anomalies(assessment)]
+    return "\n".join(["异常", *rows]) if rows else None
+
+
 def _overview(g: store.Group, now: str, assessment) -> str:
     decide = len(items.pending(g)) + len(_needs_user(g, assessment))
     text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment))}"
@@ -165,5 +195,6 @@ def render(g: store.Group, now: str, assessment, relay=None) -> str:
     """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts."""
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
     head.append(_overview(g, now, assessment))
-    sections = ["\n".join(head), *_cards(g, now, assessment, relay), _footer(g, now)]
-    return "\n\n".join(sections)
+    sections = ["\n".join(head), _anomaly_section(g, assessment), *_cards(g, now, assessment, relay),
+                _footer(g, now)]
+    return "\n\n".join(s for s in sections if s)

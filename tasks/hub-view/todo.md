@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
 
-- [ ] Task 4：异常区与完整主视图
+- [x] Task 4：异常区与完整主视图
   - 验收：Spec 验收 2（与规格样例逐字一致）、9（信号 2～10 各一行按建议表；信号 1 不进异常区、不计入「异常 N」）、11（扫描主视图：不含 agent-relay 消息编号、文件路径）
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`

@@ -295,5 +295,88 @@ class ReviewLineTest(ViewCase):
         self.assertTrue(card(self.render(), no).endswith(f"审查：⚠ 未标审查 · 详情：{no} 详情"))
 
 
+SPEC = Path(__file__).resolve().parent.parent / "spec" / "hub-view.md"
+
+
+def spec_sample() -> str:
+    """The 主视图样例 block of the spec, with its code-block placeholder made a real code block."""
+    text = SPEC.read_text(encoding="utf-8")
+    body = text.split("## 主视图样例", 1)[1].split("```text\n", 1)[1].split("\n```", 1)[0]
+    return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）", "```\n12 A 先接微信支付\n```")
+
+
+class AnomalyTest(ViewCase):
+    def test_each_signal_row(self):
+        signals = [
+            Signal(2, "delivered-not-picked", ("api-codex", "fe-codex"), "交付了没人接：前端 已发消息给 API，API 还没去取（API 在等 前端）"),
+            Signal(3, "silent-stop", ("fe-codex",), "前端 停住 2 小时：当前模块 pay 还有 3 项没勾，也没在等任何人"),
+            Signal(4, "offline-backlog", ("api-codex",), "API 掉线，有 2 条消息送不进去"),
+            Signal(5, "busy-backlog", ("bg-codex",), "后台 已忙 25 分钟，还有 1 条消息在等它"),
+            Signal(6, "suspended-blocks", ("fe-codex",), "前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart"),
+            Signal(7, "rework", ("api-codex",), "API 的审查 R3（spec）已来回 4 轮，超过本组常见水平"),
+            Signal(8, "slow-progress", ("bg-codex",), "后台 的 jobs 已 3 小时没有新进展，明显慢于平时"),
+            Signal(9, "orphan-wait", ("fe-codex",), "前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35"),
+            Signal(10, "codex-backlog", ("api-codex",), "API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟"),
+        ]
+        text = self.render(self.assessment(signals=[Signal(1, "all-waiting", ("fe-codex",), "全线互等")] + signals))
+        section = next(b for b in text.split("\n\n") if b.startswith("异常\n"))
+        self.assertEqual(section.split("\n"), [
+            "异常",
+            "- API：交付了没人接——前端 已发消息给 API，API 还没去取。建议：提醒 API 去取前端的交付",
+            "- 前端：前端 停住 2 小时：当前模块 pay 还有 3 项没勾，也没在等任何人。建议：问 前端 是否卡住，或让它继续或上抛",
+            "- API：API 掉线，有 2 条消息送不进去。建议：打开 API 让它恢复",
+            "- 后台：后台 已忙 25 分钟，还有 1 条消息在等它。建议：先等它做完这一轮；要插队就去它的会话说明",
+            "- 前端：前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart。建议：看挂起原因是否已经解决",
+            "- API：API 的审查 R3（spec）已来回 4 轮，超过本组常见水平。建议：看一下这次审查的分歧点",
+            "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交负责人跟进",
+            "- 前端：前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35。建议：确认旧等待是否还需要，不需要就说「关掉 #31」",
+            "- API：API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟。建议：在 Codex 里点开 API 让它加载",
+        ])
+        self.assertNotIn("全线互等", text)
+        self.assertIn("异常 9", text)
+
+    def test_no_section_without_anomalies(self):
+        self.assertNotIn("异常\n", self.render(self.assessment(signals=[Signal(1, "all-waiting", (), "全线互等")])))
+
+
+class FullViewTest(ViewCase):
+    def build(self):
+        self.relay_ids = iter(range(7001, 7100))
+        for _ in range(3):
+            closed = self.wait("bg-codex", "API", 60)
+            tickets.close_by_user(self.g, closed, None, at=at(30))
+        with self.g.transaction() as tx:
+            while tx.allocate_number() < 8:
+                pass
+        nine = self.ask(SINGLE, sender="api-codex", minutes_ago=20)
+        self.forward(nine, 3)
+        with self.g.transaction() as tx:
+            tx.allocate_number()
+        self.wait("api-codex", "前端", 14)
+        text = SINGLE.replace("C、两种一起接\n", "").replace("你该回：A 先接微信支付", "你该回：先接微信支付")
+        twelve = self.ask(text, minutes_ago=5)
+        self.assertEqual((nine, twelve), (9, 12))
+        lines = {"fe-codex": LineState("needs-user", "等你确认"),
+                 "api-codex": LineState("blocked", "阻塞：等 前端", target="前端", since=at(14)),
+                 "bg-codex": IDLE}
+        signals = [Signal(1, "all-waiting", ("api-codex", "bg-codex", "fe-codex"), "全线互等"),
+                   Signal(2, "delivered-not-picked", ("api-codex", "fe-codex"),
+                          "交付了没人接：前端 已发消息给 API，API 还没去取（API 在等 前端）")]
+        relay = snapshot(fact("fe-codex", since=at(14), detail="permission prompt"))
+        return self.render(self.assessment(lines, signals), relay)
+
+    def test_matches_spec_sample_exactly(self):
+        self.assertMultiLineEqual(self.build(), spec_sample())
+
+    def test_no_relay_ids_or_paths(self):
+        import re
+        text = self.build()
+        for relay_id in range(7001, 7100):
+            self.assertIsNone(re.search(rf"(?<!\d){relay_id}(?!\d)", text), relay_id)
+        self.assertNotIn("/tmp", text)
+        self.assertNotIn(str(store.root_dir()), text)
+        self.assertIsNone(re.search(r"(?<![\w/])/[A-Za-z]", text.replace("/flow", "")))
+
+
 if __name__ == "__main__":
     unittest.main()
