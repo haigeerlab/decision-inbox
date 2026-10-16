@@ -10,7 +10,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录：`python3 -m unittest discover -s tests -v` → Ran 3 tests, OK（2026-10-16）
 
-- [ ] Task 2：根目录、协作组名校验、`store init`
+- [x] Task 2：根目录、协作组名校验、`store init`
   - 验收：Spec 验收 1、2、10（含权限位、重复 init 不改内容与修改时间、非法组名退出码 2 且不建目录）
   - 验证：`python3 -m unittest tests.test_store_group -v`
   - 文件：`decision_inbox/store.py`、`decision_inbox/__main__.py`、`tests/test_store_group.py`
