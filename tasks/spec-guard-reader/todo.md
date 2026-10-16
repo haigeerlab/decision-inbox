@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：按安装记录找脚本
+- [x] Task 1：按安装记录找脚本
   - 验收：Spec 验收 1（用户级；项目级优先）、2（记录文件不存在、没有 spec-guard 条目、脚本不存在各给不同原因）
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/specguard.py`、`tests/test_specguard.py`
