@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 3c1fda08f253 -->
+<!-- spec-guard: review approved 119c3ffc42f6 -->
 # Spec: relay-reader
 
 > 能力图模块 `relay-reader`。需求来源：`docs/requirements-record.md` 第 1.4、4.5、8.1、8.3、8.5、10.2 节，第 12 节第 15 项。
@@ -90,6 +90,7 @@ class AgentFact:
     last_activity_at: str | None
     wake_bound: bool | None
     retired: bool
+    presence_detail: str | None = None   # presence.detail 原文，例如 "permission prompt"；缺失或空串为 None（hub-view 的「等你确认」卡片用）
 
 @dataclass(frozen=True)
 class MessageFact:
@@ -156,7 +157,7 @@ python3 -m unittest discover -s tests -v
 1. 0.6.10 的 `bridge_agents` 原文（含一个有积压的 Claude 身份，带 `oldestAt`）：`relay_status` 为 `ok`；该身份的 `waiting_count`、`waiting_from`、`waiting_ids`、`waiting_oldest_at` 与原文一致。
 2. 显式给出 `relay_version="0.6.1"`：`relay_status` 为 `too-old`，`warnings` 含「agent-relay 需升级到 0.6.10」，所有 Claude 身份的 `waiting_count` 为 `None`。另一份 0.6.10 原文里，某个 Claude 身份 `unread: 2`（广播）却没有 `waiting`、其他身份带 `oldestAt`：判为 `ok`，该身份 `waiting_count` 为 0，不误报过旧。
 3. 没有任何积压、也没有显式版本：`relay_status` 为 `undetermined`；Codex 身份 `waiting_count` 为 0，Claude 身份为 `None`。同一份原文加上 `relay_version="0.6.10"` 后：Claude 身份为 0，`relay_status` 为 `ok`。
-4. 在线状态：`running`、`waiting-input`、`waiting-approval`、`stopped`、`unreachable`、`unknown`、缺省、`something-new` 分别归类为 active、needs-user、needs-user、offline、unreachable、unknown、unknown、unknown；`presence_raw` 保留原值。
+4. 在线状态：`running`、`waiting-input`、`waiting-approval`、`stopped`、`unreachable`、`unknown`、缺省、`something-new` 分别归类为 active、needs-user、needs-user、offline、unreachable、unknown、unknown、unknown；`presence_raw` 保留原值；`presence_detail` 取 `presence.detail`，缺失或空串为 None。
 5. 原文里带 `body`、`preview` 等正文字段：输出对象及其 `repr` 都不含正文内容。
 6. 某个身份缺 `name`：跳过它并给一条警告，其余身份照常；顶层不是合法 JSON 或缺 `agents` 数组：抛 `RelayDataError`。
 7. `bridge_outbox` 原文：每条消息的 `delivery_state`、`acknowledged_at`、`expires_at`、`reply_to`、回复编号与原文一致；`sender` 取调用时给的身份名；`preview` 的内容不出现在输出里。

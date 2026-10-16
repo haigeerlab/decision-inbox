@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 21005f6ad32a -->
+<!-- spec-guard: review approved dd8fd1d17964 -->
 # Spec: decision-queue
 
 > 能力图模块 `decision-queue`。需求来源：`docs/requirements-record.md` 第 3.3.1～3.3.2 节、第 4.1～4.4 节、第 6.1 节第 4 条、第 6.4 节，第 12 节第 7、12 项。
@@ -74,7 +74,7 @@
 
 事项状态：`pending` 待答、`forwarded` 已转达、`picked` 已取走、`acknowledged` 已确认、`closed` 已结束、`superseded` 已取代、`withdrawn` 已撤回。后两种在主视图里合称「已失效」。
 
-快照放在 group-store 的领域 `items`。每个事项记这些内容：编号、发件人身份名、收到时间、原文全文、解析出的要点（来自、要你决定、选项、推荐、是否完全停住、适用会话与各线范围、结束行）、收单时的审查标签、状态与各状态的时间、已发答复的消息编号和收件人。事件类型：`items.received`、`items.returned`、`items.superseded`、`items.withdrawn`、`items.answered`、`items.sent`、`items.delivery`、`items.closed`。
+快照放在 group-store 的领域 `items`。每个事项记这些内容：编号、发件人身份名、收到时间、原文全文、解析出的要点（来自、要你决定、选项、推荐、是否完全停住、适用会话与各线范围、结束行）、收单时的审查标签（含「⚠ 未标审查」时正文里提到审查的原句）、状态与各状态的时间、已发答复的消息编号和收件人。事件类型：`items.received`、`items.returned`、`items.superseded`、`items.withdrawn`、`items.answered`、`items.sent`、`items.delivery`、`items.closed`。
 
 ## 接口约定
 
@@ -100,6 +100,8 @@ items.update_delivery(g, {2950: ("accepted", None)}, at="...")   # 消息编号 
 items.on_resumed(g, message, sender="fe-codex", at="...")        # 【已恢复】结束行里提出方自己的、已转达之后的事项记为已结束；
                                   # 返回这次结束的事项编号；还在待答的事项不受影响（要放弃请用【撤回】）
 items.history(g, item=12)         # 该事项的事件，按先后排序，供 /item
+items.get(g, item=12)             # 按编号取一个事项（带 no），没有返回 None，供 hub-view 的详情
+items.by_status(g, "superseded", "withdrawn")   # 按状态列出事项（带 no），按编号排序，供 hub-view 的刚转达与失效
 ```
 
 - 【用户答复】的文本一律由 message-protocol 的 `format_user_reply`、`format_multiline_replies` 生成，本模块不拼字符串。
