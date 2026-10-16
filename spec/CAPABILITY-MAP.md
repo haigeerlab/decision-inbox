@@ -17,7 +17,7 @@
 | Module id | Responsibility | Depends on |
 |---|---|---|
 | group-store | 插件骨架与协作组状态目录 `~/.decision-inbox/<协作组>/`：状态文件读写、编号分配、会话名册（短名、角色、所属线） | — |
-| relay-reader | 只读解析 agent-relay 的 `bridge_agents`（presence、waiting）与 `bridge_outbox`（投递、确认、回复），转成统一的只读数据；`/item` 需要的 `bridge_wake_status`、`bridge_thread` 留待 query-commands 时返工追加 | — |
+| relay-reader | 只读解析 agent-relay 的 `bridge_agents`（presence、waiting）与 `bridge_outbox`（投递、确认、回复），转成统一的只读数据；`/item`、`/flow` 需要的 `bridge_wake_status`（按消息编号的状态、唤醒记录）留待 query-commands 时返工追加；不接 `bridge_thread`，消息正文不进本插件（用户 2026-10-16 确认） | — |
 | spec-guard-reader | 只读调用各线仓库的 `map_view.py --project <路径> --json`：模块表与停滞数据，核对 schemaVersion；脚本从 `~/.claude/plugins/installed_plugins.json` 里 spec-guard 的 installPath 找，不写死版本路径；没装或找不到时降级为「无能力图」并说明原因，退出码 2／3／4 如实区分；不自己解析能力图和 todo | — |
 | message-protocol | 第 4 节消息约定的解析与校验：消息类型、结束写法、选项写法、多线事项字段、架构审查状态行、「阻塞：等谁交付」报告 | — |
 | review-registry | 审查者登记（哪个会话有审查者、审哪类节点、经用户批准才增改）、审查状态行的显示规则，以及同一审查节点来回的轮数（供信号 7） | group-store, message-protocol |
