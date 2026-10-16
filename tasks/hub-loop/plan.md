@@ -11,7 +11,7 @@
 
 - **领域 `hub` 的结构**：`received`（处理过的 agent-relay 消息编号 → 时间、类型、是否退回）、`outgoing`（`out:<n>` → 收件人、replyTo、类型、关联事项、生成时间、发送编号或失败标记）、`nextOut`、`unknown`（认不出类型的消息编号 → 发件人与全文，供「N 原文」）。只有 `hub.py` 写它。
 - **一次 `receive` 一个事务吗？** 不是。各模块的 `receive` 各自开事务；`hub` 每处理完一条，再开一个事务记 `received` 和要发的消息。中途出错时，已处理的消息已经记账，没处理的下次重交还会处理；同一条不会处理两次，因为先查 `received`。
-- **正文文件**：写到 `<协作组目录>/outgoing/<n>.txt`，写入先落临时文件再改名；`sent` 发成后删除。
+- **正文文件**：写到 `<协作组目录>/outgoing/<n>.txt`，写入先落临时文件再改名；`sent` 发成后保留（协作组里的文件永久保留、不删）。
 - **退回说明**：【等待用户】【撤回】用 decision-queue 的 `return_text`；其他类型按同样写法由 `hub.py` 生成（逐条列问题的中文说明，请补全后重发）。
 - **`reply` 的识别**：一组按顺序匹配的整句正则；都不匹配才交给 `interpret_reply`。显示类分支直接调用 hub-view。
 - **命令行**：沿用 `__main__.py` 的 argparse 写法，新增 `_inbox` 和 `_view`；`view` 的事实获取复用 `_assess` 的做法，读不到 agent-relay 时降级显示。

@@ -23,7 +23,7 @@
 
 - [x] Task 3：要发的消息留存与 `hub.sent`
   - 验收：
-    - Spec 验收 8：答复发成后事项记下发送编号；等用户答复的等待单按理由 3 关掉；正文文件删除；
+    - Spec 验收 8：答复发成后事项记下发送编号；等用户答复的等待单按理由 3 关掉；正文文件保留（规格已改，待复审）；
     - Spec 验收 9（状态部分）：失败的、没记结果的消息留着，`outgoing` 列出它们；不存在的编号抛错。
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`

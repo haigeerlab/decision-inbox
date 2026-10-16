@@ -175,8 +175,8 @@ def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
             doc["outgoing"][out_id]["failed"] = True
             tx.append_event("hub.send-failed", ref=doc["outgoing"][out_id]["item"], actor="hub", data={"id": out_id})
         tx.write_state(DOMAIN, doc)
+    # Body files stay: nothing in a group is ever deleted (spec/group-store.md 关键决策 5).
     for out_id, entry in recorded:
         if entry["kind"] == "answer":
             items.record_sent(g, entry["item"], to=entry["to"], relay_id=entry["relayId"], at=at)
-        (g.path / "outgoing" / f"{out_id.partition(':')[2]}.txt").unlink(missing_ok=True)
     return tickets.close_answered(g, at)

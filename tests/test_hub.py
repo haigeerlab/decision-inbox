@@ -190,13 +190,13 @@ class SentTest(HubCase):
                          [("out:1", "fe-codex", 1201, "answer")])
         self.assertIn("用户原话：1 A", Path(sends[0]["bodyFile"]).read_text(encoding="utf-8"))
 
-    def test_sent_records_relay_id_closes_ticket_and_removes_body(self):
+    def test_sent_records_relay_id_closes_ticket_and_keeps_body(self):
         sends = self.answered()
         closed = hub.sent(self.g, done={"out:1": 3950}, failed=[], at=NOW)
         self.assertEqual(closed, (2,))
         self.assertEqual(items.get(self.g, 1)["sent"][0]["relayId"], 3950)
         self.assertEqual(self.tickets()["2"]["close"], {"reason": 3, "basis": "已转发 #3950", "at": NOW})
-        self.assertFalse(Path(sends[0]["bodyFile"]).exists())
+        self.assertTrue(Path(sends[0]["bodyFile"]).exists())
         self.assertEqual(hub.outgoing(self.g), [])
 
     def test_failed_and_unrecorded_stay(self):
@@ -224,4 +224,4 @@ class SentTest(HubCase):
         r = self.receive(message(1204, "api-codex", "【等待用户】\n结束：无\n"))
         hub.sent(self.g, done={"out:1": 3960}, failed=[], at=NOW)
         self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:1"]["relayId"], 3960)
-        self.assertFalse(Path(r.sends[0]["bodyFile"]).exists())
+        self.assertTrue(Path(r.sends[0]["bodyFile"]).exists())

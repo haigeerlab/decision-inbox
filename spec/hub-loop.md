@@ -45,7 +45,7 @@
    - `hasMore` 为真时，输出提示「确认已读后再读一页」。
 3. **要发的消息存在状态里，不存在临时文件里**：
    - `inbox receive` 和 `inbox reply` 生成的每条要发的消息都记进领域 `hub`，编号写作 `out:<n>`。正文写进协作组目录下的 `outgoing/<n>.txt`，收件枢纽用 `bridge_send` 的 `bodyFile` 原样发出，正文不经过它转写。
-   - `inbox sent --done out:3=3950 --failed out:4` 记结果：发成的记下 agent-relay 编号并删掉正文文件；是答复的，同时调用 decision-queue 的 `record_sent`，再调用 wait-tickets 的 `close_answered`。
+   - `inbox sent --done out:3=3950 --failed out:4` 记结果：发成的记下 agent-relay 编号，正文文件保留（协作组里的文件永久保留、不删，需求第 12 节第 11 项）；是答复的，同时调用 decision-queue 的 `record_sent`，再调用 wait-tickets 的 `close_answered`。
    - 发失败或还没记结果的消息一直留着。主视图最前面显示「⚠ 有 N 条消息没发出去，说「重发」再试」；用户说「重发」时，`inbox reply` 再把它们列一遍。
 4. **`inbox reply` 的识别顺序**（只看整句，不猜）：
 
@@ -157,7 +157,7 @@ python3 -m decision_inbox view <协作组> detail <编号> | waits | closed [日
 5. 【等待其他会话】缺「等什么」：退回说明列出这条问题，不开单。
 6. `reply`：「12 B」生成答复，`replyTo` 为原事项编号；多线事项另给各适用会话一条；对不上的回复返回问题、不发任何消息、事项仍在待答。
 7. `reply`：「12 详情」「看等待」「看已关闭」「看已关闭 2026-10-15」「看失效」「关掉 #5 已经不需要」「关掉 #12」（#12 是事项）各自得到对应的显示或问题。
-8. `sent`：答复发成后事项记下发送编号；等用户答复 #12 的等待单按理由 3 关掉；正文文件删除。
+8. `sent`：答复发成后事项记下发送编号；等用户答复 #12 的等待单按理由 3 关掉；正文文件保留。
 9. `sent` 记为失败的、没记结果的消息留着；`view` 第一行提示没发出去；「重发」再列出它们；不存在的编号退出码 2。
 10. `view --outbox`：投递状态推进到「已取走」「已确认」；`--agents` 读不出时仍显示，第一行写读不到。
 11. `convention`：带 BEGIN/END 标记，含协作组名、两个流程的命令、需求 4.6 的边界和改规则的确认要求。
