@@ -17,6 +17,7 @@ OFFLINE = ("offline", "unreachable")
 PROGRESS_SIGNALS = (3, 6, 7, 8, 9)
 HUB_REMINDER_MINUTES = 30  # spec 已定事项 5
 NOTICES_PER_ROUND = 3      # spec 关键决策 5
+WAKE_GRACE_MINUTES = 5     # one patrol interval before a wake counts as failed (spec 关键决策 3)
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,7 @@ def _wake(ctx: _Context, entry: dict, text: str) -> None:
     tried = ctx.state.get("wakes", {}).get(name)
     if tried is None:
         ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
-    elif _instant(tried["at"]) < _instant(ctx.now):
+    elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
         ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开")
 
 

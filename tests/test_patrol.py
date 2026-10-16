@@ -96,6 +96,13 @@ class WakeTest(PatrolCase):
         alone = self.run_round(10, [hub])
         self.assertNotIn("wake:hub", self.ids(alone))
 
+    def test_back_to_back_catch_up_does_not_cry_unwakeable(self):
+        owner = agent("fe-owner", **STOPPED_OWNER)
+        self.run_round(0, [owner])
+        self.assertEqual(self.ids(self.run_round(0.5, [owner])), [])
+        self.assertEqual(self.ids(self.run_round(4.9, [owner])), [])
+        self.assertEqual(self.ids(self.run_round(5, [owner])), ["notify:unwakeable:fe-owner"])
+
     def test_same_now_twice_is_quiet(self):
         owner = agent("fe-owner", **STOPPED_OWNER)
         self.assertTrue(self.ids(self.run_round(0, [owner])))

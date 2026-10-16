@@ -43,7 +43,8 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/__main__.py`、`tests/test_patrol.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时协作组上用命令行实跑一轮 plan 和 record，记下计划文件和状态变化，然后继续
+- [x] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时协作组上用命令行实跑一轮 plan 和 record，记下计划文件和状态变化，然后继续
+  - 记录（2026-10-16）：`python3 -m unittest discover -s tests -v` → OK。临时协作组实跑：第一轮 plan 出 `wake:fe-owner`（target `local_owner-0001`，文字「【decision-inbox 巡视】你有 2 条消息在等，请查看收件箱后继续。」），退出码 0；record `--done wake:fe-owner` 退出码 0，领域 patrol 记下 wakes.fe-owner，事件 `patrol.run`；马上再跑 plan 没有动作。实跑中发现补跑连跑时会在几秒后就报「叫不醒」，加了 5 分钟宽限（WAKE_GRACE_MINUTES）和对应测试，规格同步修订，待最终验收一并复审
 
 - [ ] Task 6：实测桌面通知与 `bridge_send`
   - 验收：Spec 验收 14。先问用户：建一个一次性任务，发一条测试桌面通知，并给专门的测试身份发一条预警样例消息；结果写进 `spec/patrol.md` 的实测记录
