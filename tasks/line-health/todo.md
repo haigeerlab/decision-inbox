@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：输入整理、进度快照与常量
+- [x] Task 1：输入整理、进度快照与常量
   - 验收：Spec 验收 11（沿用／更新变化时间、首次为 None、可 JSON 序列化）、12（常量数值与 Spec 表一致；`assess` 前后 group-store 文件逐字节不变）
   - 验证：`python3 -m unittest discover -s tests -p test_health.py -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`
