@@ -18,17 +18,17 @@
 |---|---|---|
 | group-store | 插件骨架与协作组状态目录 `~/.decision-inbox/<协作组>/`：状态文件读写、编号分配、会话名册（短名、角色、所属线） | — |
 | relay-reader | 只读解析 agent-relay 的 `bridge_agents`（presence、waiting）与 `bridge_outbox`（投递、确认、回复），转成统一的只读数据；`/item` 需要的 `bridge_wake_status`、`bridge_thread` 留待 query-commands 时返工追加 | — |
-| spec-guard-reader | 只读调用各线仓库的 `spec-guard map --json`：模块表与状态查询（含每模块最后勾选时间、第二步的卡点信号），核对 schemaVersion；未启用 spec-guard 时如实降级为「无能力图」；不自己解析能力图和 todo | — |
+| spec-guard-reader | 只读调用各线仓库的 `map_view.py --project <路径> --json`：模块表与停滞数据，核对 schemaVersion；脚本从 `~/.claude/plugins/installed_plugins.json` 里 spec-guard 的 installPath 找，不写死版本路径；没装或找不到时降级为「无能力图」并说明原因，退出码 2／3／4 如实区分；不自己解析能力图和 todo | — |
 | message-protocol | 第 4 节消息约定的解析与校验：消息类型、结束写法、选项写法、多线事项字段、架构审查状态行、「阻塞：等谁交付」报告 | — |
 | review-registry | 审查者登记（哪个会话有审查者、审哪类节点、经用户批准才增改）、审查状态行的显示规则，以及同一审查节点来回的轮数（供信号 7） | group-store, message-protocol |
 | decision-queue | 待答表：收单校验与退回（含多线事项缺各线范围）、有效性标记、排序、用户回复解析、答复转达（含多线分发） | group-store, message-protocol, review-registry |
 | wait-tickets | 等待单：登记、四种理由关单、今天已关闭区、等待时长与对方离线标记 | group-store, message-protocol, relay-reader, decision-queue |
-| line-health | 把 agent-relay、spec-guard 与本插件自己的事实组合成各线状态（统一状态词）与需求 8.1 的卡住信号，纯只读；信号 3「悄悄停下」取自 spec-guard 的状态查询，信号 7「反复返工」由本插件的审查结论统计 | relay-reader, spec-guard-reader, review-registry, decision-queue, wait-tickets |
+| line-health | 把 agent-relay、spec-guard 与本插件自己的事实组合成各线状态（统一状态词）与需求 8.1 的卡住信号，纯只读；有没有进展看本次已勾数与上次快照（由调用方传入）的对比，加上 agent-relay 的会话活动，不只凭 lastTickAt；history 为 unavailable／shallow 时不做时间类判断；信号 7「反复返工」由本插件的审查结论统计 | relay-reader, spec-guard-reader, review-registry, decision-queue, wait-tickets |
 | hub-view | 收件枢纽主视图（需求第 6 节固定顺序与卡片）：「要你去原会话亲自确认」算进「等你决定」并排第一；第一行显示全线停住推送；「详情 / 看等待 / 看已关闭 / 看失效」展开 | review-registry, decision-queue, wait-tickets, line-health |
 | query-commands | 只读查询 `/lines`、`/flow`、`/item`；`/flow` 顺着等待链找源头、按需求第 7 节归类并写明谁来做什么 | decision-queue, wait-tickets, line-health |
-| map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，叠加审查列（架构审查状态，来自 review-registry）、负责人、跨线归属、外部等待和收件箱里等你决定的事项；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, line-health |
+| map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，不改它给的模块状态；「Spec/Plan 评审」列取 spec-guard、「架构审查」列取 review-registry，不共用「审查」一词；外部等待写进模块备注；叠加负责人、跨线归属和收件箱里等你决定的事项；未推送数显示在该线表头；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, line-health |
 | stop-hook | 停止钩子，只管协作义务：未回的请求、没抛出的等待、被挡住没报「阻塞：等谁交付」时拦下；不判断「还有已批准任务」（归 spec-guard，由巡视发现）；Codex 与 Claude 桌面版工作会话 | message-protocol, relay-reader, wait-tickets |
-| patrol | 巡视：定时任务跑信号检测；自动叫醒已停止的 Claude 会话（需求 13.2 的例外），叫不醒再通知；全线停住时主动推送；进度预警先给负责人、未处理再给用户；收件枢纽超时提醒 | group-store, line-health |
+| patrol | 巡视：定时任务跑信号检测，每次记下各模块已勾数快照供下次对比；自动叫醒已停止的 Claude 会话（需求 13.2 的例外），叫不醒再通知；全线停住时主动推送；进度预警先给负责人、未处理再给用户；收件枢纽超时提醒 | group-store, line-health |
 | onboarding | 一条命令接入与卸载：写约定块（第 4、5 节规则、负责人模式标签、阻塞报告），装停止钩子并提示 Codex 信任，录入审查者登记 | group-store, message-protocol, review-registry, stop-hook |
 
 Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → onboarding
@@ -77,6 +77,7 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 - 2026-10-16 按需求第 13 节再调整（用户确认）：stop-hook 只管协作义务、去掉对 spec-guard-reader 的依赖；`/flow` 加源头诊断；hub-view 把「要你去原会话亲自确认」算进「等你决定」；patrol 加全线停住推送；新增「外部依赖」一节。
 - 开发顺序：spec-guard-reader 挪到 wait-tickets 之后，给 spec-guard 定稿 JSON 留出时间。
 - 在 spec-guard 的 JSON 契约定稿前，不写任何解析能力图或 todo 的代码。
+- 2026-10-16 按需求第 7 节「按 spec-guard 实际接口调整」五条再修订（用户确认）：spec-guard-reader 改正命令名并按安装记录找脚本；map-view 分「Spec/Plan 评审」「架构审查」两列、不改模块状态、未推送显示在线表头；line-health 按已勾数快照对比判断进展；patrol 记快照。group-store 不受影响（新领域即可）。
 - 2026-10-16 按 spec-guard-monitor 的核对意见再修订（用户确认）：信号 7 改由 review-registry 统计，line-health 增加对 review-registry 的依赖；map-view 明确叠加审查列；给 spec-guard 的状态查询需求去掉「审查轮数」。
 
 ---
