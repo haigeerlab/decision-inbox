@@ -141,5 +141,51 @@ class ReasonThreeFourTest(TicketsCase):
                     tickets.close_by_user(self.g, ticket=bad, reason=None, at=SENT)
 
 
+def snapshot(state="stopped", count=3, oldest="2026-10-16T04:30:00.000Z"):
+    agent = {"name": "api-codex", "host": {"app": "codex", "sessionId": "t", "verified": False},
+             "unread": count, "lastActivity": oldest, "presence": {"state": state}, "wake": None}
+    if count:
+        agent["waiting"] = {"count": count, "from": ["fe-codex"], "ids": [1], "oldestAt": oldest}
+    import json
+    return relay.parse_agents(json.dumps({"count": 1, "agents": [agent]}))
+
+
+class MarksTest(TicketsCase):
+    def view(self, now, relay_snapshot=None):
+        views = tickets.open_tickets(self.g, now=now, relay=relay_snapshot)
+        self.assertEqual(len(views), 1)
+        return views[0]
+
+    def test_age_marks_use_sent_time(self):
+        self.receive(wait_session(), sent_at=SENT)
+        self.assertEqual(self.view("2026-10-16T05:14:59Z").marks, ())
+        v = self.view("2026-10-16T13:15:00+08:00")
+        self.assertEqual((v.minutes, v.marks), (15, ("waited",)))
+        self.assertIn("⚠ 已等 15 分钟", v.notes)
+        v = self.view("2026-10-16T06:00:00Z")
+        self.assertEqual(v.marks, ("waited", "maybe-stuck"))
+        self.assertTrue(any("前端 在等 API" in n for n in v.notes))
+
+    def test_offline_is_immediate(self):
+        self.receive(wait_session(), sent_at=SENT)
+        v = self.view("2026-10-16T05:01:00Z", snapshot())
+        self.assertEqual(v.marks, ("offline",))
+        note = [n for n in v.notes if "离线" in n][0]
+        self.assertIn("3 条", note)
+        self.assertIn("12:30", note)
+        self.assertEqual(self.view("2026-10-16T05:01:00Z").marks, ())
+        self.assertEqual(self.view("2026-10-16T05:01:00Z", snapshot(state="running")).marks, ())
+        self.assertEqual(self.view("2026-10-16T05:01:00Z", snapshot(state="unreachable")).marks, ("offline",))
+
+    def test_unknown_target_never_offline(self):
+        self.receive(wait_session(target="后台老王"), sent_at=SENT)
+        self.assertEqual(self.view("2026-10-16T05:01:00Z", snapshot()).marks, ())
+
+    def test_closed_tickets_are_not_listed(self):
+        no = self.receive(wait_session()).opened
+        tickets.close_by_user(self.g, ticket=no, reason=None, at=SENT)
+        self.assertEqual(tickets.open_tickets(self.g, now=SENT), [])
+
+
 if __name__ == "__main__":
     unittest.main()

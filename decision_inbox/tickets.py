@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from decision_inbox import protocol, store
 from decision_inbox.protocol import Issue
@@ -15,6 +16,10 @@ from decision_inbox.protocol import Issue
 DOMAIN = "tickets"
 USER_TARGETS = ("用户", "收件枢纽")
 _NUM_RE = re.compile(r"#\s*(\d+)")
+# Requirement 4.5 fixed fallback thresholds, in minutes.
+WAITED_MINUTES = 15
+STUCK_MINUTES = 60
+OFFLINE = ("offline", "unreachable")
 
 
 @dataclass(frozen=True)
@@ -117,3 +122,52 @@ def close_by_user(g: store.Group, ticket: int, reason: str | None, at: str) -> N
             raise ValueError(f"#{ticket} is not an open wait ticket")
         _close(tx, doc, ticket, 4, (reason or "").strip() or "用户关闭", at, "user")
         tx.write_state(DOMAIN, doc)
+
+
+@dataclass(frozen=True)
+class TicketView:
+    no: int
+    waiter: str
+    target: str
+    what: str
+    minutes: int
+    marks: tuple[str, ...]
+    notes: tuple[str, ...]
+
+
+def _instant(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _short(g: store.Group, relay_name: str) -> str:
+    return (store.find_session(g, relay_name=relay_name) or {}).get("shortName", relay_name)
+
+
+def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
+    """Open tickets with the requirement 4.5 marks; `relay` is a relay-reader AgentsSnapshot or None."""
+    views = []
+    moment = _instant(now)
+    for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
+        if t["status"] != "open":
+            continue
+        minutes = int((moment - _instant(t["sentAt"])).total_seconds() // 60)
+        waiter = _short(g, t["waiter"])
+        marks, notes = [], []
+        fact = relay.agents.get(t["targetRelay"]) if relay is not None and t["targetRelay"] else None
+        if fact is not None and fact.presence in OFFLINE:
+            marks.append("offline")
+            if fact.waiting_count and fact.waiting_oldest_at:
+                oldest = _instant(fact.waiting_oldest_at).astimezone().strftime("%H:%M")
+                notes.append(f"⚠ 对方离线：{t['target']} 离线，有 {fact.waiting_count} 条消息送不进去，"
+                             f"最早一条是 {oldest} 发的")
+            else:
+                notes.append(f"⚠ 对方离线：{t['target']} 离线")
+        if minutes >= WAITED_MINUTES:
+            marks.append("waited")
+            notes.append(f"⚠ 已等 {minutes} 分钟")
+        if minutes >= STUCK_MINUTES:
+            marks.append("maybe-stuck")
+            notes.append(f"可能卡住：{waiter} 在等 {t['target']} 的「{t['what']}」，"
+                         f"请看一下 {t['target']} 是否已完成却没通知 {waiter}")
+        views.append(TicketView(int(key), t["waiter"], t["target"], t["what"], minutes, tuple(marks), tuple(notes)))
+    return sorted(views, key=lambda v: v.no)
