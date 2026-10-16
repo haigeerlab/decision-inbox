@@ -302,3 +302,10 @@ class ParseInboxTest(unittest.TestCase):
         for text in ("not json", "[]", '{"agent": "x"}', '{"messages": {}}'):
             with self.assertRaises(relay.RelayDataError):
                 relay.parse_inbox(text)
+
+    def test_real_0_7_0_page(self):
+        inbox = relay.parse_inbox(fixture("real-inbox.json"))   # bridge_inbox, agent-relay 0.7.0, 2026-10-16
+        m = inbox.messages[0]
+        self.assertEqual((inbox.agent, m.id, m.sender, m.expects_reply, m.truncated), ("di-hub-probe", 3982, "di-dev-probe", True, False))
+        self.assertTrue(m.body.startswith("【等待用户】\n结束：无"))
+        self.assertEqual(inbox.warnings, ())

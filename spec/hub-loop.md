@@ -63,7 +63,7 @@
    - 答复发给事项提出方时，`replyTo` 填原事项的 agent-relay 编号。多线事项发给各适用会话的几条不填 `replyTo`。
    - 答复、关单之后，输出最后附上新的主视图，收件枢纽一并显示。
 5. **`view` 先更新投递进度再显示**：
-   - 给了 `--outbox`（收件枢纽自己的 `bridge_outbox` 原文）时，先调用 decision-queue 的 `update_delivery`，把投递状态推到「已取走」「已确认」。
+   - 给了 `--outbox`（收件枢纽自己的 `bridge_outbox` 原文，读时带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）时，先调用 decision-queue 的 `update_delivery`，把投递状态推到「已取走」「已确认」。
    - 读不到 agent-relay 的文件时照样显示，第一行写「⚠ 读不到 agent-relay，各线状态不全」。
 6. **约定块**：`inbox convention <协作组>` 打印收件枢纽会话的约定块，用 `<!-- BEGIN decision-inbox hub -->` 和 `<!-- END decision-inbox hub -->` 包住。写进哪个文件、怎样替换，由 onboarding 负责。约定块写这几件事：
    - 被叫醒或收到 agent-relay 提醒时：`bridge_inbox` → 写文件 → `inbox receive` → 按输出发消息、`inbox sent`、`bridge_ack` → `view`，把主视图显示给用户；
@@ -164,9 +164,27 @@ python3 -m decision_inbox view <协作组> detail <编号> | waits | closed [日
 12. 领域 `hub` 只由 `hub.py` 写；原有子命令和测试不受影响。
 13. 实测：按测试策略的实测跑通一轮，记录写进本规格的「实测记录」。
 
+## 实测记录
+
+2026-10-17 00:04–00:06（用户同意后做），agent-relay 0.7.0。本会话登记两个测试身份 `di-hub-probe`（收件枢纽）、`di-dev-probe`（开发线），都不绑定唤醒；scratchpad 里建临时协作组 `probe-hub`。
+
+| 步骤 | 结果 |
+|---|---|
+| `di-dev-probe` 用 `bodyFile` 发【等待用户】给 `di-hub-probe` | 消息 3982 |
+| `bridge_inbox` 原样写入 `io/inbox.json`，`inbox receive` | 退出码 0；入表为 #1，存下的原文与发出的正文一字不差；`ack` 为 [3982]；提示「选项 C 没写『选了会怎样』」只报一次 |
+| `bridge_ack` 3982 | 已确认，剩余未读 0 |
+| 用户原话「1 A」写入 `io/said.txt`，`inbox reply` | 生成 `out:1`，收件人 `di-dev-probe`，`replyTo` 3982 |
+| `bridge_send` 用 `bodyFile` 和 `replyTo` 发出 | 消息 3983；`di-dev-probe` 收到的正文与文件逐字一致（70 字），`replyTo` 为 3982 |
+| `inbox sent --done out:1=3983` | 退出码 0；事项记下发送编号 3983 |
+| `di-dev-probe` 确认已读后，读 `bridge_outbox` 写入 `io/outbox.json`，`view --outbox` | 事项状态推进到 `acknowledged`；`store show` 一致性正常 |
+
+实测发现：`bridge_outbox` 默认只列对方还没确认的消息，对方一确认就不再列出，事项永远到不了「已确认」。约定块改为读发件箱时带 `includeAcknowledged: true`，带上后 3983 连同 `acknowledgedAt` 列出。真实的 `bridge_inbox` 返回存为样例 `tests/fixtures/relay/real-inbox.json`，`parse_inbox` 解析无警告。
+
+两个测试身份仍登记着，退役命令交给用户执行。
+
 ## 假设
 
-1. `bridge_inbox` 返回 `{agent, messages: [...], hasMore, ...}`，每条消息有 `id`、`fromAgent`、`toAgent`、`body`、`createdAt`、`replyTo`、`expectsReply`，正文没读全时带 `bodyTruncated` 和 `nextOffset`（读自 0.7.0 源码，实测时核对）。
+1. `bridge_inbox` 返回 `{agent, messages: [...], hasMore, ...}`，每条消息有 `id`、`fromAgent`、`toAgent`、`body`、`createdAt`、`replyTo`、`expectsReply`，正文没读全时带 `bodyTruncated` 和 `nextOffset`（读自 0.7.0 源码；2026-10-17 实测核对一致，另有 `count`、`totalUnread`，本模块不用）。
 2. `bridge_send` 的 `bodyFile` 只接受本人拥有的普通文件、最大 256 KiB；协作组目录在用户主目录下，满足条件。
 3. 事项、等待单共用一套编号，所以「关掉 #N」能分清 N 是事项还是等待单。
 

@@ -281,7 +281,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N …`，发成的写在 --done 后，失败的写在 --failed 后。
 5. 对输出 `ack` 里的每个编号调用 `bridge_ack`。`unread` 里的消息正文没读全：用 `bridge_inbox` 把 maxChars 调大（最多 400000）重读，再从第 1 步做。
 6. 输出 `more` 为真时，从第 1 步再读一页。
-7. 用 `bridge_agents` 和 `bridge_outbox` 读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
+7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
    `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
    把输出的主视图和第 2 步输出的 `notes` 原样显示给用户。
 

@@ -333,7 +333,7 @@ class ConventionTest(HubCase):
                        "bridge_inbox", "python3 -m decision_inbox inbox receive demo --inbox /abs/io/inbox.json",
                        "bodyFile", "replyTo", "inbox sent demo", "bridge_ack",
                        "python3 -m decision_inbox view demo --agents /abs/io/agents.json --outbox /abs/io/outbox.json",
-                       "bridge_agents", "/abs/io/said.txt",
+                       "bridge_agents", "/abs/io/said.txt", "includeAcknowledged: true",
                        "python3 -m decision_inbox inbox reply demo --text-file /abs/io/said.txt --agents /abs/io/agents.json",
                        "X 称", "原会话", "不替用户决定", "不改写选项", "不补后果", "不改任何项目的文件",
                        "以后", "先向用户确认收件人", "一字不改", "maxChars"):
