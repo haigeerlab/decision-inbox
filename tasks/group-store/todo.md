@@ -2,12 +2,13 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：插件骨架与包级静态检查
+- [x] Task 1：插件骨架与包级静态检查
   - 验收：两份清单是合法 JSON，`name` 都是 `decision-inbox`、版本一致；`decision_inbox/` 只 import 标准库；代码里对状态文件没有 `unlink`／`rmtree`／`truncate`（Spec 验收 11、12）
   - 验证：`python3 -m unittest tests.test_package -v`
   - 文件：`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、`decision_inbox/__init__.py`、`decision_inbox/__main__.py`、`tests/helpers.py`、`tests/test_package.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 3 tests, OK（2026-10-16）
 
 - [ ] Task 2：根目录、协作组名校验、`store init`
   - 验收：Spec 验收 1、2、10（含权限位、重复 init 不改内容与修改时间、非法组名退出码 2 且不建目录）
