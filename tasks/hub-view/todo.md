@@ -34,4 +34,5 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
 
-- [ ] Checkpoint 2（gate）：模块最终验收——全部测试全绿、11 条验收标准逐条对应测试、贴出完整样例输出、列出实际改动文件、给出两份上游规格的修订内容；停下等用户确认
+- [x] Checkpoint 2（gate）：模块最终验收——全部测试全绿、11 条验收标准逐条对应测试、贴出完整样例输出、列出实际改动文件、给出两份上游规格的修订内容；停下等用户确认
+  - 记录：222 个测试全绿（连跑 2 次），本模块 35 个；用户 2026-10-16 验收通过，批准 relay-reader、decision-queue 规格修订；「你该回」开头的猜测编号按用户决定去掉，hub-view 规格已定事项 8 相应修订（待复审）

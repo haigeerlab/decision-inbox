@@ -41,7 +41,8 @@ def clip(text: str, limit: int) -> str:
 
 
 def copy_line(no: int, letter: str, reply: str | None) -> str:
-    """Decided format 8: never repeat the letter the reply already starts with."""
+    """Decided format 8: drop a guessed leading number, never repeat the letter the reply starts with."""
+    reply = re.sub(r"^\d+\s+", "", reply or "")
     if not reply:
         return f"{no} {letter}"
     if reply.startswith(letter) and reply[len(letter):len(letter) + 1] in ("", " ", ":", "："):

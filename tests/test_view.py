@@ -84,6 +84,12 @@ class PartsTest(unittest.TestCase):
         self.assertEqual(view.copy_line(12, "A", None), "12 A")
         self.assertEqual(view.copy_line(12, "A", "A"), "12 A")
 
+    def test_copy_line_drops_leading_number(self):
+        self.assertEqual(view.copy_line(15, "A", "12 A 先接微信支付"), "15 A 先接微信支付")
+        self.assertEqual(view.copy_line(15, "A", "12 先接微信支付"), "15 A 先接微信支付")
+        self.assertEqual(view.copy_line(15, "A", "12  A"), "15 A")
+        self.assertEqual(view.copy_line(15, "A", "12A 先接"), "15 A 12A 先接")
+
 
 class EmptyAndHeaderTest(ViewCase):
     def test_empty_state_has_three_parts(self):
@@ -205,6 +211,11 @@ class NeedsUserCardTest(ViewCase):
 
 
 class ItemCardTest(ViewCase):
+    def test_reply_with_guessed_number(self):
+        raw = (PROTO / "wait-user.txt").read_text(encoding="utf-8")  # 你该回：12 A 先接微信支付
+        no = self.ask(raw)
+        self.assertIn(f"```\n{no} A 先接微信支付\n```", card(self.render(), no))
+
     def test_recommended_card(self):
         no = self.ask(SINGLE)
         self.assertEqual(card(self.render(), no), "\n".join([
