@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 759eeb114b44 -->
+<!-- spec-guard: review approved e141dd29997e -->
 # Spec: line-health
 
 > 能力图模块 `line-health`。需求来源：`docs/requirements-record.md` 第 6.1 节第 1 条、第 7.1 节 `/lines`、第 7 节「按 spec-guard 实际接口调整」第 3 条、第 8.1 节、第 12 节第 3、14 项、第 13 节。
@@ -33,7 +33,9 @@
 4. **干活中**：最近有活动或有进展（见关键决策 2）。
 5. **停住 N 小时**：没在干活，手上还有已批准、没勾完的任务，又没在等任何人。
 6. **已结项（空闲）**：没有在等的单、没有待答事项，spec-guard 也显示它没有要做的模块了。
-7. **N 小时无活动**：以上都判断不了时的兜底，不写「未知」。
+7. **N 小时无活动**：以上都判断不了时的兜底，不写「未知」。agent-relay 里完全没有这个会话的数据、算不出 N 时，写「无活动记录（agent-relay 没有它的数据）」。
+
+「停住」和「无活动」里的时长不到 1 小时时用分钟写，例如「停住 40 分钟」「40 分钟无活动」（需求第 6.1 节「N 小时/分钟无活动」）；满 1 小时按小时向下取整。
 
 主视图（hub-view）可以用短写，例如「等API」，意思和这里完全一致。
 
@@ -88,7 +90,8 @@ from decision_inbox import health
 result = health.assess(g, now="...", relay=agents_snapshot, maps={"fe-codex": read_result},
                        previous=previous_snapshot_or_None)
 
-result.lines["fe-codex"]       # LineState(word="阻塞", text="阻塞：等 API", target="API", item=None, hours=None, since="...")
+result.lines["fe-codex"]       # LineState(word="blocked", text="阻塞：等 API", target="API", item=None, since="...")
+                               # since：等待／停住／无活动从什么时候算起（带时区 ISO 8601），没有为 None；时长已写进 text
 result.signals                 # (Signal(no=1..10, code="all-waiting", sessions=("fe-codex", ...), text="..."), ...)
 result.snapshot                # 新的进度快照（dict，可直接作为 JSON 保存），交给 patrol 保存
 ```

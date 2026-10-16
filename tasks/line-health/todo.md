@@ -25,4 +25,5 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`
 
-- [ ] Checkpoint 2（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+- [x] Checkpoint 2（gate）：模块最终验收——全部测试全绿、12 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认
+  - 记录：184 个测试全绿（连跑 2 次），本模块 24 个；用户 2026-10-16 验收通过，并批准规格修订（分钟写法、无数据写法、LineState.since）
