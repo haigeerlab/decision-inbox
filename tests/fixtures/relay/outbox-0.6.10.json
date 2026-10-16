@@ -1,0 +1,19 @@
+{
+  "agent": "hub-claude",
+  "totalUnacknowledged": 2,
+  "hasMore": false,
+  "entries": [
+    {"id": 120, "toAgent": "owner-claude", "threadId": "t-1", "createdAt": "2026-10-16T05:01:00.000Z",
+     "preview": "SECRET-PREVIEW-120", "bodyLength": 340, "acknowledgedAt": null,
+     "wake": {"state": "pending", "detail": "recipient stopped", "pendingReason": "offline"},
+     "recipient": "active", "deliveryState": "queued", "expiresAt": "2026-10-17T05:01:00.000Z",
+     "replyTo": 109, "replies": []},
+    {"id": 118, "toAgent": "fe-codex", "threadId": null, "createdAt": "2026-10-16T04:50:00.000Z",
+     "preview": "SECRET-PREVIEW-118", "bodyLength": 80, "acknowledgedAt": "2026-10-16T04:55:00.000Z",
+     "wake": {"state": "acknowledged", "detail": ""},
+     "recipient": "active", "deliveryState": "accepted", "expiresAt": null,
+     "replyTo": null, "replies": [119, 121]},
+    {"toAgent": "api-codex", "createdAt": "2026-10-16T04:00:00.000Z", "preview": "SECRET-PREVIEW-X",
+     "deliveryState": "failed", "replies": []}
+  ]
+}

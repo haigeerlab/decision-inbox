@@ -113,6 +113,41 @@ class VersionTest(unittest.TestCase):
         self.assertTrue(any("版本号看不懂" in w for w in snap.warnings))
 
 
+class ParseOutboxTest(unittest.TestCase):
+    def test_delivery_facts(self):
+        out = relay.parse_outbox(fixture("outbox-0.6.10.json"), sender="hub-claude")
+        self.assertEqual(out.sender, "hub-claude")
+        self.assertEqual([m.id for m in out.messages], [120, 118])
+        queued, accepted = out.messages
+        self.assertEqual(queued.sender, "hub-claude")
+        self.assertEqual(queued.recipient, "owner-claude")
+        self.assertEqual(queued.sent_at, "2026-10-16T05:01:00.000Z")
+        self.assertEqual(queued.delivery_state, "queued")
+        self.assertIsNone(queued.acknowledged_at)
+        self.assertEqual(queued.expires_at, "2026-10-17T05:01:00.000Z")
+        self.assertEqual(queued.reply_to, 109)
+        self.assertEqual(queued.reply_ids, ())
+        self.assertEqual(accepted.delivery_state, "accepted")
+        self.assertEqual(accepted.acknowledged_at, "2026-10-16T04:55:00.000Z")
+        self.assertIsNone(accepted.expires_at)
+        self.assertEqual(accepted.reply_ids, (119, 121))
+
+    def test_preview_never_reaches_output(self):
+        out = relay.parse_outbox(fixture("outbox-0.6.10.json"), sender="hub-claude")
+        self.assertNotIn("SECRET", repr(out))
+
+    def test_entry_without_id_skipped_with_warning(self):
+        out = relay.parse_outbox(fixture("outbox-0.6.10.json"), sender="hub-claude")
+        self.assertEqual(len(out.messages), 2)
+        self.assertTrue(any("id" in w for w in out.warnings))
+
+    def test_structural_errors(self):
+        for bad in ("nope", '{"agent": "x"}', '{"entries": 3}'):
+            with self.subTest(bad=bad):
+                with self.assertRaises(relay.RelayDataError):
+                    relay.parse_outbox(bad, sender="x")
+
+
 class StaticScanTest(unittest.TestCase):
     def test_no_network_or_subprocess_imports(self):
         banned = {"socket", "subprocess", "urllib", "http"}

@@ -12,12 +12,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/agents-empty.json`
 
-- [ ] Task 3：`parse_outbox`
+- [x] Task 3：`parse_outbox`
   - 验收：Spec 验收 7；`preview` 内容不出现在输出；缺 entries 数组抛 RelayDataError；缺 id 的条目跳过并警告
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`、`tests/fixtures/relay/outbox-0.6.10.json`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 46 tests, OK（2026-10-16）
 
 - [ ] Checkpoint 2（gate）：停下请用户升级本机 agent-relay 到 0.6.10，并允许调用 bridge_agents 与 bridge_outbox 采集原文
 

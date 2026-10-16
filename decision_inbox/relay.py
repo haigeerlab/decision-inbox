@@ -154,3 +154,26 @@ def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
             retired=retired,
         )
     return AgentsSnapshot(relay_status=status, agents=agents, warnings=tuple(warnings))
+
+
+def parse_outbox(text: str, sender: str) -> Outbox:
+    """bridge_outbox output for `sender`; previews and bodies are dropped."""
+    raw = _load(text, "entries", "bridge_outbox")
+    warnings: list[str] = []
+    messages: list[MessageFact] = []
+    for e in raw:
+        if not isinstance(e, dict) or _int_or_none(e.get("id")) is None:
+            warnings.append("bridge_outbox 有一条记录缺少 id，已跳过")
+            continue
+        messages.append(MessageFact(
+            id=e["id"],
+            sender=sender,
+            recipient=_str_or_none(e.get("toAgent")) or "",
+            sent_at=_str_or_none(e.get("createdAt")),
+            delivery_state=_str_or_none(e.get("deliveryState")),
+            acknowledged_at=_str_or_none(e.get("acknowledgedAt")),
+            expires_at=_str_or_none(e.get("expiresAt")),
+            reply_ids=tuple(x for x in e.get("replies") or [] if _int_or_none(x) is not None),
+            reply_to=_int_or_none(e.get("replyTo")),
+        ))
+    return Outbox(sender=sender, messages=tuple(messages), warnings=tuple(warnings))
