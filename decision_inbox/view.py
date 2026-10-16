@@ -35,7 +35,7 @@ def ago(now: str, then: str) -> str:
     return f"{minutes // (24 * 60)} 天前"
 
 
-def truncate(text: str, limit: int) -> str:
+def clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
@@ -43,7 +43,7 @@ def copy_line(no: int, letter: str, reply: str | None) -> str:
     """Decided format 8: never repeat the letter the reply already starts with."""
     if not reply:
         return f"{no} {letter}"
-    if reply.startswith(letter) and reply[len(letter):len(letter) + 1] in (" ", ":", "："):
+    if reply.startswith(letter) and reply[len(letter):len(letter) + 1] in ("", " ", ":", "："):
         return f"{no} {reply}"
     return f"{no} {letter} {reply}"
 
@@ -110,9 +110,60 @@ def _footer(g: store.Group, now: str) -> str:
     return f"等待中 {count['open']} 单 · 已失效 {invalid} 项 · 今天已关 {count['closed_today']} 单"
 
 
+def _confirm_card(g: store.Group, now: str, relay_name: str, relay) -> str:
+    """Decided format 4: a host permission prompt waiting in the session itself."""
+    short = _short(g, relay_name)
+    fact = relay.agents.get(relay_name) if relay is not None else None
+    title = f"━━ 去原会话确认 · {short}"
+    if fact is not None and fact.presence_since:
+        title += f" · {ago(now, fact.presence_since)}"
+    detail = f"（{fact.presence_detail}）" if fact is not None and fact.presence_detail else ""
+    return f"{title}\n要你做：打开「{short}」会话，确认它弹出的请求{detail}"
+
+
+def _source(g: store.Group, it: dict) -> str:
+    return f"多线：{'＋'.join(it['lines'])}" if it["multi"] else _short(g, it["sender"])
+
+
+def _review_lines(it: dict) -> list[str]:
+    review = it["review"]
+    label = f"**{review['text']}**" if review.get("highlight") else review["text"]
+    out = [f"审查：{label} · 详情：{it['no']} 详情"]
+    if review.get("warn"):
+        out += [f"  正文提到：{m}" for m in review.get("mentions", [])]
+    return out
+
+
+def _item_card(g: store.Group, now: str, it: dict) -> str:
+    no = it["no"]
+    topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
+    title = f"━━ {no} · {_source(g, it)} · {topic} · {ago(now, it['receivedAt'])}"
+    if it["blocks"]:
+        title += f" · 挡住 {it['blocks']} 条线"
+    out = [title, f"要你决定：{it['decide']}"]
+    options = it["options"]
+    rec = next((o for o in options if o["letter"] == it["recommended"]), None)
+    if rec is not None:
+        options = [rec] + [o for o in options if o is not rec]
+    for o in options:
+        first = clip(o["text"].split("\n")[0], OPTION_CHARS)
+        out.append(f"推荐 {o['letter']}：{first}" if o is rec else f"{o['letter']}：{first}")
+        out.append(f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}")
+        if o is rec:
+            out += ["```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
+        else:
+            out.append(f"  回 {no} {o['letter']}")
+    return "\n".join(out + _review_lines(it))
+
+
+def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
+    confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment)]
+    return confirms + [_item_card(g, now, it) for it in items.pending(g)]
+
+
 def render(g: store.Group, now: str, assessment, relay=None) -> str:
     """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts."""
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
     head.append(_overview(g, now, assessment))
-    sections = ["\n".join(head), _footer(g, now)]
+    sections = ["\n".join(head), *_cards(g, now, assessment, relay), _footer(g, now)]
     return "\n\n".join(sections)

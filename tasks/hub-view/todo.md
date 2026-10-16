@@ -12,9 +12,10 @@
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 200 tests, OK（2026-10-16）
 
-- [ ] Task 3：两种卡片与审查行
+- [x] Task 3：两种卡片与审查行
   - 验收：Spec 验收 4（等你确认卡片计数、排最前、无 detail 不写括号）、5（推荐排第一、单一代码块、无推荐无代码块无「推荐」、30 字截断、缺后果、多线来源、挡住 0 条省略、标题主题 20 字截断）、6（审查中加粗、未标审查列「正文提到：」）
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
