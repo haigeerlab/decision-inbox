@@ -1,0 +1,372 @@
+{
+  "count": 12,
+  "agents": [
+    {
+      "name": "agent-1",
+      "capabilities": [],
+      "registeredAt": "2026-10-09T09:05:28.326Z",
+      "lastSeen": "2026-10-16T06:17:33.482Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "claude",
+        "sessionId": "session-1",
+        "verified": true
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T06:17:33.482Z",
+      "presence": {
+        "state": "running",
+        "since": "2026-10-16T06:18:59.927Z"
+      },
+      "wake": {
+        "app": "claude",
+        "sessionId": "session-1"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-2",
+      "capabilities": [],
+      "registeredAt": "2026-10-10T07:01:23.252Z",
+      "lastSeen": "2026-10-12T13:23:48.985Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-2",
+        "verified": false
+      },
+      "unread": 1,
+      "lastActivity": "2026-10-12T13:23:48.985Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": null,
+      "waiting": {
+        "count": 1,
+        "from": [
+          "agent-1"
+        ],
+        "ids": [
+          256
+        ],
+        "oldestAt": "2026-10-12T13:23:34.749Z"
+      }
+    },
+    {
+      "name": "agent-3",
+      "capabilities": [],
+      "registeredAt": "2026-10-12T15:17:13.045Z",
+      "lastSeen": "2026-10-16T06:25:07.273Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-3",
+        "verified": false
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T06:25:07.273Z",
+      "presence": {
+        "state": "running"
+      },
+      "wake": {
+        "app": "codex",
+        "sessionId": "thread-3"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-4",
+      "capabilities": [],
+      "registeredAt": "2026-10-12T15:24:50.038Z",
+      "lastSeen": "2026-10-16T06:09:30.057Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-4",
+        "verified": false
+      },
+      "unread": 1,
+      "lastActivity": "2026-10-16T06:09:30.057Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": {
+        "app": "codex",
+        "sessionId": "thread-4"
+      },
+      "lastPing": {
+        "state": "pending",
+        "detail": "Codex local connection unavailable A desktop notification was attempted on this Mac; macOS may not show it (notifications not allowed for the app that shows them, or Focus). The user can list waiting messages with doctor or by asking any session."
+      },
+      "waiting": {
+        "count": 1,
+        "from": [
+          "agent-3"
+        ],
+        "ids": [
+          2927
+        ],
+        "oldestAt": "2026-10-16T06:21:06.693Z"
+      }
+    },
+    {
+      "name": "agent-5",
+      "capabilities": [],
+      "registeredAt": "2026-10-12T16:01:37.989Z",
+      "lastSeen": "2026-10-16T06:01:05.190Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "claude",
+        "sessionId": "session-5",
+        "verified": true
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T06:01:05.190Z",
+      "presence": {
+        "state": "running",
+        "since": "2026-10-16T06:01:18.295Z"
+      },
+      "wake": {
+        "app": "claude",
+        "sessionId": "session-5"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-6",
+      "capabilities": [],
+      "registeredAt": "2026-10-12T16:04:33.295Z",
+      "lastSeen": "2026-10-16T06:09:43.214Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-6",
+        "verified": false
+      },
+      "unread": 14,
+      "lastActivity": "2026-10-16T06:09:43.214Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": {
+        "app": "codex",
+        "sessionId": "thread-6"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      },
+      "waiting": {
+        "count": 14,
+        "from": [
+          "agent-8",
+          "agent-9",
+          "agent-4",
+          "agent-3"
+        ],
+        "ids": [
+          382,
+          405,
+          1014,
+          2111,
+          2163,
+          2166,
+          2170,
+          2175,
+          2176,
+          2180,
+          2539,
+          2557,
+          2588,
+          2649
+        ],
+        "oldestAt": "2026-10-13T08:40:43.388Z"
+      }
+    },
+    {
+      "name": "agent-7",
+      "capabilities": [],
+      "registeredAt": "2026-10-13T04:46:21.012Z",
+      "lastSeen": "2026-10-13T09:00:39.243Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-2",
+        "verified": false
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-13T09:00:39.243Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": null
+    },
+    {
+      "name": "agent-8",
+      "capabilities": [],
+      "registeredAt": "2026-10-13T05:08:02.036Z",
+      "lastSeen": "2026-10-15T10:30:09.960Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "claude",
+        "sessionId": "session-8",
+        "verified": true
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-15T10:30:09.960Z",
+      "presence": {
+        "state": "running",
+        "since": "2026-10-16T06:24:02.747Z"
+      },
+      "wake": {
+        "app": "claude",
+        "sessionId": "session-8"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-9",
+      "capabilities": [],
+      "registeredAt": "2026-10-13T13:13:02.094Z",
+      "lastSeen": "2026-10-16T06:24:54.529Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "claude",
+        "sessionId": "session-9",
+        "verified": true
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T06:24:54.529Z",
+      "presence": {
+        "state": "running",
+        "since": "2026-10-16T06:25:06.006Z"
+      },
+      "wake": {
+        "app": "claude",
+        "sessionId": "session-9"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-10",
+      "capabilities": [],
+      "registeredAt": "2026-10-13T14:50:19.604Z",
+      "lastSeen": "2026-10-16T05:06:56.624Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-10",
+        "verified": false
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T05:06:56.624Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": {
+        "app": "codex",
+        "sessionId": "thread-10"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-11",
+      "capabilities": [],
+      "registeredAt": "2026-10-13T14:53:10.634Z",
+      "lastSeen": "2026-10-16T05:07:26.490Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "codex",
+        "sessionId": "thread-11",
+        "verified": false
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T05:07:26.490Z",
+      "presence": {
+        "state": "unknown",
+        "detail": "the Codex app cannot be asked"
+      },
+      "wake": {
+        "app": "codex",
+        "sessionId": "thread-11"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    },
+    {
+      "name": "agent-12",
+      "capabilities": [],
+      "registeredAt": "2026-10-15T03:39:25.744Z",
+      "lastSeen": "2026-10-16T04:54:14.771Z",
+      "retiredAt": null,
+      "retiredBy": null,
+      "retireNote": null,
+      "host": {
+        "app": "claude",
+        "sessionId": "session-12",
+        "verified": true
+      },
+      "unread": 0,
+      "lastActivity": "2026-10-16T04:54:14.771Z",
+      "presence": {
+        "state": "running",
+        "since": "2026-10-16T04:54:23.247Z"
+      },
+      "wake": {
+        "app": "claude",
+        "sessionId": "session-12"
+      },
+      "lastPing": {
+        "state": "acknowledged",
+        "detail": "Recipient acknowledged the message"
+      }
+    }
+  ]
+}

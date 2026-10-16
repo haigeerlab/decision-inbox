@@ -57,3 +57,9 @@
 ## Open Questions
 
 无。
+
+## 真实原文核对记录（Task 4，2026-10-16）
+
+- 采集：agent-relay 0.6.10 运行时，`bridge_agents`（12 个身份）与 `bridge_outbox`（一个身份的 5 条未确认消息）。
+- 形状：两份原文都是工具返回的 JSON 正文本身，没有外层包装；字段名与源码推出的构造夹具一致，**无差异，解析代码未改**。
+- 观察（供下游模块参考，不属于本模块）：Codex 身份的在线状态多为 `unknown`（detail「the Codex app cannot be asked」），只有正在被桌面版加载的 Codex 会话是 `running`；line-health 判断 Codex 会话停住时不能只靠 presence。

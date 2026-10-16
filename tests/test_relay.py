@@ -148,6 +148,45 @@ class ParseOutboxTest(unittest.TestCase):
                     relay.parse_outbox(bad, sender="x")
 
 
+class RealCaptureTest(unittest.TestCase):
+    """Sanitised output captured from agent-relay 0.6.10 on 2026-10-16."""
+
+    def test_real_agents(self):
+        snap = relay.parse_agents(fixture("real-agents.json"))
+        self.assertEqual(snap.relay_status, "ok")
+        self.assertEqual(snap.warnings, ())
+        self.assertEqual(len(snap.agents), 12)
+        busy = snap.agents["agent-6"]
+        self.assertEqual(busy.waiting_count, 14)
+        self.assertEqual(len(busy.waiting_ids), 14)
+        self.assertEqual(busy.waiting_from, ("agent-8", "agent-9", "agent-4", "agent-3"))
+        self.assertEqual(busy.waiting_oldest_at, "2026-10-13T08:40:43.388Z")
+        self.assertEqual(busy.presence, "unknown")
+        self.assertEqual(snap.agents["agent-1"].waiting_count, 0)
+        self.assertEqual(snap.agents["agent-1"].presence, "active")
+        self.assertEqual(snap.agents["agent-3"].presence, "active")
+        self.assertFalse(snap.agents["agent-2"].wake_bound)
+
+    def test_real_outbox(self):
+        out = relay.parse_outbox(fixture("real-outbox.json"), sender="agent-3")
+        self.assertEqual(out.warnings, ())
+        self.assertEqual([m.id for m in out.messages], [2927, 2649, 2175, 2170, 2166])
+        first = out.messages[0]
+        self.assertEqual((first.recipient, first.delivery_state, first.reply_to), ("agent-4", "queued", 2916))
+        self.assertTrue(all(m.delivery_state == "accepted" for m in out.messages[1:]))
+
+    def test_real_fixtures_are_sanitised(self):
+        for name in ("real-agents.json", "real-outbox.json"):
+            doc = json.loads(fixture(name))
+            text = json.dumps(doc, ensure_ascii=False)
+            self.assertNotIn('"preview"', text, name)
+            for key in ("agents", "entries"):
+                for item in doc.get(key, []):
+                    for field in ("name", "toAgent"):
+                        if field in item:
+                            self.assertRegex(item[field], r"^agent-\d+$", name)
+
+
 class StaticScanTest(unittest.TestCase):
     def test_no_network_or_subprocess_imports(self):
         banned = {"socket", "subprocess", "urllib", "http"}
