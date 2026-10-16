@@ -93,7 +93,7 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(done.last_tick_at, "2026-10-16T14:10:44+08:00")
         self.assertEqual(done.first_tick_at, "2026-10-16T14:00:33+08:00")
         reader = m.modules[1]
-        self.assertEqual((reader.status, reader.step), ("in_progress", "spec"))
+        self.assertEqual((reader.status, reader.step), ("in_progress", "build"))
         self.assertIn("line-health", reader.blocks)
         self.assertEqual(m.awaiting_review[0], specguard.AwaitingReview("line-health", "spec", "pending"))
         self.assertEqual(m.totals["done"], 6)
