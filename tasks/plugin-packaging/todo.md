@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`hooks/hooks.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.codex-plugin/plugin.json`、`tests/test_packaging.py`、`tests/test_package.py`
 
-- [ ] Task 4：8 个斜杠命令与 Codex 技能
+- [x] Task 4：8 个斜杠命令与 Codex 技能
   - 验收：Spec 验收 7（都有 `description`；接入、卸载类写明「先预览、用户确认后加 --confirm」；用到的子命令都存在；查询命令要求原样显示输出）
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`commands/*.md`、`skills/decision-inbox-join/SKILL.md`、`tests/test_packaging.py`

@@ -103,5 +103,68 @@ class HookCommandTest(TempHomeTestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ""))
 
 
+COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown")
+QUERIES = ("lines", "flow", "item", "map")
+CHANGES = ("hub-setup", "join", "leave", "teardown")
+SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami"}
+
+
+def frontmatter(text):
+    head, _, body = text.partition("\n---\n")
+    lines = head.split("\n")
+    assert lines[0] == "---", "missing frontmatter"
+    return dict(line.split(": ", 1) for line in lines[1:] if ": " in line), body
+
+
+class CommandFilesTest(unittest.TestCase):
+    def read(self, rel):
+        return (REPO / rel).read_text(encoding="utf-8")
+
+    def test_all_commands_exist_with_description(self):
+        self.assertEqual(sorted(p.stem for p in (REPO / "commands").glob("*.md")), sorted(COMMANDS))
+        for name in COMMANDS:
+            meta, body = frontmatter(self.read(f"commands/{name}.md"))
+            self.assertTrue(meta.get("description"), name)
+            self.assertIn("bin/decision-inbox", body, name)
+
+    def test_queries_show_output_as_is(self):
+        for name in QUERIES:
+            body = self.read(f"commands/{name}.md")
+            self.assertIn("原样", body, name)
+            self.assertIn("whoami", body, name)
+
+    def test_changes_preview_then_confirm(self):
+        for name in CHANGES:
+            body = self.read(f"commands/{name}.md")
+            for needle in ("预览", "--confirm", "用户确认"):
+                self.assertIn(needle, body, f"{name} 缺「{needle}」")
+
+    def test_tool_steps(self):
+        self.assertIn("bridge_agents", self.read("commands/lines.md"))
+        self.assertIn("bridge_wake_status", self.read("commands/flow.md"))
+        self.assertIn("item-ids", self.read("commands/item.md"))
+        self.assertIn("bridge_wake_status", self.read("commands/item.md"))
+        setup = self.read("commands/hub-setup.md")
+        for needle in ("get_session", "create_scheduled_task", "onboard task", "立即运行", "bridge_register"):
+            self.assertIn(needle, setup)
+        self.assertIn("get_session", self.read("commands/join.md"))
+        self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
+
+    def test_codex_skill(self):
+        meta, body = frontmatter(self.read("skills/decision-inbox-join/SKILL.md"))
+        self.assertEqual(meta.get("name"), "decision-inbox-join")
+        self.assertTrue(meta.get("description"))
+        for needle in ("whoami", "onboard join", "onboard leave", "codex-desktop", "预览", "--confirm",
+                       "bridge_register", "钩子"):
+            self.assertIn(needle, body)
+
+    def test_only_real_subcommands(self):
+        import re
+        files = [*(REPO / "commands").glob("*.md"), REPO / "skills/decision-inbox-join/SKILL.md"]
+        for path in files:
+            for sub in re.findall(r"decision-inbox\"? ([a-z]+)", path.read_text(encoding="utf-8")):
+                self.assertIn(sub, SUBCOMMANDS, f"{path.name} 用了不存在的子命令 {sub}")
+
+
 if __name__ == "__main__":
     unittest.main()
