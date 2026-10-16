@@ -116,5 +116,48 @@ class ReceiveTest(ItemsCase):
         self.assertEqual(store.read_events(self.g), [])
 
 
+class ValidityAndOrderTest(ItemsCase):
+    def test_supersede_own_item(self):
+        old = self.receive(SINGLE).item
+        r = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"), relay_id=101, at=T2)
+        self.assertTrue(r.accepted)
+        self.assertEqual(self.item(old)["status"], "superseded")
+        self.assertEqual(self.item(r.item)["status"], "pending")
+        self.assertIn("items.superseded", [e["type"] for e in store.read_events(self.g, ref=old)])
+
+    def test_supersede_other_senders_item(self):
+        old = self.receive(SINGLE, sender="api-codex").item
+        r = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"))
+        self.assertFalse(r.accepted)
+        self.assertIn("not-owner", codes(r.problems))
+        self.assertEqual(self.item(old)["status"], "pending")
+
+    def test_withdraw(self):
+        old = self.receive(SINGLE).item
+        r = self.receive(f"【撤回】\n事项：#{old}\n原因：需求取消\n", relay_id=102)
+        self.assertTrue(r.handled and r.accepted)
+        self.assertEqual(r.item, old)
+        self.assertEqual(self.item(old)["status"], "withdrawn")
+        other = self.receive(SINGLE, sender="api-codex").item
+        r = self.receive(f"【撤回】\n事项：#{other}\n")
+        self.assertFalse(r.accepted)
+        self.assertIn("not-owner", codes(r.problems))
+        self.assertIsNotNone(r.return_text)
+
+    def test_pending_order(self):
+        not_stopped = self.receive(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), at=T1).item
+        stopped_late = self.receive(SINGLE, at=T3).item
+        stopped_early = self.receive(SINGLE, sender="api-codex", at=T2).item
+        multi = self.receive(MULTI.replace("适用会话：前端、API", "适用会话：前端、API、前端负责人").replace(
+            "选项与我的建议：", "- 前端负责人：只看\n选项与我的建议："), sender="coord", at=T3).item
+        order = [(p["no"], p["blocks"]) for p in items.pending(self.g)]
+        self.assertEqual(order, [(multi, 3), (stopped_early, 1), (stopped_late, 1), (not_stopped, 0)])
+
+    def test_pending_excludes_invalidated(self):
+        old = self.receive(SINGLE).item
+        self.receive(f"【撤回】\n事项：#{old}\n")
+        self.assertEqual(items.pending(self.g), [])
+
+
 if __name__ == "__main__":
     unittest.main()
