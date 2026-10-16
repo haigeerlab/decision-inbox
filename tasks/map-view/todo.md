@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：返工——【审查结论】的「模块」字段、review-registry 记模块与 `module_reviews`
+- [x] Task 1：返工——【审查结论】的「模块」字段、review-registry 记模块与 `module_reviews`
   - 验收：Spec 验收 11（写了「模块」时解析出来，没写为 None；模块取最近一次写了模块的那一轮；旧记录缺 `module` 读作 None；`module_reviews` 按模块分组、未标模块的单列）；message-protocol、review-registry 原有测试不改动、全部通过
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/protocol.py`、`decision_inbox/reviews.py`、`tests/test_protocol.py`、`tests/test_reviews.py`

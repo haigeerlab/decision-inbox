@@ -279,6 +279,14 @@ class ReviewConclusionTest(unittest.TestCase):
         self.assertEqual((c.ref, c.node, c.submitter, c.verdict, c.advice_count),
                          ("R-3", "spec", "前端", "changes-required", None))
 
+    def test_module_field(self):
+        base = fixture("review-conclusion.txt")
+        self.assertIsNone(protocol.parse(base).conclusion.module)
+        msg = protocol.parse(base.replace("节点：Spec\n", "节点：Spec\n模块： pay-page \n"))
+        self.assertTrue(msg.ok, msg.problems)
+        self.assertEqual(msg.conclusion.module, "pay-page")
+        self.assertIsNone(protocol.parse(base.replace("节点：Spec\n", "节点：Spec\n模块：\n")).conclusion.module)
+
     def test_nodes_and_verdicts(self):
         base = fixture("review-conclusion.txt")
         for written, node in (("Spec", "spec"), ("Plan", "plan"), ("接口提案", "interface"), ("最终验收", "final")):

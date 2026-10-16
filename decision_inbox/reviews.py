@@ -178,10 +178,13 @@ def record_conclusion(g: store.Group, message, sender: str, at: str | None = Non
         if review["closed"]:
             review["closed"] = False
             hints.append(_issue("reopened", f"审查 {c.ref} 已结束后又收到结论，已重新打开"))
+        if c.module:
+            review["module"] = c.module
         review["rounds"].append({"at": at, "verdict": c.verdict, "adviceCount": c.advice_count})
         review["closed"] = c.verdict in ("passed", "passed-with-advice")
         tx.append_event("reviews.conclusion", ref=None, actor=sender,
-                        data={"review": c.ref, "session": session, "node": c.node, "verdict": c.verdict, "at": at})
+                        data={"review": c.ref, "session": session, "node": c.node, "verdict": c.verdict, "at": at,
+                              "module": c.module})
         tx.write_state(DOMAIN, doc)
     return ConclusionResult(True, (), tuple(hints))
 
@@ -192,3 +195,29 @@ def round_stats(g: store.Group) -> RoundStats:
         row = (ref, r["submitter"], r["node"], len(r["rounds"]))
         (closed if r["closed"] else open_).append(row)
     return RoundStats(tuple(closed), tuple(open_))
+
+
+@dataclass(frozen=True)
+class ModuleReview:
+    ref: str
+    node: str
+    verdict: str
+    advice_count: int | None
+    rounds: int
+    closed: bool
+
+
+def module_reviews(g: store.Group, session: str) -> tuple[dict[str, tuple[ModuleReview, ...]], tuple[str, ...]]:
+    """One submitter's reviews grouped by module (map-view), plus the refs that never named a module."""
+    cells: dict[str, list[ModuleReview]] = {}
+    unmarked = []
+    for ref, r in sorted(store.read_state(g, DOMAIN).get("reviews", {}).items()):
+        if r["submitter"] != session:
+            continue
+        if not r.get("module"):
+            unmarked.append(ref)
+            continue
+        last = r["rounds"][-1]
+        cells.setdefault(r["module"], []).append(
+            ModuleReview(ref, r["node"], last["verdict"], last["adviceCount"], len(r["rounds"]), r["closed"]))
+    return {k: tuple(v) for k, v in cells.items()}, tuple(unmarked)

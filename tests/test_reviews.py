@@ -150,8 +150,9 @@ class LabelTest(ReviewsCase):
         self.assertEqual(self.label(None, at="2026-10-16T14:00:00+08:00").text, "不需审：本会话无审查者")
 
 
-def conclusion(verdict="有须修改项", ref="R-3", node="Spec", submitter="前端"):
-    return protocol.parse(f"【审查结论】\n审查编号：{ref}\n节点：{node}\n送审方：{submitter}\n结论：{verdict}\n")
+def conclusion(verdict="有须修改项", ref="R-3", node="Spec", submitter="前端", module=None):
+    extra = f"模块：{module}\n" if module else ""
+    return protocol.parse(f"【审查结论】\n审查编号：{ref}\n节点：{node}\n{extra}送审方：{submitter}\n结论：{verdict}\n")
 
 
 class RoundsTest(ReviewsCase):
@@ -202,6 +203,36 @@ class RoundsTest(ReviewsCase):
         self.assertIn("reopened", {i.code for i in result.hints})
         stats = reviews.round_stats(self.g)
         self.assertEqual((stats.closed, stats.open), ((), (("R-3", "fe-codex", "spec", 2),)))
+
+    def test_module_reviews(self):
+        self.record(conclusion("有须修改项", ref="R-3", module="pay"))
+        self.record(conclusion("有须修改项", ref="R-3"), at=T3)          # later round without 模块 keeps pay
+        self.record(conclusion("通过，附建议2条", ref="R-4", node="Plan", module="pay"))
+        self.record(conclusion("通过", ref="R-5", module="cart"))
+        self.record(conclusion("通过", ref="R-1", module="cart"))
+        self.record(conclusion("有须修改项", ref="R-7"))
+        cells, unmarked = reviews.module_reviews(self.g, session="fe-codex")
+        self.assertEqual(unmarked, ("R-7",))
+        self.assertEqual(cells["pay"], (
+            reviews.ModuleReview("R-3", "spec", "changes-required", None, 2, False),
+            reviews.ModuleReview("R-4", "plan", "passed-with-advice", 2, 1, True),
+        ))
+        self.assertEqual([c.ref for c in cells["cart"]], ["R-1", "R-5"])
+        self.assertEqual(reviews.module_reviews(self.g, session="api-codex"), ({}, ()))
+
+    def test_module_moves_with_latest_marked_round(self):
+        self.record(conclusion(ref="R-3", module="pay"))
+        self.record(conclusion(ref="R-3", module="cart"), at=T3)
+        cells, _ = reviews.module_reviews(self.g, session="fe-codex")
+        self.assertEqual(list(cells), ["cart"])
+
+    def test_old_record_without_module(self):
+        self.record(conclusion(ref="R-3"))
+        with self.g.transaction() as tx:
+            doc = tx.read_state("reviews")
+            doc["reviews"]["R-3"].pop("module", None)
+            tx.write_state("reviews", doc)
+        self.assertEqual(reviews.module_reviews(self.g, session="fe-codex"), ({}, ("R-3",)))
 
     def test_snapshot_and_log_consistent(self):
         self.record(conclusion("有须修改项"))

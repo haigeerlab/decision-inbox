@@ -26,7 +26,7 @@ FIELDS = {
     "wait-session": ("在等谁", "等什么"),
     "resumed": (),
     "withdraw": ("事项", "原因"),
-    "review-conclusion": ("审查编号", "节点", "送审方", "结论", "来自", "要点"),
+    "review-conclusion": ("审查编号", "节点", "模块", "送审方", "结论", "来自", "要点"),
     "unknown": (),
 }
 # A terminal field takes every remaining line, whatever it looks like.
@@ -111,6 +111,7 @@ class Conclusion:
     submitter: str
     verdict: str
     advice_count: int | None = None
+    module: str | None = None   # optional 模块 field (map-view), verbatim without surrounding spaces
 
 
 def _verdict(raw: str) -> tuple[str, int | None] | None:
@@ -355,7 +356,8 @@ def parse(text: str) -> Message:
         if fields.get("结论", "").strip() and verdict is None:
             problems.append(Issue("bad-verdict", "「结论」只能是 通过、通过，附建议N条、有须修改项之一"))
         if len(problems) == before:
-            conclusion = Conclusion(fields["审查编号"].strip(), node, fields["送审方"].strip(), *verdict)
+            conclusion = Conclusion(fields["审查编号"].strip(), node, fields["送审方"].strip(), *verdict,
+                                    module=fields.get("模块", "").strip() or None)
     elif kind == "withdraw":
         item = _item(fields.get("事项"))
         if item is None:
