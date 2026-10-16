@@ -25,7 +25,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
 
-- [ ] Task 5：4 种展开视图
+- [x] Task 5：4 种展开视图
   - 验收：Spec 验收 10。每行格式：
     - 「编号 详情」：标题 `#12 详情 · 来源 · 收到于 HH:MM`；`agent-relay 消息编号：N`（已转达的再列答复的发送编号）；多线事项逐行列「各线范围：短名：范围」；最后是原文全文
     - 「看等待」：`#31 前端 等 API：等什么 · 已等 N 分钟`，后接 wait-tickets 给的提醒标记原文；没有开着的单时写「没有开着的等待单」

@@ -378,5 +378,79 @@ class FullViewTest(ViewCase):
         self.assertIsNone(re.search(r"(?<![\w/])/[A-Za-z]", text.replace("/flow", "")))
 
 
+def hhmm(value: str) -> str:
+    from datetime import datetime
+    return datetime.fromisoformat(value).astimezone().strftime("%H:%M")
+
+
+class ExpandedViewTest(ViewCase):
+    def test_detail(self):
+        no = self.ask(MULTI, sender="coord", minutes_ago=30)
+        self.forward(no, 2)
+        sent_ids = []
+        for to in ("coord", "fe-codex", "api-codex"):
+            sent_ids.append(next(self.relay_ids))
+            items.record_sent(self.g, no, to, sent_ids[-1], at=at(1))
+        relay_id = items.get(self.g, no)["relayId"]
+        self.assertEqual(view.render_detail(self.g, item=no), "\n".join([
+            f"#{no} 详情 · 多线：前端＋API · 收到于 {hhmm(at(30))}",
+            f"agent-relay 消息编号：{relay_id}",
+            f"答复发送编号：总协调 #{sent_ids[0]}、前端 #{sent_ids[1]}、API #{sent_ids[2]}",
+            "各线范围：前端：只改类型定义和展示映射，不改接口调用",
+            "各线范围：API：改响应字段名并补兼容期旧字段，兼容期两周",
+            "原文：",
+            MULTI.rstrip("\n"),
+        ]))
+
+    def test_detail_single_and_missing(self):
+        no = self.ask(SINGLE, minutes_ago=3)
+        text = view.render_detail(self.g, item=no)
+        self.assertTrue(text.startswith(f"#{no} 详情 · 前端 · 收到于 {hhmm(at(3))}\nagent-relay 消息编号："))
+        self.assertNotIn("各线范围", text)
+        self.assertNotIn("答复发送编号", text)
+        self.assertTrue(text.endswith("原文：\n" + SINGLE.rstrip("\n")))
+        self.assertEqual(view.render_detail(self.g, item=999), "#999 不存在")
+
+    def test_waits(self):
+        self.assertEqual(view.render_waits(self.g, now=NOW), "没有开着的等待单")
+        fresh = self.wait("fe-codex", "API", 5)
+        old = tickets.receive(self.g, (PROTO / "wait-session.txt").read_text(encoding="utf-8"),
+                              sender="bg-codex", relay_id=1, sent_at=at(70)).opened
+        lines = view.render_waits(self.g, now=NOW).split("\n")
+        self.assertEqual(lines, [
+            f"#{fresh} 前端 等 API：订单接口 · 已等 5 分钟",
+            f"#{old} 后台 等 API：订单接口的 Mock 数据，交付后我才能接着做支付页 · ⚠ 已等 70 分钟 · "
+            "可能卡住：后台 在等 API 的「订单接口的 Mock 数据，\n  交付后我才能接着做支付页」，"
+            "请看一下 API 是否已完成却没通知 后台".replace("\n  ", ""),
+        ])
+
+    def test_closed(self):
+        day = view._today(NOW)
+        self.assertEqual(view.render_closed(self.g, day=day), f"{day} 没有关闭的等待单")
+        first = self.wait("fe-codex", "API", 30)
+        tickets.close_by_user(self.g, first, "不等了", at=at(20))
+        second = self.wait("api-codex", "后台", 30)
+        tickets.close_by_user(self.g, second, None, at=at(10))
+        self.assertEqual(view.render_closed(self.g, day=day).split("\n"), [
+            f"#{first} 前端 等 API：订单接口 · 用户关闭 · 依据：不等了 · {hhmm(at(20))} 关",
+            f"#{second} API 等 后台：订单接口 · 用户关闭 · 依据：用户关闭 · {hhmm(at(10))} 关",
+        ])
+
+    def test_invalidated(self):
+        self.assertEqual(view.render_invalidated(self.g), "没有失效的事项")
+        old = self.ask(SINGLE)
+        new = self.ask(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"))
+        gone = self.ask(SINGLE, sender="api-codex")
+        items.receive(self.g, f"【撤回】\n事项：#{gone}\n原因：需求取消\n", sender="api-codex", relay_id=1,
+                      received_at=at(1))
+        bare = self.ask(MULTI, sender="coord")
+        items.receive(self.g, f"【撤回】\n事项：#{bare}\n", sender="coord", relay_id=2, received_at=at(1))
+        self.assertEqual(view.render_invalidated(self.g).split("\n"), [
+            f"#{old} 已取代（被 #{new} 取代）· 前端 · 支付页先接哪种支付方式",
+            f"#{gone} 已撤回（需求取消）· API · 支付页先接哪种支付方式",
+            f"#{bare} 已撤回 · 多线：前端＋API · 订单状态字段统一用哪套命名",
+        ])
+
+
 if __name__ == "__main__":
     unittest.main()

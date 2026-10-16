@@ -198,3 +198,66 @@ def render(g: store.Group, now: str, assessment, relay=None) -> str:
     sections = ["\n".join(head), _anomaly_section(g, assessment), *_cards(g, now, assessment, relay),
                 _footer(g, now)]
     return "\n\n".join(s for s in sections if s)
+
+
+CLOSE_REASONS = {1: "对方明说结束", 2: "被取代", 3: "所等的事已发生", 4: "用户关闭"}
+
+
+def _one_line(text: str) -> str:
+    return "".join(part.strip() for part in text.split("\n"))
+
+
+def _clock(value: str) -> str:
+    return _instant(value).astimezone().strftime("%H:%M")
+
+
+def render_detail(g: store.Group, item: int) -> str:
+    """「编号 详情」: full text, line scopes and agent-relay message ids."""
+    it = items.get(g, item)
+    if it is None:
+        return f"#{item} 不存在"
+    out = [f"#{item} 详情 · {_source(g, it)} · 收到于 {_clock(it['receivedAt'])}",
+           f"agent-relay 消息编号：{it['relayId']}"]
+    if it["sent"]:
+        out.append("答复发送编号：" + "、".join(f"{_short(g, s['to'])} #{s['relayId']}" for s in it["sent"]))
+    out += [f"各线范围：{name}：{_one_line(it['scopes'][name])}" for name in it["lines"] if name in it["scopes"]]
+    return "\n".join(out + ["原文：", it["text"].rstrip("\n")])
+
+
+def _ticket_head(g: store.Group, waiter: str, target: str, what: str) -> str:
+    return f"{_short(g, waiter)} 等 {target}：{_one_line(what)}"
+
+
+def render_waits(g: store.Group, now: str, relay=None) -> str:
+    """「看等待」: one line per open ticket with wait-tickets' marks."""
+    rows = []
+    for t in tickets.open_tickets(g, now, relay):
+        parts = [f"#{t.no} {_ticket_head(g, t.waiter, t.target, t.what)}"]
+        if "waited" not in t.marks:
+            parts.append(f"已等 {t.minutes} 分钟")
+        rows.append(" · ".join(parts + [_one_line(n) for n in t.notes]))
+    return "\n".join(rows) or "没有开着的等待单"
+
+
+def render_closed(g: store.Group, day: str) -> str:
+    """「看已关闭」: tickets closed on `day` with reason and basis."""
+    rows = [f"#{t['no']} {_ticket_head(g, t['waiter'], t['target'], t['what'])} · "
+            f"{CLOSE_REASONS.get(t['close']['reason'], t['close']['reason'])} · 依据：{t['close']['basis']} · "
+            f"{_clock(t['close']['at'])} 关"
+            for t in tickets.closed_on(g, day)]
+    return "\n".join(rows) or f"{day} 没有关闭的等待单"
+
+
+def render_invalidated(g: store.Group) -> str:
+    """「看失效」: superseded and withdrawn items, one line each."""
+    rows = []
+    for it in items.by_status(g, *INVALIDATED):
+        events = {e["type"]: e.get("data", {}) for e in items.history(g, it["no"])}
+        if it["status"] == "superseded":
+            state = f"已取代（被 #{events.get('items.superseded', {}).get('by', '?')} 取代）"
+        else:
+            reason = events.get("items.withdrawn", {}).get("reason")
+            state = f"已撤回（{reason}）" if reason else "已撤回 "
+        topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
+        rows.append(f"#{it['no']} {state}· {_source(g, it)} · {topic}")
+    return "\n".join(rows) or "没有失效的事项"
