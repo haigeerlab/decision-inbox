@@ -28,7 +28,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_patrol.py -v`
   - 文件：`decision_inbox/patrol.py`、`decision_inbox/view.py`、`tests/test_patrol.py`
 
-- [ ] Task 4：给用户的通知
+- [x] Task 4：给用户的通知
   - 验收：
     - Spec 验收 5：信号 1 只通知一次，消失后再出现再通知；信号 2、5、10 不出动作；
     - Spec 验收 6：挡住线的事项 30 分钟时提醒，29 分钟时不提醒；答复后清记录；

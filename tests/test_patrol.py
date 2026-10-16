@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from helpers import TempHomeTestCase
-from test_health import NOW, agent, snapshot
+from test_health import NOW, WAIT_USER, agent, at, snapshot
 
-from decision_inbox import patrol, store
+from decision_inbox import items, patrol, store
 from decision_inbox.health import Assessment, Signal
 
 HUB_DESKTOP = "local_00000000-0000-0000-0000-00000000hub0"
@@ -191,6 +191,60 @@ class AlertTest(PatrolCase):
             with self.subTest(no=no):
                 with with_signals(Signal(no, "x", ("fe", "api"), "说明")):
                     self.assertEqual(self.ids(self.run_round(no * 100)), [])
+
+
+ALL = Signal(1, "all-waiting", ("api", "fe"), "全线互等：所有会话都没在干活，还有 2 张等待单没关")
+
+
+class NoticeTest(PatrolCase):
+    def test_all_waiting_once_per_episode(self):
+        with with_signals(ALL):
+            first = self.run_round(0)
+            again = self.run_round(5)
+        self.assertEqual(self.ids(first), ["notify:all-waiting"])
+        self.assertEqual(first.actions[0].text, "decision-inbox：全线互等：所有会话都没在干活，还有 2 张等待单没关，详见收件枢纽")
+        self.assertEqual(self.ids(again), [])
+        with with_signals():
+            self.run_round(10)
+        with with_signals(ALL):
+            self.assertEqual(self.ids(self.run_round(15)), ["notify:all-waiting"])
+
+    def test_item_reminder_at_30_minutes(self):
+        no = items.receive(self.g, WAIT_USER, sender="fe", relay_id=1, received_at=at(0)).item
+        loose = items.receive(self.g, WAIT_USER.replace("是否完全停住：是", "是否完全停住：否"), sender="api",
+                              relay_id=2, received_at=at(0)).item
+        self.assertEqual(self.ids(self.run_round(29)), [])
+        p = self.run_round(30)
+        self.assertEqual(self.ids(p), [f"notify:item:{no}"])
+        self.assertIn(f"#{no}", p.actions[0].text)
+        self.assertIn("挡住 1 条线", p.actions[0].text)
+        self.assertEqual(self.ids(self.run_round(35)), [])
+        self.assertNotIn(f"item:{loose}", str(store.read_state(self.g, "patrol")))
+        items.answer(self.g, [items.Answer(no, "A", f"{no} A")], answered_at=later(36))
+        self.run_round(40)
+        self.assertNotIn(f"item:{no}", store.read_state(self.g, "patrol")["notices"])
+
+    def test_relay_unreadable_once(self):
+        with with_signals(ALL):
+            p = patrol.plan(self.g, now=later(0), relay=None, maps={}, relay_error="不是合法 JSON")
+        self.assertEqual(self.ids(p), ["notify:all-waiting", "notify:relay-unreadable"])
+        self.assertIn("读不到 agent-relay", p.actions[1].text)
+        patrol.record(self.g, p.to_json(), done=self.ids(p), now=later(0))
+        quiet = patrol.plan(self.g, now=later(5), relay=None, maps={}, relay_error="还是读不出")
+        self.assertEqual(self.ids(quiet), [])
+        patrol.record(self.g, quiet.to_json(), done=[], now=later(5))
+        self.run_round(10)
+        self.assertNotIn("relay-unreadable", store.read_state(self.g, "patrol")["notices"])
+
+    def test_at_most_three_per_round(self):
+        signals = [ALL] + [Signal(8, "slow-progress", (f"x{i}",), f"x{i} 变慢") for i in range(4)]
+        with with_signals(*signals):
+            p = self.run_round(0)
+            later_round = self.run_round(5)
+        notices = [a for a in p.actions if a.kind == "notify"]
+        self.assertEqual([a.id for a in notices], ["notify:all-waiting", "notify:signal:8|x0", "notify:more"])
+        self.assertEqual(notices[-1].text, "decision-inbox：还有 3 件事，详见收件枢纽")
+        self.assertEqual(self.ids(later_round), [])
 
 
 if __name__ == "__main__":

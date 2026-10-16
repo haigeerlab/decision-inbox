@@ -10,11 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, store, view
+from decision_inbox import health, items, store, view
 
 DOMAIN = "patrol"
 OFFLINE = ("offline", "unreachable")
 PROGRESS_SIGNALS = (3, 6, 7, 8, 9)
+HUB_REMINDER_MINUTES = 30  # spec 已定事项 5
+NOTICES_PER_ROUND = 3      # spec 关键决策 5
 
 
 @dataclass(frozen=True)
@@ -31,11 +33,12 @@ class Plan:
     actions: list = field(default_factory=list)
     snapshot: dict = field(default_factory=dict)
     live: dict = field(default_factory=lambda: {"signals": [], "wakes": [], "notices": []})
+    merged: list = field(default_factory=list)   # notice keys folded into notify:more
 
     def to_json(self) -> dict:
         return {"version": 1, "now": self.now,
                 "actions": [a.__dict__ for a in self.actions],
-                "snapshot": self.snapshot, "live": self.live}
+                "snapshot": self.snapshot, "live": self.live, "merged": self.merged}
 
 
 def _instant(value: str) -> datetime:
@@ -133,15 +136,43 @@ def _alerts(ctx: _Context, signals) -> None:
             ctx.notify(f"escalate:{key}", f"{short}：{signal.text}；负责人 {health.ESCALATE_MINUTES} 分钟没处理")
 
 
-def plan(g: store.Group, now: str, relay=None, maps: dict | None = None) -> Plan:
+def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
+    """Signal 1, items holding lines up too long, and an unreadable agent-relay (spec 已定事项 5, 关键决策 5)."""
+    for signal in signals:
+        if signal.no == 1:
+            ctx.notify("all-waiting", signal.text)
+    for it in items.pending(ctx.g):
+        waited = (_instant(ctx.now) - _instant(it["receivedAt"])).total_seconds() / 60
+        if it["blocks"] and waited >= HUB_REMINDER_MINUTES:
+            topic = it["decide"].splitlines()[0]
+            ctx.notify(f"item:{it['no']}", f"#{it['no']}「{topic}」已等 {int(waited)} 分钟，挡住 {it['blocks']} 条线")
+    if relay_error:
+        ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态")
+
+
+def _cap(ctx: _Context) -> None:
+    """At most NOTICES_PER_ROUND notices; the rest fold into one, recorded as told when it is sent."""
+    notices = [a for a in ctx.plan.actions if a.kind == "notify"]
+    if len(notices) <= NOTICES_PER_ROUND:
+        return
+    keep, rest = notices[:NOTICES_PER_ROUND - 1], notices[NOTICES_PER_ROUND - 1:]
+    ctx.plan.actions = [a for a in ctx.plan.actions if a.kind != "notify" or a in keep]
+    ctx.plan.merged = [a.id.partition(":")[2] for a in rest]
+    ctx.plan.actions.append(Action("notify:more", "notify", None, notice_text(f"还有 {len(rest)} 件事")))
+
+
+def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
+         relay_error: str | None = None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"))
     result = Plan(now=now, snapshot=assessment.snapshot)
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
     ctx = _Context(g, now, relay, state, result)
+    _user_notices(ctx, assessment.signals, relay_error)
     _wakes(ctx)
     _alerts(ctx, assessment.signals)
+    _cap(ctx)
     _wake_hub(ctx)
     return result
 
@@ -166,6 +197,8 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
                 signals[key]["alertedAt"] = at
             elif kind == "alert" and key in signals:
                 signals[key]["alertFailed"] = True
+            elif action_id == "notify:more" and action_id in done:
+                notices.update({merged: at for merged in plan_doc.get("merged", []) if merged in live["notices"]})
             elif kind == "notify" and action_id in done:
                 notices[key] = at
         state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at)
