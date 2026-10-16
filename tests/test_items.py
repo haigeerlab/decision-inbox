@@ -1,0 +1,120 @@
+import unittest
+from pathlib import Path
+
+from helpers import TempHomeTestCase
+
+from decision_inbox import items, reviews, store
+
+PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
+T1 = "2026-10-16T11:00:00+08:00"
+T2 = "2026-10-16T12:00:00+08:00"
+T3 = "2026-10-16T13:00:00+08:00"
+
+
+def fixture(name):
+    return (PROTO / name).read_text(encoding="utf-8")
+
+
+SINGLE = fixture("wait-user.txt")              # options A/B/C, recommend A, fully stopped
+MULTI = fixture("wait-user-multiline.txt")     # 适用会话：前端、API
+
+
+def codes(issues):
+    return {i.code for i in issues}
+
+
+class ItemsCase(TempHomeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.g, _ = store.init_group("demo")
+        people = [
+            ("hub", "收件枢纽", "hub", [], "claude-desktop", None),
+            ("fe-codex", "前端", "dev", ["前端"], "codex-desktop", "/tmp/fe"),
+            ("api-codex", "API", "dev", ["API"], "codex-desktop", "/tmp/api"),
+            ("fe-owner", "前端负责人", "owner", ["前端"], "claude-desktop", None),
+            ("coord", "总协调", "coordinator", [], "codex-desktop", None),
+        ]
+        with self.g.transaction() as tx:
+            for relay, short, role, line, host, repo in people:
+                entry = {"relayName": relay, "shortName": short, "role": role, "line": line, "host": host}
+                if repo:
+                    entry["repo"] = repo
+                tx.add_session(entry)
+
+    def receive(self, text, sender="fe-codex", relay_id=100, at=T1):
+        return items.receive(self.g, text, sender=sender, relay_id=relay_id, received_at=at)
+
+    def item(self, no):
+        return store.read_state(self.g, "items")["items"][str(no)]
+
+
+class ReceiveTest(ItemsCase):
+    def test_accept(self):
+        with self.g.transaction() as tx:
+            tx.allocate_number()  # number 1 used elsewhere: the sequence is shared
+        r = self.receive(SINGLE)
+        self.assertTrue(r.handled and r.accepted)
+        self.assertEqual(r.item, 2)
+        self.assertIsNone(r.return_text)
+        it = self.item(2)
+        self.assertEqual((it["sender"], it["status"], it["relayId"]), ("fe-codex", "pending", 100))
+        self.assertEqual(it["text"], SINGLE)
+        self.assertEqual(it["decide"], "支付页先接哪种支付方式")
+        self.assertEqual([o["letter"] for o in it["options"]], ["A", "B", "C"])
+        self.assertEqual(it["review"]["text"], "不需审：本会话无审查者")
+        self.assertEqual(store.read_events(self.g, ref=2)[-1]["type"], "items.received")
+
+    def test_review_label_frozen_at_receipt(self):
+        reviews.register(self.g, session="fe-codex", reviewer="fe-owner", nodes=("spec",),
+                         approval_item=None, approval_note="接入时用户确认", at=T2)
+        early = self.receive(SINGLE, at=T1).item
+        late = self.receive(SINGLE, at=T3).item
+        self.assertEqual(self.item(early)["review"]["text"], "不需审：本会话无审查者")
+        self.assertEqual(self.item(late)["review"]["text"], "⚠ 未标审查")
+        self.assertTrue(self.item(late)["review"]["warn"])
+
+    def test_return_does_not_take_a_number(self):
+        r = self.receive(SINGLE.replace("要你决定：支付页先接哪种支付方式\n", ""))
+        self.assertTrue(r.handled)
+        self.assertFalse(r.accepted)
+        self.assertIsNone(r.item)
+        self.assertIn("missing-field:要你决定", codes(r.problems))
+        self.assertIn("退回", r.return_text)
+        self.assertIn("缺少「要你决定」", r.return_text)
+        self.assertEqual(store.read_events(self.g)[-1]["type"], "items.returned")
+        self.assertEqual(self.receive(SINGLE).item, 1)
+
+    def test_multiline_scope_missing_is_returned(self):
+        text = MULTI.replace("- API：改响应字段名并补兼容期旧字段，\n  兼容期两周\n", "")
+        r = self.receive(text, sender="coord")
+        self.assertFalse(r.accepted)
+        self.assertIn("scope-missing:API", codes(r.problems))
+
+    def test_unknown_session_in_scope(self):
+        text = MULTI.replace("适用会话：前端、API", "适用会话：前端、API、后台").replace(
+            "选项与我的建议：", "- 后台：只读\n选项与我的建议：")
+        r = self.receive(text, sender="coord")
+        self.assertFalse(r.accepted)
+        self.assertIn("scope-session-unknown:后台", codes(r.problems))
+
+    def test_dev_multiline_becomes_single(self):
+        r = self.receive(MULTI, sender="fe-codex")
+        self.assertTrue(r.accepted)
+        self.assertIn("multiline-not-allowed", codes(r.hints))
+        self.assertFalse(self.item(r.item)["multi"])
+
+    def test_owner_multiline_accepted(self):
+        r = self.receive(MULTI, sender="fe-owner")
+        self.assertTrue(r.accepted)
+        it = self.item(r.item)
+        self.assertTrue(it["multi"])
+        self.assertEqual(it["lines"], ["前端", "API"])
+
+    def test_other_kinds_not_handled(self):
+        r = self.receive(fixture("wait-session.txt"))
+        self.assertFalse(r.handled)
+        self.assertEqual(store.read_events(self.g), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

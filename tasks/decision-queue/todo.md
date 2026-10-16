@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：收单与退回
+- [x] Task 1：收单与退回
   - 验收：Spec 验收 1（入表、共用编号、存原文要点与审查标签、事件）、2（退回不占编号、逐条说明、事件）、3（`scope-session-unknown`、开发线多线按普通事项并提示 `multiline-not-allowed`）；非【等待用户】【撤回】的消息 `handled` 为假
   - 验证：`python3 -m unittest discover -s tests -p test_items.py -v`
   - 文件：`decision_inbox/items.py`、`tests/test_items.py`
