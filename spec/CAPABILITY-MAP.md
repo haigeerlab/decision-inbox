@@ -18,7 +18,7 @@
 |---|---|---|
 | group-store | 插件骨架与协作组状态目录 `~/.decision-inbox/<协作组>/`：状态文件读写、编号分配、会话名册（短名、角色、所属线） | — |
 | relay-reader | 只读适配 agent-relay：邮箱消息、投递与已读、presence、waiting，转成统一的只读数据 | — |
-| spec-guard-reader | 只读各线仓库的 spec-guard 产物：能力图、依赖、模块状态、todo 勾选数；未装 spec-guard 时如实降级为「无能力图」 | — |
+| spec-guard-reader | 只读调用各线仓库的 `spec-guard map --json`（含第二步的卡点信号）并核对 schemaVersion；未启用 spec-guard 时如实降级为「无能力图」；不自己解析能力图和 todo | — |
 | message-protocol | 第 4 节消息约定的解析与校验：消息类型、结束写法、选项写法、多线事项字段、架构审查状态行、「阻塞：等谁交付」报告 | — |
 | review-registry | 审查者登记（哪个会话有审查者、审哪类节点、经用户批准才增改）与审查状态行的显示规则 | group-store, message-protocol |
 | decision-queue | 待答表：收单校验与退回（含多线事项缺各线范围）、有效性标记、排序、用户回复解析、答复转达（含多线分发） | group-store, message-protocol, review-registry |
@@ -26,12 +26,12 @@
 | line-health | 各线状态判定（统一状态词）与需求 8.1 的 10 个卡住信号检测，纯只读 | relay-reader, spec-guard-reader, decision-queue, wait-tickets |
 | hub-view | 收件枢纽主视图（需求第 6 节固定顺序与卡片）及「详情 / 看等待 / 看已关闭 / 看失效」展开 | review-registry, decision-queue, wait-tickets, line-health |
 | query-commands | 只读查询 `/lines`、`/flow`、`/item` | decision-queue, wait-tickets, line-health |
-| map-view | 只读查询 `/map <线>`、`/map all`、`/map <线> 全部`：状态词表、审查列、按依赖链全算「挡住 N 个」、折叠规则 | spec-guard-reader, review-registry, decision-queue, line-health |
+| map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，叠加负责人、跨线归属、外部等待和收件箱里等你决定的事项；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, line-health |
 | stop-hook | 停止钩子：交付方和等待方两侧拦截、开发线收工前自检、被挡住必须报「阻塞：等谁交付」；Codex 与 Claude 桌面版工作会话 | message-protocol, relay-reader, spec-guard-reader, wait-tickets |
 | patrol | 巡视：定时任务跑信号检测，自动叫醒 Claude 会话，叫不醒再通知；进度预警先给负责人、未处理再给用户；收件枢纽超时提醒 | group-store, line-health |
 | onboarding | 一条命令接入与卸载：写约定块（第 4、5 节规则、负责人模式标签、阻塞报告），装停止钩子并提示 Codex 信任，录入审查者登记 | group-store, message-protocol, review-registry, stop-hook |
 
-Build order: group-store → relay-reader → spec-guard-reader → message-protocol → review-registry → decision-queue → wait-tickets → line-health → hub-view → query-commands → map-view → stop-hook → patrol → onboarding
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → onboarding
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
@@ -44,7 +44,7 @@ Build order: group-store → relay-reader → spec-guard-reader → message-prot
 | 停止钩子：两侧、开发线收工前自检、被挡住必须报阻塞 | stop-hook |
 | 巡视：按信号检测、自动叫醒 Claude 会话、失败再通知、预警先负责人再用户 | line-health（检测）＋ patrol（处理与升级） |
 | 审查者登记与审查状态行 | review-registry（解析在 message-protocol） |
-| 用户的 4 个查询 `/lines`、`/map`、`/flow`、`/item` | query-commands、map-view |
+| 用户的 4 个查询 `/lines`、`/map`、`/flow`、`/item` | query-commands、map-view（单项目模块表由 spec-guard 的 `map --json` 提供，见下方「分工调整」） |
 | 收件枢纽显示格式（第 6 节） | hub-view |
 | 收件枢纽的超时提醒 | wait-tickets（标记）＋ patrol（主动提醒） |
 | 总协调收各线阻塞报告 | message-protocol（报告格式）＋ onboarding（约定块规则）＋ line-health（读入状态） |
@@ -53,6 +53,14 @@ Build order: group-store → relay-reader → spec-guard-reader → message-prot
 | 把实验中【已有】的规则固化进约定块 | onboarding |
 
 需求 11.2（第二版）与 11.3（不做）的条目不进本图。
+
+## 分工调整（2026-10-16，用户确认）
+
+单个项目的模块表与卡点信号改由 spec-guard 新增的 `/spec-guard:map`（`--json`）提供，decision-inbox 只读调用，不自己解析能力图和 todo，全系统只有一份解析逻辑。decision-inbox 负责跨线汇总（`/map all`）、每条线的负责人与跨线归属、外部等待（等某人交付）、收件箱、会话空闲或离线、定时巡检和唤醒。
+
+- 受影响的模块：spec-guard-reader、map-view 的职责；line-health 的信号 6、7、8 改用 spec-guard 第二步的原始数据。模块 id 不变。
+- 开发顺序：spec-guard-reader 挪到 wait-tickets 之后，给 spec-guard 定稿 JSON 留出时间。
+- 在 spec-guard 的 JSON 契约定稿前，不写任何解析能力图或 todo 的代码。
 
 ---
 
