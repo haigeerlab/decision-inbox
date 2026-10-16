@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved fecd7cfa9809 -->
+<!-- spec-guard: review approved a6684201f925 -->
 # Spec: review-registry
 
 > 能力图模块 `review-registry`。需求来源：`docs/requirements-record.md` 第 4.3 节、第 5.2 节、第 8.1 节信号 7、第 3.1～3.2 节，第 12 节第 8 项。
@@ -72,7 +72,13 @@ result.hints      # 计入但要提示用户的情况：重新打开已结束的
 stats = reviews.round_stats(g)
 stats.closed      # ((review_ref, submitter, node, rounds), ...)，已结束的审查
 stats.open        # 同样的元组，进行中的审查
+
+cells, unmarked = reviews.module_reviews(g, session="fe-codex")   # map-view 返工（2026-10-16）
+cells["pay"]      # (ModuleReview(ref, node, verdict, advice_count, rounds, closed), ...)：该送审方这个模块的审查，按审查编号排序，取最近一轮的结论
+unmarked          # 从没写过「模块」的审查编号
 ```
+
+- 审查编号对应的模块：取最近一次写了「模块」的那一轮；之后没写模块的轮次不改它。旧记录没有模块时读作没标模块。
 
 - 节点代码：`spec`（Spec）、`plan`（Plan）、`interface`（接口提案）、`final`（最终验收＋提交范围）。四类之外的一律拒绝。
 - 显示文字与需求第 4.3 节的表逐字一致：

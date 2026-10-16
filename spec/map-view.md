@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved e67c52a7990e -->
+<!-- spec-guard: review approved 50c2e25697f3 -->
 # Spec: map-view
 
 > 能力图模块 `map-view`。需求来源：`docs/requirements-record.md` 第 7.1 节 `/map` 与「按 spec-guard 实际接口调整」5 条、状态词表、折叠规则，第 13.1 节第 1 行。
@@ -100,7 +100,7 @@ mapview.render_line(g, now="...", line="前端", read=read_result, full=False)  
 mapview.render_all(g, now="...", reads={"fe-codex": read_result, ...})          # /map all
 
 cells, unmarked = reviews.module_reviews(g, session="fe-codex")
-cells["pay"]     # (ModuleReview(ref="R-3", node="spec", verdict="changes-needed", advice_count=None, rounds=2, closed=False), ...)
+cells["pay"]     # (ModuleReview(ref="R-3", node="spec", verdict="changes-required", advice_count=None, rounds=2, closed=False), ...)
 unmarked         # ("R-7",)：没标模块的审查编号
 ```
 
