@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from decision_inbox import items, protocol, reviews, store, tickets
+from decision_inbox.view import clip
 
 _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
 _REVIEW_MARKS = {"approved": "✔", "pending": "待审", "revised": "已改待复审", "invalid": "标记无效", "none": "—"}
@@ -107,3 +108,62 @@ def header_lines(g: store.Group, now: str, entry: dict, line_map) -> list[str]:
 def note_cell(g: store.Group, now: str, entry: dict, line_map, m) -> str:
     """External waits go into the current module's note only (spec 已定事项 3)."""
     return "；".join(external_waits(g, now, entry["relayName"])) if m.id == line_map.active_module else ""
+
+
+RESPONSIBILITY_CHARS = 40
+_EXPANDED = ("in_progress", "suspended", "blocked", "ready")
+_COLUMNS = "| 位 | 编号 | 作用 | 状态 | Spec/Plan 评审 | 架构审查 | 备注 |\n|---|---|---|---|---|---|---|"
+
+
+def _cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _positions(modules) -> str:
+    low, high = min(m.position for m in modules), max(m.position for m in modules)
+    return str(low) if low == high else f"{low}–{high}"
+
+
+def _latest_done(done: list):
+    """The most recently finished module: latest lastTickAt, else the highest position (spec 关键决策 7)."""
+    ticked = [m for m in done if m.last_tick_at]
+    if ticked:
+        return max(ticked, key=lambda m: datetime.fromisoformat(m.last_tick_at.replace("Z", "+00:00")))
+    return max(done, key=lambda m: m.position) if done else None
+
+
+def table_rows(g: store.Group, now: str, entry: dict, line_map, full: bool = False) -> list[str]:
+    cells, _ = reviews.module_reviews(g, entry["relayName"])
+    if reviews.registration_at(g, entry["relayName"], now) is None:
+        cells = {}
+    rows: list[tuple[int, str]] = []
+
+    def module_row(m):
+        values = [str(m.position), m.id, clip(m.responsibility, RESPONSIBILITY_CHARS), status_cell(m),
+                  review_cell(m), arch_cell(cells.get(m.id, ())), note_cell(g, now, entry, line_map, m)]
+        rows.append((m.position, "| " + " | ".join(_cell(v) for v in values) + " |"))
+
+    modules = list(line_map.modules)
+    if full:
+        for m in modules:
+            module_row(m)
+    else:
+        done = [m for m in modules if m.status == "done"]
+        latest = _latest_done(done)
+        folded_done = [m for m in done if m is not latest]
+        not_ready = [m for m in modules if m.status == "not_ready"]
+        for m in modules:
+            if m.status in _EXPANDED or m is latest or m.status not in ("done", "not_ready"):
+                module_row(m)
+        if folded_done:
+            rows.append((min(m.position for m in folded_done),
+                         f"| {_positions(folded_done)} | 其余 {len(folded_done)} 个已完成 | | ✅ | | | |"))
+        if not_ready:
+            rows.append((min(m.position for m in not_ready),
+                         f"| {_positions(not_ready)} | {len(not_ready)} 个未就绪 | | ○ | | | |"))
+    return [_COLUMNS] + [row for _, row in sorted(rows, key=lambda r: r[0])]
+
+
+def render_table(g: store.Group, now: str, entry: dict, line_map, full: bool = False) -> str:
+    return "\n".join(header_lines(g, now, entry, line_map)) + "\n\n" + "\n".join(
+        table_rows(g, now, entry, line_map, full))

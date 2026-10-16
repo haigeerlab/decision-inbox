@@ -165,5 +165,78 @@ class HeaderTest(MapCase):
         self.assertEqual(mapview.note_cell(self.g, NOW, self.fe, line, line.modules[0]), "")
 
 
+class TableTest(MapCase):
+    def scenario(self):
+        self.register()
+        self.conclude("通过，附建议1条", "R-1", "Spec", module="pay")
+        self.conclude("有须修改项", "R-2", "Plan", module="pay", minutes_ago=50)
+        self.conclude("有须修改项", "R-2", "Plan", module="pay", minutes_ago=40)
+        self.conclude("通过", "R-9", "Spec")
+        self.wait("fe-codex", "API", 40)
+        own = self.ask("fe-codex")
+        line = make_map([
+            module_doc("a", 1, last_tick="2026-10-16T10:00:00+08:00"),
+            module_doc("b", 2, last_tick="2026-10-16T11:00:00+08:00"),
+            module_doc("c", 3),
+            module_doc("pay", 4, "in_progress", "build", 6, 11, responsibility="支付页：接微信与支付宝，" + "长" * 30),
+            module_doc("cart", 5, "suspended", reason="等设计稿", blocks=("x", "z")),
+            module_doc("x", 6, "blocked", blocked_on=("cart",), spec="pending", plan="none"),
+            module_doc("y", 7, "ready", spec="none", plan="none"),
+            module_doc("z", 8, "not_ready", missing=("x",), spec="none", plan="none"),
+            module_doc("w", 9, "not_ready", missing=("y",), spec="none", plan="none"),
+        ], active="pay", bottlenecks=[("cart", ("x", "z"))])
+        return own, line
+
+    def test_default_view_exact(self):
+        own, line = self.scenario()
+        clock = mapview._clock("2026-10-16T11:37:00+08:00")
+        expected = "\n".join([
+            f"前端 · 9 个模块 · ✅ 3 🔨 1 ⏸ 1 ⛔ 1 🟢 1 ○ 2 · 更新于 {clock}",
+            f"关键卡点：cart 挂起 → 挡住 2 个模块 · 等你决定：#{own}",
+            "未合入主线：91 个提交（相对 origin/main）；未推送：判断不了",
+            "架构审查：未标模块的审查 1 个",
+            "",
+            "| 位 | 编号 | 作用 | 状态 | Spec/Plan 评审 | 架构审查 | 备注 |",
+            "|---|---|---|---|---|---|---|",
+            "| 1–3 | 其余 2 个已完成 | | ✅ | | | |",
+            "| 2 | b | b 的作用 | ✅ 已完成 | Spec ✔ Plan ✔ | — |  |",
+            "| 4 | pay | 支付页：接微信与支付宝，" + "长" * 28 + "… | 🔨 进行中 6/11 | Spec ✔ Plan ✔ | "
+            "Spec 通过，附建议1条 · Plan 有须修改项（第 2 轮） | 外部等待：等 API 交付「订单接口」（已等 40 分钟） |",
+            "| 5 | cart | cart 的作用 | ⏸ 挂起：等设计稿 · 挡住 2 个 | Spec ✔ Plan ✔ | — |  |",
+            "| 6 | x | x 的作用 | ⛔ 阻塞：等 cart | Spec 待审 Plan — | — |  |",
+            "| 7 | y | y 的作用 | 🟢 可以开始 | Spec — Plan — | — |  |",
+            "| 8–9 | 2 个未就绪 | | ○ | | | |",
+        ])
+        self.assertMultiLineEqual(mapview.render_table(self.g, NOW, self.fe, line), expected)
+
+    def test_full_has_no_merged_rows(self):
+        _, line = self.scenario()
+        rows = mapview.table_rows(self.g, NOW, self.fe, line, full=True)
+        self.assertEqual(len(rows), 1 + 9)  # column header block + one row per module
+        self.assertFalse(any("其余" in r or "个未就绪 |" in r for r in rows))
+        self.assertIn("| 8 | z | z 的作用 | ○ 未就绪：缺 x |", "\n".join(rows))
+
+    def test_latest_done_without_ticks_is_highest_position(self):
+        line = make_map([module_doc("a", 1), module_doc("b", 2), module_doc("c", 5)])
+        rows = mapview.table_rows(self.g, NOW, self.fe, line)
+        self.assertEqual(rows[1:], ["| 1–2 | 其余 2 个已完成 | | ✅ | | | |",
+                                    "| 5 | c | c 的作用 | ✅ 已完成 | Spec ✔ Plan ✔ | — |  |"])
+
+    def test_single_folded_position(self):
+        line = make_map([module_doc("a", 1), module_doc("b", 2, last_tick="2026-10-16T11:00:00+08:00"),
+                         module_doc("z", 3, "not_ready", missing=("q",))])
+        rows = mapview.table_rows(self.g, NOW, self.fe, line)
+        self.assertEqual(rows[1], "| 1 | 其余 1 个已完成 | | ✅ | | | |")
+        self.assertEqual(rows[3], "| 3 | 1 个未就绪 | | ○ | | | |")
+
+    def test_real_fixture(self):
+        line = specguard.parse_map((Path(__file__).resolve().parent / "fixtures" / "specguard" /
+                                    "map-0.63.json").read_text(encoding="utf-8"))
+        text = mapview.render_table(self.g, NOW, self.fe, line)
+        self.assertIn("| spec-guard-reader |", text)
+        self.assertIn("🔨 进行中 1/6", text)
+        self.assertIn("未合入主线：3 个提交（相对 origin/main）；未推送：判断不了", text)
+
+
 if __name__ == "__main__":
     unittest.main()

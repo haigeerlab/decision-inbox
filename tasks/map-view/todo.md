@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
 
-- [ ] Task 4：折叠与整表
+- [x] Task 4：折叠与整表
   - 验收：Spec 验收 1（完整期望文本逐字一致）、5（最近完成取 `lastTickAt` 最晚的，没有时取位次最大的；合并行的位次范围，只有一个模块时写一个数；`全部` 时没有合并行）；作用列超过 40 字截断；`map-0.63.json` 夹具能排出整表
   - 验证：`python3 -m unittest discover -s tests -p test_mapview.py -v`
   - 文件：`decision_inbox/mapview.py`、`tests/test_mapview.py`
