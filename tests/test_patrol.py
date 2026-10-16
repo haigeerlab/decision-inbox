@@ -247,5 +247,68 @@ class NoticeTest(PatrolCase):
         self.assertEqual(self.ids(later_round), [])
 
 
+class CommandLineTest(PatrolCase):
+    def setUp(self):
+        super().setUp()
+        import os
+        self._plugins = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
+        os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.home / "no-plugins.json")  # never start spec-guard
+
+    def tearDown(self):
+        import os
+        if self._plugins is None:
+            os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        else:
+            os.environ["DECISION_INBOX_PLUGINS_FILE"] = self._plugins
+        super().tearDown()
+
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_plan_then_record(self):
+        import json
+        agents = self.home / "agents.json"
+        agents.write_text(json.dumps({"count": 1, "agents": [agent("fe-owner", **STOPPED_OWNER)]}), encoding="utf-8")
+        plan_file = self.home / "plan.json"
+        before = self.digest()
+        code, out, _ = self.run_cli("patrol", "plan", "demo", "--agents", str(agents), "--out", str(plan_file))
+        self.assertEqual(code, 0)
+        self.assertEqual(self.digest(), before)
+        doc = json.loads(plan_file.read_text(encoding="utf-8"))
+        self.assertEqual([a["id"] for a in doc["actions"]], ["wake:fe-owner"])
+        self.assertEqual(json.loads(out)["actions"][0]["target"], OWNER_DESKTOP)
+        code, _, _ = self.run_cli("patrol", "record", "demo", "--plan", str(plan_file), "--done", "wake:fe-owner")
+        self.assertEqual(code, 0)
+        self.assertIn("fe-owner", store.read_state(self.g, "patrol")["wakes"])
+        self.assertEqual(self.run_cli("patrol", "record", "demo", "--plan", str(plan_file), "--done", "wake:nobody")[0], 2)
+
+    def test_unreadable_agents_still_plans(self):
+        import json
+        bad = self.home / "agents.json"
+        bad.write_text("not json", encoding="utf-8")
+        plan_file = self.home / "plan.json"
+        code, _, _ = self.run_cli("patrol", "plan", "demo", "--agents", str(bad), "--out", str(plan_file))
+        self.assertEqual(code, 0)
+        ids = [a["id"] for a in json.loads(plan_file.read_text(encoding="utf-8"))["actions"]]
+        self.assertIn("notify:relay-unreadable", ids)
+
+    def test_prompt_and_errors(self):
+        code, out, _ = self.run_cli("patrol", "prompt", "demo")
+        self.assertEqual(code, 0)
+        for needle in ("bridge_agents", "patrol plan demo", "patrol record demo", "bridge_send", "send_message",
+                       "display notification", "wake", "owner-alert", "notify"):
+            self.assertIn(needle, out)
+        self.assertEqual(self.run_cli("patrol", "plan", "nope", "--agents", "x", "--out", "y")[0], 2)
+        self.assertEqual(self.run_cli("patrol", "prompt", "nope")[0], 2)
+        self.assertEqual(self.run_cli("patrol", "bogus")[0], 2)
+        self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

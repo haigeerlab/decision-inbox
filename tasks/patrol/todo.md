@@ -38,7 +38,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_patrol.py -v`
   - 文件：`decision_inbox/patrol.py`、`tests/test_patrol.py`
 
-- [ ] Task 5：命令行 `patrol plan`、`record`、`prompt`
+- [x] Task 5：命令行 `patrol plan`、`record`、`prompt`
   - 验收：Spec 验收 13（plan 写出计划文件、退出码 0；record 按计划文件和结果记账；prompt 含三步和三种动作的工具名；协作组不存在时退出码 2；agent-relay 文件读不出时，plan 仍然写出计划并含「读不到 agent-relay」通知）；原有子命令不受影响
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/__main__.py`、`tests/test_patrol.py`

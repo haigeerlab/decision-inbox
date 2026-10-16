@@ -3,12 +3,13 @@ import json
 import sys
 from pathlib import Path
 
-from decision_inbox import health, mapview, query, relay, specguard, stophook, store
+from decision_inbox import health, mapview, patrol, query, relay, specguard, stophook, store
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
-         "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]")
+         "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]\n"
+         "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...")
 
 
 def _init(name: str) -> int:
@@ -165,7 +166,58 @@ def _hook(argv: list[str]) -> int:
     return 0
 
 
+def _patrol(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox patrol")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("plan")
+    p.add_argument("group")
+    p.add_argument("--agents", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--relay-version")
+    p = sub.add_parser("record")
+    p.add_argument("group")
+    p.add_argument("--plan", required=True)
+    p.add_argument("--done", nargs="*", default=[])
+    p.add_argument("--failed", nargs="*", default=[])
+    p = sub.add_parser("prompt")
+    p.add_argument("group")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        g = store.open_group(args.group)
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    if args.command == "prompt":
+        print(patrol.prompt(args.group))
+        return 0
+    if args.command == "plan":
+        agents, error = None, None
+        try:
+            agents = relay.parse_agents(Path(args.agents).read_text(encoding="utf-8"), relay_version=args.relay_version)
+        except (OSError, relay.RelayDataError) as e:
+            error = str(e)
+        maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
+                if e["role"] == "dev" and e.get("repo")}
+        doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error).to_json()
+        Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
+        return 0
+    doc = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+    known = {a["id"] for a in doc["actions"]}
+    unknown = [i for i in args.done + args.failed if i not in known]
+    if unknown:
+        print(f"计划里没有这些动作：{'、'.join(unknown)}", file=sys.stderr)
+        return 2
+    patrol.record(g, doc, done=args.done, failed=args.failed)
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["patrol"]:
+        return _patrol(argv[1:])
     if argv[:1] == ["hook"]:
         return _hook(argv[1:])
     if argv[:1] == ["query"]:

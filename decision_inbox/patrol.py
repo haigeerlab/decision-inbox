@@ -205,3 +205,31 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
         tx.write_state(DOMAIN, state)
         tx.append_event("patrol.run", ref=None, actor="patrol",
                         data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed})
+
+
+PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
+
+第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}。
+
+第 2 步：运行
+{cli} patrol plan {group} --agents {agents} --out {plan}
+它打印本轮要做的动作（JSON 的 actions），每个动作有 id、kind、target、text。没有动作就直接到第 3 步。
+
+逐条执行：
+- kind 为 wake：用桌面版的会话消息工具 send_message，把 text 原样发给会话 target（桌面版会话编号）。
+- kind 为 owner-alert：用 agent-relay 的 bridge_send，把 text 原样发给身份 target，不要求回复。
+- kind 为 notify：用 Bash 发桌面通知（文字作为参数传入，不要拼进脚本）：
+  osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "decision-inbox"' -e 'end run' "<text>"
+
+第 3 步：运行
+{cli} patrol record {group} --plan {plan} --done <做成的动作 id…> --failed <失败的动作 id…>
+做成的写在 --done 后，失败的写在 --failed 后，没有的一项可以省略。
+
+注意：只执行计划里的动作；不要读或转述任何消息正文；某一步出错就把出错的那一条记为失败，继续做完其余的。
+"""
+
+
+def prompt(group: str, cli: str = "python3 -m decision_inbox", workdir: str = "$TMPDIR") -> str:
+    """The self-contained scheduled-task prompt (spec 关键决策 7); onboarding installs it."""
+    return PROMPT.format(group=group, cli=cli, agents=f"{workdir}/decision-inbox-{group}-agents.json",
+                         plan=f"{workdir}/decision-inbox-{group}-plan.json")
