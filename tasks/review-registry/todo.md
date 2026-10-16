@@ -7,12 +7,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_reviews.py -v`
   - 文件：`decision_inbox/reviews.py`、`tests/test_reviews.py`
 
-- [ ] Task 2：显示标签
+- [x] Task 2：显示标签
   - 验收：Spec 验收 3（五种写法逐字、highlight）、4（⚠ 未标审查与 mentions）、5（没登记一律「本会话无审查者」）、6（生效前后、撤销前后）
   - 验证：`python3 -m unittest discover -s tests -p test_reviews.py -v`
   - 文件：`decision_inbox/reviews.py`、`tests/test_reviews.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 93 tests, OK（2026-10-16）
 
 - [ ] Task 3：审查结论与轮数
   - 验收：Spec 验收 7（三轮后通过）、8（三种问题代码，不计轮数）、9（结束后重开并提示）、10（快照与事件一致，`store show` 正常）

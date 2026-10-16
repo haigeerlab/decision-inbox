@@ -95,3 +95,44 @@ def registration_at(g: store.Group, session: str, at: str) -> Registration | Non
         if _instant(r["since"]) <= moment and (r["until"] is None or moment < _instant(r["until"])):
             return Registration(session, r["reviewer"], tuple(r["nodes"]), r["since"], r["until"])
     return None
+
+
+@dataclass(frozen=True)
+class ReviewLabel:
+    text: str
+    warn: bool = False
+    highlight: bool = False
+    ref: str | None = None
+    mentions: tuple[str, ...] = ()
+
+
+_LABELS = {
+    "passed": "已审：通过",
+    "in-progress": "审查中，请勿先批",
+    "not-applicable": "不需审：不属于审查节点",
+    "waived": "用户豁免",
+}
+
+
+def _mentions(message) -> tuple[str, ...]:
+    """Lines that talk about review, quoted as written (requirement 4.3 rule 2)."""
+    found = []
+    if message.review.raw is not None:
+        found.append(message.review.raw.strip())
+    for name, value in message.fields.items():
+        if name == "架构审查":
+            continue
+        found += [line.strip() for line in value.split("\n") if "审查" in line]
+    return tuple(found)
+
+
+def display_label(g: store.Group, session: str, message, received_at: str) -> ReviewLabel:
+    """Requirement 4.3: look only at the registration and the 架构审查 line, never infer."""
+    if registration_at(g, session, received_at) is None:
+        return ReviewLabel("不需审：本会话无审查者")
+    review = message.review
+    if review.status == "passed-with-advice":
+        return ReviewLabel(f"已审：通过，附建议{review.advice_count}条", ref=review.ref)
+    if review.status in _LABELS:
+        return ReviewLabel(_LABELS[review.status], highlight=review.status == "in-progress", ref=review.ref)
+    return ReviewLabel("⚠ 未标审查", warn=True, mentions=_mentions(message))
