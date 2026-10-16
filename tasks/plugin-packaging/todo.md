@@ -25,7 +25,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`commands/*.md`、`skills/decision-inbox-join/SKILL.md`、`tests/test_packaging.py`
 
-- [ ] Task 5：README
+- [x] Task 5：README
   - 验收：Spec 验收 8（安装两边、接入顺序、日常用法、升级、卸载与 `~/.decision-inbox` 保留、排查）；文中命令与实际子命令一致
   - 验证：`python3 -m unittest discover -s tests -p test_packaging.py -v`
   - 文件：`README.md`、`tests/test_packaging.py`

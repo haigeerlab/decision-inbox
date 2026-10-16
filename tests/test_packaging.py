@@ -166,5 +166,19 @@ class CommandFilesTest(unittest.TestCase):
                 self.assertIn(sub, SUBCOMMANDS, f"{path.name} 用了不存在的子命令 {sub}")
 
 
+class ReadmeTest(unittest.TestCase):
+    def test_sections_and_commands(self):
+        import re
+        text = (REPO / "README.md").read_text(encoding="utf-8")
+        for needle in ("## 安装", "/plugin marketplace add", "codex plugin marketplace add", "## 接入",
+                       "收件枢纽", "负责人", "开发线", "/decision-inbox:hub-setup", "/decision-inbox:join",
+                       "## 日常", "/decision-inbox:lines", "/decision-inbox:flow", "/decision-inbox:item",
+                       "/decision-inbox:map", "## 升级", "## 卸载", "/decision-inbox:leave",
+                       "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视"):
+            self.assertIn(needle, text)
+        for sub in re.findall(r"decision-inbox ([a-z]+)", text):
+            self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")
+
+
 if __name__ == "__main__":
     unittest.main()
