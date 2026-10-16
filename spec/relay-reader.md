@@ -1,14 +1,14 @@
-<!-- spec-guard: review approved a715a61b338b -->
+<!-- spec-guard: review approved 3c1fda08f253 -->
 # Spec: relay-reader
 
 > 能力图模块 `relay-reader`。需求来源：`docs/requirements-record.md` 第 1.4、4.5、8.1、8.3、8.5、10.2 节，第 12 节第 15 项。
-> agent-relay 接口依据：agent-relay 仓库 `v0.6.10` 标签下的 `docs/collaboration-interface.md` 第 2.1、5 节（接口 2.x）。
+> agent-relay 接口依据：agent-relay 仓库 `v0.6.10` 标签下的 `docs/collaboration-interface.md` 第 2.1、5 节（接口 2.x），字段名以同一标签下 `plugins/agent-relay/bridge/src/server.ts`、`bridge-store.ts` 为准。
 
 ## 目标
 
 把 agent-relay 给出的事实整理成本插件统一使用的只读数据，供后面的模块使用：
 - 每个联调身份的在线状态、未读数、等待中的消息（几条、谁发的、最早一条几点）、最近活动和唤醒绑定；
-- 某个身份发出的消息的投递事实：是否送达、何时已读、何时确认、有没有回复、何时过期。
+- 某个身份发出的消息的投递事实：投递状态、何时确认、有没有回复、何时过期。
 
 后面的 wait-tickets（对方离线标记）、line-health（信号 1、2、4、5、10）、stop-hook（我有没有未处理的消息）、query-commands（`/item` 时间线）都只通过本模块拿 agent-relay 的数据，不各自解析。
 
@@ -42,8 +42,9 @@
 2. **版本判定只认证据，不猜。** `bridge_agents` 的返回里没有版本号，所以按下面的顺序判定：
    - 调用方显式给了 agent-relay 版本：以它为准。
    - 返回里任何一个 `waiting` 带 `oldestAt`：只有 0.6.10 及以上才会这样，判定为够新。
-   - 某个 Claude 身份 `unread` 大于 0、却没有 `waiting`：0.6.10 及以上不会出现这种情况，判定为过旧，给出诊断「agent-relay 需升级到 0.6.10」。
-   - 以上都不成立：版本「未定」。这时 Codex 身份没有 `waiting` 记为 0（接口 1.3 起就保证）；Claude 身份的等待数记为「未知」，不记为 0。
+   - 以上都不成立：版本「未定」。这时 Codex 身份没有 `waiting` 记为 0（接口 1.3 起就保证）；Claude 身份的等待数记为「未知」，不记为 0。0.6.10 里只要有任何身份有积压就会带 `oldestAt`，所以「未定」只会出现在全组没有任何积压的时候。
+   - 显式给出的版本低于 0.6.10：判定为过旧，给出诊断「agent-relay 需升级到 0.6.10」。
+   - 不能用「`unread` 大于 0 却没有 `waiting`」推断过旧：0.6.10 的 `unread` 还计入广播和投递失败的消息，`waiting` 不计，这种组合在新版里也会出现（源码 `bridge-store.ts` 的 `UNREAD_FOR` 与 `waiting()`）。
 3. **在线状态保留原值，另给归类。** 原值照抄，以便将来 agent-relay 新增取值时不丢信息。归类只有五种，未来新出现的值一律归为「未知」：
 
    | 原值 | 归类 |
@@ -54,7 +55,7 @@
    | `unreachable` | `unreachable` 在运行但连不上 |
    | `unknown`、缺省、其他任何值 | `unknown` 未知 |
 
-4. **单个条目缺关键字段只跳过并警告，整体结构坏了才报错。** 某个身份缺 `name`、某条消息缺 `id`：跳过这一条并给警告，其余照常。顶层不是 JSON、没有 `agents` 或 `messages` 数组：报错，不返回半份结果。
+4. **单个条目缺关键字段只跳过并警告，整体结构坏了才报错。** 某个身份缺 `name`、某条消息缺 `id`：跳过这一条并给警告，其余照常。顶层不是 JSON、`bridge_agents` 原文没有 `agents` 数组或 `bridge_outbox` 原文没有 `entries` 数组：报错，不返回半份结果。
 5. **时间保持原值。** agent-relay 给的是 UTC 的 ISO 8601（以 `Z` 结尾），本模块原样保留，不换算时区；需要比较先后时按绝对时间比，换成本机时区显示是显示层的事。
 
 ## 接口约定
@@ -96,15 +97,15 @@ class MessageFact:
     sender: str
     recipient: str
     sent_at: str | None
-    delivery_state: str | None    # queued | sending | accepted | failed | unknown | expired，原值照抄
-    read_at: str | None
+    delivery_state: str | None    # queued | sending | accepted | failed | unknown | expired，原值照抄；accepted 表示收件方已取走
     acknowledged_at: str | None
     expires_at: str | None
     reply_ids: tuple[int, ...]
     reply_to: int | None
 ```
 
-- 输出里没有任何正文、预览或主题字段。
+- 输出里没有任何正文、预览或主题字段（`bridge_outbox` 的 `preview` 是正文前 200 字，一律丢弃）。
+- `bridge_outbox` 不给已读时间；需要「何时取走」的追溯，以 `delivery_state` 为准，不另造字段。
 - 不认识的字段一律忽略，不报错（接口 2.x 只增不改）。
 - 字段名到 agent-relay 原字段的对应关系，以计划阶段采集的真实返回原文为准，写进测试夹具；与接口文档不一致时，以真实返回为准并在计划里注明。
 
@@ -153,12 +154,12 @@ python3 -m unittest discover -s tests -v
 ## 验收标准
 
 1. 0.6.10 的 `bridge_agents` 原文（含一个有积压的 Claude 身份，带 `oldestAt`）：`relay_status` 为 `ok`；该身份的 `waiting_count`、`waiting_from`、`waiting_ids`、`waiting_oldest_at` 与原文一致。
-2. 旧版原文（一个 Claude 身份 `unread: 3`、没有 `waiting`）：`relay_status` 为 `too-old`，`warnings` 含「agent-relay 需升级到 0.6.10」；所有 Claude 身份的 `waiting_count` 为 `None`。
+2. 显式给出 `relay_version="0.6.1"`：`relay_status` 为 `too-old`，`warnings` 含「agent-relay 需升级到 0.6.10」，所有 Claude 身份的 `waiting_count` 为 `None`。另一份 0.6.10 原文里，某个 Claude 身份 `unread: 2`（广播）却没有 `waiting`、其他身份带 `oldestAt`：判为 `ok`，该身份 `waiting_count` 为 0，不误报过旧。
 3. 没有任何积压、也没有显式版本：`relay_status` 为 `undetermined`；Codex 身份 `waiting_count` 为 0，Claude 身份为 `None`。同一份原文加上 `relay_version="0.6.10"` 后：Claude 身份为 0，`relay_status` 为 `ok`。
 4. 在线状态：`running`、`waiting-input`、`waiting-approval`、`stopped`、`unreachable`、`unknown`、缺省、`something-new` 分别归类为 active、needs-user、needs-user、offline、unreachable、unknown、unknown、unknown；`presence_raw` 保留原值。
 5. 原文里带 `body`、`preview` 等正文字段：输出对象及其 `repr` 都不含正文内容。
 6. 某个身份缺 `name`：跳过它并给一条警告，其余身份照常；顶层不是合法 JSON 或缺 `agents` 数组：抛 `RelayDataError`。
-7. `bridge_outbox` 原文：每条消息的 `delivery_state`、`read_at`、`acknowledged_at`、`expires_at`、回复编号与原文一致；`sender` 取调用时给的身份名。
+7. `bridge_outbox` 原文：每条消息的 `delivery_state`、`acknowledged_at`、`expires_at`、`reply_to`、回复编号与原文一致；`sender` 取调用时给的身份名；`preview` 的内容不出现在输出里。
 8. 已退役的身份（`includeRetired` 时出现）`retired` 为真，不计入任何积压。
 9. 测试中扫描断言：`relay.py` 不 import 任何网络或子进程模块（`socket`、`subprocess`、`urllib`、`http`）。
 
