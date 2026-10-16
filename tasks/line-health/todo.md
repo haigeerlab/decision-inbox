@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_health.py -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`
 
-- [ ] Task 4：进度与审查类信号 3、6、7、8、9
+- [x] Task 4：进度与审查类信号 3、6、7、8、9
   - 验收：Spec 验收 8（挂起挡住、返工两种门槛）、9（变慢：历史门槛、兜底、快照优先、shallow、首次）、10（孤儿等待）；信号 3 与「停住」一致
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`

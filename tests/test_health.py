@@ -5,7 +5,7 @@ from helpers import TempHomeTestCase
 
 from pathlib import Path
 
-from decision_inbox import health, items, relay, specguard, store, tickets
+from decision_inbox import health, items, protocol, relay, reviews, specguard, store, tickets
 
 WAIT_USER = (Path(__file__).resolve().parent / "fixtures" / "protocol" / "wait-user.txt").read_text(encoding="utf-8")
 
@@ -213,6 +213,96 @@ class SessionSignalTest(HealthCase):
         self.assertNotIn("codex-backlog", [x.code for x in r.signals])
         r = self.assess(snapshot(agent("fe", app="codex", state="running", waiting=(2, ["api"], 30))))
         self.assertNotIn("codex-backlog", [x.code for x in r.signals])
+
+
+class ProgressSignalTest(HealthCase):
+    def kinds(self, r):
+        return [x.code for x in r.signals]
+
+    def test_silent_stop_matches_stalled(self):
+        maps = {"fe": line_map([module(last_tick=at(130))])}
+        r = self.assess(snapshot(agent("fe", activity_ago=180)), maps=maps)
+        self.assertEqual(r.lines["fe"].word, "stalled")
+        self.assertIn((3, "silent-stop", ("fe",)), codes(r))
+
+    def test_suspended_blocks(self):
+        maps = {"fe": line_map([module()], bottlenecks=[{"id": "m0", "suspendedReason": "等上游修复",
+                                                          "blocks": ["m1", "m2"]}])}
+        r = self.assess(snapshot(agent("fe", activity_ago=1)), maps=maps)
+        sig = [x for x in r.signals if x.code == "suspended-blocks"][0]
+        self.assertEqual(sig.no, 6)
+        self.assertIn("m0", sig.text)
+        self.assertIn("挡住 2 个", sig.text)
+
+    def conclude(self, ref, verdict, minutes_ago):
+        msg = protocol.parse(f"【审查结论】\n审查编号：{ref}\n节点：Spec\n送审方：前端\n结论：{verdict}\n")
+        reviews.record_conclusion(self.g, message=msg, sender="owner", at=at(minutes_ago))
+
+    def register_reviewer(self):
+        reviews.register(self.g, session="fe", reviewer="owner", nodes=("spec",), approval_item=None,
+                         approval_note="接入时用户确认", at=at(1000))
+
+    def test_rework_fallback(self):
+        self.register_reviewer()
+        for i in range(2):
+            self.conclude("R-1", "有须修改项", 100 - i)
+        self.assertNotIn("rework", self.kinds(self.assess()))
+        self.conclude("R-1", "有须修改项", 90)
+        self.assertIn((7, "rework", ("fe",)), codes(self.assess()))
+
+    def test_rework_against_history(self):
+        self.register_reviewer()
+        for ref in ("H-1", "H-2", "H-3"):
+            self.conclude(ref, "有须修改项", 500)
+            self.conclude(ref, "通过", 400)          # median of closed = 2 -> threshold 4
+        for i in range(3):
+            self.conclude("R-9", "有须修改项", 100 - i)
+        self.assertNotIn("rework", self.kinds(self.assess()))
+        self.conclude("R-9", "有须修改项", 90)
+        self.assertIn("rework", self.kinds(self.assess()))
+
+    def test_slow_with_history(self):
+        # 3 ticks over 40 minutes -> average 20 minutes -> threshold max(60, 30) = 60 minutes
+        mod = module(last_tick=at(70), first_tick=at(110), ticks=3)
+        r = self.assess(snapshot(agent("fe", activity_ago=1)), maps={"fe": line_map([mod])})
+        self.assertIn((8, "slow-progress", ("fe",)), codes(r))
+        mod = module(last_tick=at(50), first_tick=at(90), ticks=3)
+        r = self.assess(snapshot(agent("fe", activity_ago=1)), maps={"fe": line_map([mod])})
+        self.assertNotIn("slow-progress", self.kinds(r))
+
+    def test_slow_fallback(self):
+        for ago, expected in ((119, False), (120, True)):
+            with self.subTest(ago=ago):
+                mod = module(last_tick=at(ago), first_tick=at(ago), ticks=1)
+                r = self.assess(snapshot(agent("fe", activity_ago=1)), maps={"fe": line_map([mod])})
+                self.assertEqual("slow-progress" in self.kinds(r), expected)
+
+    def test_snapshot_change_beats_old_tick(self):
+        prev = self.assess(maps={"fe": line_map([module(done=1)])}).snapshot
+        prev["sessions"]["fe"]["m1"]["changedAt"] = at(500)
+        mod = module(done=2, last_tick=at(600), first_tick=at(900), ticks=3)
+        r = self.assess(snapshot(agent("fe", activity_ago=1)), maps={"fe": line_map([mod])}, previous=prev)
+        self.assertNotIn("slow-progress", self.kinds(r))
+
+    def test_shallow_history_ignores_ticks(self):
+        mod = module(last_tick=at(600), first_tick=at(900), ticks=3)
+        r = self.assess(snapshot(agent("fe", activity_ago=1)), maps={"fe": line_map([mod], history="shallow")})
+        self.assertNotIn("slow-progress", self.kinds(r))   # no snapshot either: nothing to judge by
+        prev = self.assess(maps={"fe": line_map([module(done=1)])}).snapshot
+        prev["sessions"]["fe"]["m1"]["changedAt"] = at(130)
+        r = self.assess(snapshot(agent("fe", activity_ago=1)),
+                        maps={"fe": line_map([module(done=1, last_tick=at(1), first_tick=at(900), ticks=9)],
+                                             history="shallow")}, previous=prev)
+        self.assertIn("slow-progress", self.kinds(r))      # 130 minutes since the snapshot change, fallback 120
+
+    def test_orphan_wait(self):
+        old = self.wait(waiter="fe", target="API", sent_ago=60)
+        self.wait(waiter="fe", target="前端负责人", sent_ago=30)
+        self.wait(waiter="api", target="前端", sent_ago=10)
+        r = self.assess()
+        orphans = [x for x in r.signals if x.code == "orphan-wait"]
+        self.assertEqual([(x.no, x.sessions) for x in orphans], [(9, ("fe",))])
+        self.assertIn(f"#{old}", orphans[0].text)
 
 
 if __name__ == "__main__":

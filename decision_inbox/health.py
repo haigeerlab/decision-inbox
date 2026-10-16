@@ -6,10 +6,11 @@ store reads; the new progress snapshot is returned for patrol to save.
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from decision_inbox import items, store
+from decision_inbox import items, reviews, store
 
 # Thresholds decided by the user on 2026-10-16 (requirement section 12 item 3).
 REWORK_FALLBACK_ROUNDS = 3
@@ -202,6 +203,70 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
     return out
 
 
+def _slow_threshold(m, history: str) -> float:
+    """Minutes without progress before signal 8 (requirement section 12 item 3)."""
+    if history == "complete" and (m.tick_commits or 0) >= 2 and m.first_tick_at and m.last_tick_at:
+        average = (_instant(m.last_tick_at) - _instant(m.first_tick_at)).total_seconds() / 60 / (m.tick_commits - 1)
+        return max(SLOW_FACTOR * average, SLOW_FLOOR_MINUTES)
+    return SLOW_FALLBACK_MINUTES
+
+
+def _progress_signals(g, facts: dict[str, _Facts], lines: dict[str, LineState], snap: dict,
+                      now: datetime) -> list[Signal]:
+    """Signals 3, 6, 7, 8 and 9: progress, suspension, rework and orphan waits."""
+    out = []
+    for name, f in facts.items():
+        if lines[name].word == "stalled":
+            m = f.module
+            out.append(Signal(3, "silent-stop", (name,),
+                              f"{_short(f)} {lines[name].text}：当前模块 {m.id} 还有 "
+                              f"{m.progress_total - m.progress_done} 项没勾，也没在等任何人"))
+        if f.read is None or f.read.status != "ok":
+            continue
+        line_map = f.read.map
+        for b in line_map.bottlenecks:
+            out.append(Signal(6, "suspended-blocks", (name,),
+                              f"{_short(f)} 的 {b.id} 挂起（{b.suspended_reason or '未记原因'}）"
+                              f"→ 挡住 {len(b.blocks)} 个：{'、'.join(b.blocks)}"))
+        if lines[name].word == "offline":
+            continue
+        changed = snap["sessions"].get(name, {})
+        for m in line_map.modules:
+            if m.step != "build" or m.progress_done >= m.progress_total:
+                continue
+            times = [_instant(changed.get(m.id, {}).get("changedAt"))]
+            if line_map.history == "complete":
+                times.append(_instant(m.last_tick_at))
+            times = [t for t in times if t is not None]
+            if not times:
+                continue
+            idle = (now - max(times)).total_seconds() / 60
+            if idle >= _slow_threshold(m, line_map.history):
+                out.append(Signal(8, "slow-progress", (name,),
+                                  f"{_short(f)} 的 {m.id} 已 {_duration(idle)}没有新进展，明显慢于平时"))
+    stats = reviews.round_stats(g)
+    closed = [rounds for _, _, _, rounds in stats.closed]
+    limit = (statistics.median(closed) + REWORK_MARGIN if len(closed) >= REWORK_HISTORY_MIN
+             else REWORK_FALLBACK_ROUNDS)
+    for ref, submitter, node, rounds in stats.open:
+        if rounds >= limit:
+            who = facts[submitter].entry["shortName"] if submitter in facts else submitter
+            out.append(Signal(7, "rework", (submitter,),
+                              f"{who} 的审查 {ref}（{node}）已来回 {rounds} 轮，超过本组常见水平"))
+    ticket_doc = store.read_state(g, "tickets").get("tickets", {})
+    for key, t in ticket_doc.items():
+        if t["status"] != "open":
+            continue
+        later = [int(k) for k, o in ticket_doc.items() if o["waiter"] == t["waiter"]
+                 and _instant(o["sentAt"]) > _instant(t["sentAt"])]
+        if later:
+            who = facts[t["waiter"]].entry["shortName"] if t["waiter"] in facts else t["waiter"]
+            out.append(Signal(9, "orphan-wait", (t["waiter"],),
+                              f"{who} 的等待单 #{key}（等 {t['target']}）还开着，但它后来又开了新的等待 "
+                              f"#{min(later)}"))
+    return out
+
+
 def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
            previous: dict | None = None) -> Assessment:
     maps = maps or {}
@@ -209,5 +274,5 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap)
     lines = {name: _state(f, moment) for name, f in facts.items()}
-    signals = _session_signals(facts, lines, moment)
+    signals = _session_signals(facts, lines, moment) + _progress_signals(g, facts, lines, snap, moment)
     return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)
