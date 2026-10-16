@@ -7,12 +7,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/specguard.py`、`tests/test_specguard.py`
 
-- [ ] Task 2：解析 JSON 为 LineMap
+- [x] Task 2：解析 JSON 为 LineMap
   - 验收：Spec 验收 3（字段一致、按 position 排序、忽略未知字段）、7（0.62 形状）、8（unmerged／unpushed 为 null 时记 None）；schemaVersion 为 2 与非 JSON 的解析结果
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/specguard.py`、`tests/test_specguard.py`、`tests/fixtures/specguard/map-0.63.json`、`tests/fixtures/specguard/map-0.62.json`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 152 tests, OK（2026-10-16）
 
 - [ ] Task 3：子进程调用与结果分类
   - 验收：Spec 验收 4（退出码 2／3／4／1）、5（非 JSON、版本 2）、6（超时）、9（路径不对不启动子进程）、11（无 shell=True）

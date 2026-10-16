@@ -54,3 +54,125 @@ def locate(project: str) -> Located | Missing:
     if not script.is_file():
         return Missing(f"spec-guard 的安装目录里没有 map_view.py：{script}")
     return Located(str(script), chosen.get("version"))
+
+
+SCHEMA_VERSION = 1
+
+
+class BadOutput(ValueError):
+    """map_view.py printed something that is not the agreed JSON."""
+
+
+class SchemaMismatch(ValueError):
+    """schemaVersion is not 1: the contract changed, check it before reading."""
+
+
+@dataclass(frozen=True)
+class Bottleneck:
+    id: str
+    suspended_reason: str | None
+    blocks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AwaitingReview:
+    id: str
+    kind: str
+    review: str
+
+
+@dataclass(frozen=True)
+class ModuleFact:
+    id: str
+    position: int
+    responsibility: str
+    depends_on: tuple[str, ...]
+    status: str
+    step: str | None
+    progress_done: int
+    progress_total: int
+    suspended_reason: str | None
+    blocked_on: tuple[str, ...]
+    missing_deps: tuple[str, ...]
+    blocks: tuple[str, ...]
+    review_spec: str
+    review_plan: str
+    last_tick_at: str | None
+    first_tick_at: str | None
+    tick_commits: int | None
+    suspended_at: str | None
+
+
+@dataclass(frozen=True)
+class LineMap:
+    project_root: str
+    title: str | None
+    generated_at: str
+    generator_version: str | None
+    stage: str
+    active_module: str | None
+    next_gate: str | None
+    history: str
+    totals: dict
+    head_sha: str | None
+    head_branch: str | None
+    unmerged_count: int | None
+    unmerged_base: str | None
+    unpushed_count: int | None
+    unpushed_upstream: str | None
+    bottlenecks: tuple[Bottleneck, ...]
+    awaiting_review: tuple[AwaitingReview, ...]
+    modules: tuple[ModuleFact, ...]
+
+
+def _module(m: dict) -> ModuleFact:
+    progress = m.get("progress") or {}
+    blocks = m.get("blocks") or {}
+    review = m.get("review") or {}
+    return ModuleFact(
+        id=m["id"], position=int(m["position"]), responsibility=m.get("responsibility", ""),
+        depends_on=tuple(m.get("dependsOn") or ()), status=m["status"], step=m.get("step"),
+        progress_done=int(progress.get("done", 0)), progress_total=int(progress.get("total", 0)),
+        suspended_reason=m.get("suspendedReason"), blocked_on=tuple(m.get("blockedOn") or ()),
+        missing_deps=tuple(m.get("missingDeps") or ()), blocks=tuple(blocks.get("ids") or ()),
+        review_spec=review.get("spec", "none"), review_plan=review.get("plan", "none"),
+        last_tick_at=m.get("lastTickAt"), first_tick_at=m.get("firstTickAt"),
+        tick_commits=m.get("tickCommits"), suspended_at=m.get("suspendedAt"),
+    )
+
+
+def parse_map(text: str) -> LineMap:
+    """map_view.py --json stdout -> LineMap; unknown fields are ignored (contract: only additions in v1)."""
+    try:
+        d = json.loads(text)
+    except (TypeError, json.JSONDecodeError) as e:
+        raise BadOutput(f"map_view.py 的输出不是合法 JSON：{e}") from None
+    if not isinstance(d, dict):
+        raise BadOutput("map_view.py 的输出顶层不是对象")
+    if d.get("schemaVersion") != SCHEMA_VERSION:
+        raise SchemaMismatch(f"map_view.py 的 schemaVersion 是 {d.get('schemaVersion')!r}，本插件只认 1")
+    try:
+        head = d.get("head") or {}
+        unmerged = head.get("unmerged") or {}
+        unpushed = head.get("unpushed") or {}
+        history = d.get("history", "unavailable")
+        modules = sorted((_module(m) for m in d["modules"]), key=lambda m: m.position)
+        if history == "unavailable":
+            modules = [m if m.tick_commits is None else
+                       ModuleFact(**{**m.__dict__, "tick_commits": None}) for m in modules]
+        return LineMap(
+            project_root=(d.get("project") or {}).get("root", ""), title=(d.get("project") or {}).get("title"),
+            generated_at=d.get("generatedAt", ""), generator_version=(d.get("generator") or {}).get("version"),
+            stage=d.get("stage", ""), active_module=d.get("activeModule"), next_gate=d.get("nextGate"),
+            history=history, totals=dict(d.get("totals") or {}),
+            head_sha=head.get("sha"), head_branch=head.get("branch"),
+            unmerged_count=unmerged.get("count"), unmerged_base=unmerged.get("base"),
+            unpushed_count=unpushed.get("count"), unpushed_upstream=unpushed.get("upstream"),
+            bottlenecks=tuple(Bottleneck(b["id"], b.get("suspendedReason"), tuple(b.get("blocks") or ()))
+                              for b in d.get("bottlenecks") or ()),
+            awaiting_review=tuple(AwaitingReview(a["id"], a["kind"], a["review"])
+                                  for a in d.get("awaitingReview") or ()),
+            modules=tuple(modules),
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        raise BadOutput(f"map_view.py 的输出缺少约定字段：{e}") from None

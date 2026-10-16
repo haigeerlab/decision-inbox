@@ -74,5 +74,46 @@ class LocateTest(LocateCase):
         self.assertEqual(len(reasons), 3)
 
 
+def fixture(name):
+    return (FIX / name).read_text(encoding="utf-8")
+
+
+class ParseTest(unittest.TestCase):
+    def test_0_63_fields(self):
+        m = specguard.parse_map(fixture("map-0.63.json"))
+        self.assertEqual((m.generator_version, m.stage, m.active_module, m.history),
+                         ("0.63.0", "BUILDING", "spec-guard-reader", "complete"))
+        self.assertEqual(m.project_root, "/repo/demo")
+        self.assertEqual((m.head_branch, m.unmerged_count, m.unmerged_base), ("feature-x", 3, "origin/main"))
+        self.assertIsNone(m.unpushed_count)
+        self.assertIsNone(m.unpushed_upstream)
+        self.assertEqual([x.id for x in m.modules], ["group-store", "spec-guard-reader", "line-health"])
+        done = m.modules[0]
+        self.assertEqual((done.status, done.position, done.tick_commits), ("done", 1, 7))
+        self.assertEqual(done.last_tick_at, "2026-10-16T14:10:44+08:00")
+        self.assertEqual(done.first_tick_at, "2026-10-16T14:00:33+08:00")
+        reader = m.modules[1]
+        self.assertEqual((reader.status, reader.step), ("in_progress", "spec"))
+        self.assertIn("line-health", reader.blocks)
+        self.assertEqual(m.awaiting_review[0], specguard.AwaitingReview("line-health", "spec", "pending"))
+        self.assertEqual(m.totals["done"], 6)
+
+    def test_0_62_shape(self):
+        m = specguard.parse_map(fixture("map-0.62.json"))
+        self.assertEqual(m.history, "unavailable")
+        self.assertIsNone(m.unmerged_count)
+        for mod in m.modules:
+            self.assertEqual((mod.last_tick_at, mod.first_tick_at, mod.tick_commits, mod.suspended_at),
+                             (None, None, None, None))
+
+    def test_bad_inputs(self):
+        with self.assertRaises(specguard.BadOutput):
+            specguard.parse_map("not json")
+        with self.assertRaises(specguard.SchemaMismatch):
+            specguard.parse_map(json.dumps({"schemaVersion": 2, "modules": []}))
+        with self.assertRaises(specguard.BadOutput):
+            specguard.parse_map(json.dumps({"schemaVersion": 1}))
+
+
 if __name__ == "__main__":
     unittest.main()
