@@ -42,7 +42,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
 
-- [ ] Task 6：命令行 `inbox receive|reply|sent|convention` 与 `view`
+- [x] Task 6：命令行 `inbox receive|reply|sent|convention` 与 `view`
   - 验收：
     - 每个子命令打印 JSON 或文字、退出码按规格（0／2／3）；
     - Spec 验收 9：`view` 第一行提示没发出去的消息；`sent` 里不存在的编号退出码 2；

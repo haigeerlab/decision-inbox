@@ -340,3 +340,95 @@ class ConventionTest(HubCase):
         self.assertEqual(text.count("<!-- BEGIN"), 1)
         self.assertEqual(text.count("<!-- END"), 1)
         self.assertIn("python3 -m decision_inbox inbox receive demo", text)
+
+
+class CommandLineTest(HubCase):
+    def setUp(self):
+        super().setUp()
+        self._plugins = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
+        os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.home / "no-plugins.json")  # never start spec-guard
+
+    def tearDown(self):
+        if self._plugins is None:
+            os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        else:
+            os.environ["DECISION_INBOX_PLUGINS_FILE"] = self._plugins
+        super().tearDown()
+
+    def run_cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def write(self, name, text):
+        path = self.home / name
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def inbox_file(self, *messages):
+        import json
+        return self.write("inbox.json", json.dumps({"agent": "di-hub", "hasMore": False, "messages": [
+            {"id": mid, "fromAgent": sender, "toAgent": "di-hub", "body": body, "createdAt": SENT,
+             "replyTo": None, "expectsReply": True} for mid, sender, body in messages]}, ensure_ascii=False))
+
+    def test_receive_reply_sent_view(self):
+        import json
+        f = self.inbox_file((1401, "fe-codex", WAIT_USER), (1402, "api-codex", wait_session(target="用户", what="#1 的答复")))
+        code, out, _ = self.run_cli("inbox", "receive", "demo", "--inbox", f)
+        self.assertEqual(code, 0)
+        got = json.loads(out)
+        self.assertEqual((got["ack"], got["sends"], got["unread"], got["more"]), ([1401, 1402], [], [], False))
+        said = self.write("said.txt", "1 A\n")
+        code, out, _ = self.run_cli("inbox", "reply", "demo", "--text-file", said)
+        self.assertEqual(code, 0)
+        got = json.loads(out)
+        self.assertEqual([s["id"] for s in got["sends"]], ["out:1"])
+        self.assertIn("已转达：#1 → 前端", got["show"])
+        code, out, _ = self.run_cli("inbox", "sent", "demo", "--done", "out:1=3950")
+        self.assertEqual((code, json.loads(out)), (0, {"closedTickets": []}))
+        outbox = self.write("outbox.json", json.dumps({"agent": "di-hub", "entries": [
+            {"id": 3950, "toAgent": "fe-codex", "createdAt": NOW, "deliveryState": "accepted",
+             "acknowledgedAt": "2026-10-16T05:40:00Z"}]}))
+        agents = self.write("agents.json", json.dumps({"agents": []}))
+        code, out, _ = self.run_cli("view", "demo", "--agents", agents, "--outbox", outbox)
+        self.assertEqual(code, 0)
+        self.assertNotIn("读不到 agent-relay", out)
+        self.assertIn("等你决定 0 项", out)
+        self.assertEqual(items.get(self.g, 1)["status"], "acknowledged")
+
+    def test_view_without_relay_and_unsent(self):
+        self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1403, "api-codex", "【等待用户】\n结束：无\n")))
+        code, out, _ = self.run_cli("view", "demo", "--agents", self.write("agents.json", "not json"))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.split("\n")[:2], ["⚠ 有 1 条消息没发出去，说「重发」再试", "⚠ 读不到 agent-relay，各线状态不全"])
+        code, out, _ = self.run_cli("view", "demo")
+        self.assertEqual(code, 0)
+        self.assertIn("读不到 agent-relay", out)
+
+    def test_expanded_views(self):
+        self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1404, "fe-codex", WAIT_USER)))
+        self.assertTrue(self.run_cli("view", "demo", "detail", "1")[1].startswith("#1 详情"))
+        self.assertEqual(self.run_cli("view", "demo", "waits")[1].strip(), "没有开着的等待单")
+        self.assertEqual(self.run_cli("view", "demo", "closed", "2026-10-15")[1].strip(), "2026-10-15 没有关闭的等待单")
+        self.assertEqual(self.run_cli("view", "demo", "invalidated")[1].strip(), "没有失效的事项")
+        self.assertEqual(self.run_cli("view", "demo", "bogus")[0], 2)
+
+    def test_convention_creates_io_folder(self):
+        code, out, _ = self.run_cli("inbox", "convention", "demo")
+        self.assertEqual(code, 0)
+        self.assertIn(f"{self.g.path / 'io'}/inbox.json", out)
+        self.assertTrue((self.g.path / "io").is_dir())
+
+    def test_errors(self):
+        self.assertEqual(self.run_cli("inbox", "receive", "demo", "--inbox", self.write("bad.json", "[]"))[0], 3)
+        self.assertEqual(self.run_cli("inbox", "receive", "demo", "--inbox", str(self.home / "missing.json"))[0], 3)
+        self.assertEqual(self.run_cli("inbox", "sent", "demo", "--done", "out:9=1")[0], 2)
+        self.assertEqual(self.run_cli("inbox", "sent", "demo", "--done", "out:1")[0], 2)
+        self.assertEqual(self.run_cli("inbox", "receive", "nope", "--inbox", "x")[0], 2)
+        self.assertEqual(self.run_cli("inbox", "bogus")[0], 2)
+        self.assertEqual(self.run_cli("view", "nope")[0], 2)
+        self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)

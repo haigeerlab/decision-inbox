@@ -209,7 +209,7 @@ _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:#\s*\d+[\s、，,]*)+)(.*)$", re.S)
 
 
-def _today(now: str) -> str:
+def today(now: str) -> str:
     return datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone().date().isoformat()
 
 
@@ -244,7 +244,7 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if said == "看等待":
         return Reply(view.render_waits(g, now, relay))
     if m := _CLOSED_RE.match(said):
-        return Reply(view.render_closed(g, m.group(1) or _today(now)))
+        return Reply(view.render_closed(g, m.group(1) or today(now)))
     if said == "看失效":
         return Reply(view.render_invalidated(g))
     if m := _CLOSE_RE.match(said):

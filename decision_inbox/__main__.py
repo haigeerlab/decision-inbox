@@ -3,13 +3,15 @@ import json
 import sys
 from pathlib import Path
 
-from decision_inbox import health, mapview, patrol, query, relay, specguard, stophook, store
+from decision_inbox import health, hub, items, mapview, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
          "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]\n"
-         "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...")
+         "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
+         "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
+         "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]")
 
 
 def _init(name: str) -> int:
@@ -215,7 +217,133 @@ def _patrol(argv: list[str]) -> int:
     return 0
 
 
+def _relay_or_none(path: str | None, version: str | None):
+    """The hub keeps going without agent-relay facts; the main view says so."""
+    if not path:
+        return None
+    try:
+        return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version)
+    except (OSError, relay.RelayDataError):
+        return None
+
+
+def _dev_maps(g) -> dict:
+    return {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
+            if e["role"] == "dev" and e.get("repo")}
+
+
+def _print_json(doc: dict) -> None:
+    print(json.dumps(doc, ensure_ascii=False, indent=1))
+
+
+def _inbox(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox inbox")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("receive")
+    p.add_argument("group")
+    p.add_argument("--inbox", required=True)
+    p = sub.add_parser("reply")
+    p.add_argument("group")
+    p.add_argument("--text-file", required=True)
+    p.add_argument("--agents")
+    p.add_argument("--relay-version")
+    p = sub.add_parser("sent")
+    p.add_argument("group")
+    p.add_argument("--done", nargs="*", default=[])
+    p.add_argument("--failed", nargs="*", default=[])
+    p = sub.add_parser("convention")
+    p.add_argument("group")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        g = store.open_group(args.group)
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    now = store.now()
+    if args.command == "receive":
+        try:
+            page = relay.parse_inbox(_read(args.inbox))
+        except (_RelayUnreadable, relay.RelayDataError) as e:
+            print(str(e), file=sys.stderr)
+            return 3
+        r = hub.receive(g, page, now=now)
+        _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more})
+    elif args.command == "reply":
+        text = Path(args.text_file).read_text(encoding="utf-8")
+        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g))
+        _print_json({"show": r.show, "sends": r.sends})
+    elif args.command == "sent":
+        done = {}
+        for pair in args.done:
+            out_id, sep, relay_id = pair.partition("=")
+            if not sep or not relay_id.isdigit():
+                print(f"--done 要写成 out:N=消息编号：{pair}", file=sys.stderr)
+                return 2
+            done[out_id] = int(relay_id)
+        try:
+            closed = hub.sent(g, done=done, failed=args.failed, at=now)
+        except hub.UnknownOutgoing as e:
+            print(f"没有这条待发消息，或已经记过：{e}", file=sys.stderr)
+            return 2
+        _print_json({"closedTickets": list(closed)})
+    else:
+        (g.path / "io").mkdir(mode=0o700, exist_ok=True)
+        print(hub.convention(args.group, workdir=str(g.path / "io")), end="")
+    return 0
+
+
+def _view(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox view")
+    parser.add_argument("group")
+    parser.add_argument("what", nargs="*")
+    parser.add_argument("--agents")
+    parser.add_argument("--outbox")
+    parser.add_argument("--relay-version")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    what = args.what
+    if what and not (what[0] in ("waits", "invalidated") and len(what) == 1
+                     or what[0] == "detail" and len(what) == 2 and what[1].isdigit()
+                     or what[0] == "closed" and len(what) in (1, 2)):
+        print(USAGE, file=sys.stderr)
+        return 2
+    try:
+        g = store.open_group(args.group)
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    now = store.now()
+    agents = _relay_or_none(args.agents, args.relay_version)
+    if not what:
+        hub_entry = next((e for e in store.roster(g) if e["role"] == "hub"), None)
+        if args.outbox and hub_entry is not None:
+            try:
+                out = relay.parse_outbox(Path(args.outbox).read_text(encoding="utf-8"), sender=hub_entry["relayName"])
+                items.update_delivery(g, {m.id: (m.delivery_state, m.acknowledged_at) for m in out.messages}, at=now)
+            except (OSError, relay.RelayDataError):
+                pass  # delivery progress just stays where it was
+        print(hub.main_view(g, now, agents, _dev_maps(g)))
+    elif what[0] == "detail":
+        print(view.render_detail(g, int(what[1])))
+    elif what[0] == "waits":
+        print(view.render_waits(g, now, agents))
+    elif what[0] == "closed":
+        print(view.render_closed(g, what[1] if len(what) == 2 else hub.today(now)))
+    else:
+        print(view.render_invalidated(g))
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["inbox"]:
+        return _inbox(argv[1:])
+    if argv[:1] == ["view"]:
+        return _view(argv[1:])
     if argv[:1] == ["patrol"]:
         return _patrol(argv[1:])
     if argv[:1] == ["hook"]:
