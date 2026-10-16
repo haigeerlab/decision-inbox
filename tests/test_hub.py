@@ -127,6 +127,10 @@ class ReceiveDispatchTest(HubCase):
         self.receive(message(1016, "fe-codex", "【已恢复】\n结束：#1\n"))
         self.assertEqual(items.get(self.g, 1)["status"], "closed")
 
+    def test_same_hint_told_once(self):
+        r = self.receive(message(1018, "fe-codex", WAIT_USER))
+        self.assertEqual(r.notes, ["前端：选项 C 没写「选了会怎样」"])
+
     def test_hints_are_told_to_the_user(self):
         r = self.receive(message(1017, "api-codex", wait_session(target="后台")))
         self.assertEqual(len(r.notes), 1)

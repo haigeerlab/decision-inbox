@@ -51,7 +51,9 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/__main__.py`、`tests/test_hub.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时协作组上用样例文件跑一遍命令行，记下输出后继续
+- [x] Checkpoint 2（report）：全部测试全绿；在 scratchpad 的临时协作组上用样例文件跑一遍命令行，记下输出后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 357 tests in 8.072s, OK。scratchpad 临时协作组 cp2 实跑：receive 收下 #1 事项和 #2 等待单（等用户答复 #1），退出码 0；reply「1 A」生成 out:1，replyTo 5001，正文文件是【用户答复】；sent out:1=9001 关掉等待单 #2（理由 3）；view 第一行写读不到 agent-relay，总览「刚转达：1 → 前端」；store show 一致性正常。实跑发现同一条格式提示报了两次（待答表和等待单都带回了消息层面的提示），补测试后在 hub.receive 去重
+  - 补记 Task 3：`3d21019` 提交时全量测试有 1 个失败（静态扫描禁止删除调用，规格写了「删掉正文文件」，和协作组文件永久保留的规定冲突），是检查与提交串在一条命令里没拦住；`2437d60` 改为保留正文文件，规格和计划同步修订，待最终验收复审
 
 - [ ] Task 7：实测一轮
   - 验收：Spec 验收 13。先问用户：本会话扮演收件枢纽，给专门的测试身份发一条【等待用户】，跑一遍收件 → 答复 → 发送 → 记账 → 主视图；用真实的 `bridge_inbox` 返回核对 `parse_inbox`；结果写进 `spec/hub-loop.md` 的实测记录

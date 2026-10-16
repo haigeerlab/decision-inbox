@@ -119,7 +119,7 @@ def receive(g: store.Group, inbox, now: str) -> Receipt:
             continue
         at = m.created_at or now
         kind, texts, notes, unknown = _dispatch(g, m, at)
-        result.notes += notes
+        result.notes += list(dict.fromkeys(notes))  # two modules may report the same protocol hint
         with g.transaction() as tx:
             doc = _doc(tx)
             for text in texts:
