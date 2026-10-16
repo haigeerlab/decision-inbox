@@ -197,5 +197,106 @@ class HubTest(OnboardCase):
         self.assertFalse((self.home / "demo").exists())
 
 
+class JoinTest(OnboardCase):
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    def join(self, role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop", lines=("前端",),
+             desktop_session=None, project="fe", reviewer=None, nodes=(), confirm=True):
+        return onboard.join("demo", role=role, relay_name=relay_name, short_name=short_name, host=host,
+                            lines=list(lines), desktop_session=desktop_session, project=self.dir(project),
+                            reviewer=reviewer, nodes=list(nodes), confirm=confirm, now=NOW)
+
+    def owner(self):
+        return self.join(role="owner", relay_name="fe-owner", short_name="前端负责人", host="claude-desktop",
+                         desktop_session="local_00000000-0000-0000-0000-0000000own1", project="owner")
+
+    def test_preview_changes_nothing(self):
+        before = self.files()
+        out = self.join(confirm=False)
+        self.assertEqual(self.files(), before)
+        self.assertEqual(out.file, self.project / "fe" / "AGENTS.md")
+        self.assertIn("<!-- BEGIN decision-inbox dev -->", out.after)
+
+    def test_dev_on_codex(self):
+        self.join()
+        g = store.open_group("demo")
+        entry = store.find_session(g, relay_name="fe-codex")
+        self.assertEqual((entry["role"], entry["line"], entry["repo"]), ("dev", ["前端"], str(self.project / "fe")))
+        self.assertNotIn("desktopSession", entry)
+        text = (self.project / "fe" / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertEqual(text, onboard.block("dev", "demo", "di-hub"))
+        self.assertFalse((self.project / "fe" / "CLAUDE.md").exists())
+
+    def test_owner_on_claude(self):
+        out = self.owner()
+        entry = store.find_session(store.open_group("demo"), relay_name="fe-owner")
+        self.assertEqual(entry["desktopSession"], "local_00000000-0000-0000-0000-0000000own1")
+        self.assertNotIn("repo", entry)
+        self.assertEqual(out.file, self.project / "owner" / "CLAUDE.md")
+        self.assertIn("【讨论】", out.after)
+
+    def test_rejoin_replaces_entry(self):
+        self.join()
+        self.join(short_name="前端2")
+        g = store.open_group("demo")
+        self.assertEqual(store.find_session(g, relay_name="fe-codex")["shortName"], "前端2")
+        self.assertEqual(len(store.roster(g)), 2)
+
+    def test_reviewer_registered(self):
+        self.owner()
+        self.join(reviewer="fe-owner", nodes=("spec", "plan", "final"))
+        reg = reviews.registration_at(store.open_group("demo"), "fe-codex", "2026-10-17T02:00:00Z")
+        self.assertEqual((reg.reviewer, reg.nodes), ("fe-owner", ("spec", "plan", "final")))
+        doc = store.read_state(store.open_group("demo"), "reviews")
+        self.assertIn("接入时用户指定", str(doc))
+
+    def test_bad_reviewer_changes_nothing(self):
+        before = self.files()
+        for reviewer, nodes in (("fe-owner", ("spec",)), ("di-hub", ("spec",))):
+            with self.assertRaises(onboard.JoinError):
+                self.join(reviewer=reviewer, nodes=nodes)
+        self.owner()
+        before = self.files()
+        for nodes in ((), ("spec", "deploy")):
+            with self.assertRaises(onboard.JoinError):
+                self.join(reviewer="fe-owner", nodes=nodes)
+        self.assertEqual(self.files(), before)
+
+    def test_owner_cannot_take_a_reviewer(self):
+        self.owner()
+        before = self.files()
+        with self.assertRaises(onboard.JoinError):
+            self.join(role="owner", relay_name="o2", short_name="负责人2", host="claude-desktop", project="o2",
+                      reviewer="fe-owner", nodes=("spec",))
+        self.assertEqual(self.files(), before)
+
+    def test_roster_rules_change_nothing(self):
+        before = self.files()
+        for kw in (dict(lines=()), dict(short_name="收件枢纽"), dict(role="hub", lines=())):
+            with self.assertRaises((store.InvalidSession, onboard.JoinError)):
+                self.join(**kw)
+        self.assertEqual(self.files(), before)
+
+    def test_group_must_have_hub(self):
+        with self.assertRaises(store.GroupNotFound):
+            onboard.join("nope", role="dev", relay_name="x", short_name="x", host="codex-desktop", lines=["x"],
+                         desktop_session=None, project=self.dir("x"), reviewer=None, nodes=[], confirm=True, now=NOW)
+        store.init_group("empty")
+        with self.assertRaises(onboard.JoinError):
+            onboard.join("empty", role="dev", relay_name="x", short_name="x", host="codex-desktop", lines=["x"],
+                         desktop_session=None, project=self.dir("x"), reviewer=None, nodes=[], confirm=True, now=NOW)
+
+    def test_steps(self):
+        codex = "\n".join(self.join().steps)
+        for needle in ("bridge_register", "fe-codex", "wake: \"auto\"", "停止钩子", "Claude Code", "Codex"):
+            self.assertIn(needle, codex)
+        self.assertNotIn("get_session", codex)
+        claude = "\n".join(self.join(role="owner", relay_name="o2", short_name="负责人2", host="claude-desktop",
+                                      project="o2").steps)
+        self.assertIn("get_session", claude)
+
+
 if __name__ == "__main__":
     unittest.main()

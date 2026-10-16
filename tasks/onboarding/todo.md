@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
 
-- [ ] Task 4：`join`，含名册与审查者登记
+- [x] Task 4：`join`，含名册与审查者登记
   - 验收：Spec 验收 5（预览不改；按宿主写 `CLAUDE.md` 或 `AGENTS.md`；`repo` 为项目目录；重复接入替换）、Spec 验收 6（审查者登记成功或退出码 2 且什么都不改）、Spec 验收 7（名册规则不合时什么都不写）、Spec 验收 10（提示含 `bridge_register` 的 `wake: "auto"`、信任钩子两边各一次、Claude 会话用 `get_session` 取编号）
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`

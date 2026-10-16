@@ -12,9 +12,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from decision_inbox import hub as hub_loop
-from decision_inbox import patrol, store
+from decision_inbox import patrol, reviews, store
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
+
+
+class JoinError(ValueError):
+    """The join cannot go ahead (no hub yet, bad role, reviewer not a registered owner); nothing is written."""
 
 
 class BlockConflict(ValueError):
@@ -295,4 +299,54 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         g, _ = store.init_group(group)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         _commit(g, entry, rules, after, now)
+    return out
+
+
+def _hub_relay(g: store.Group) -> str:
+    entry = next((e for e in store.roster(g) if e["role"] == "hub"), None)
+    if entry is None:
+        raise JoinError(f"协作组 {g.name} 还没有收件枢纽，请先在收件枢纽会话里运行 onboard hub")
+    return entry["relayName"]
+
+
+def _check_reviewer(g: store.Group, role: str, reviewer: str | None, nodes) -> None:
+    if reviewer is None:
+        return
+    if role not in reviews.SUBMITTER_ROLES:
+        raise JoinError("只有开发线和总协调能登记审查者")
+    entry = store.find_session(g, relay_name=reviewer)
+    if entry is None or entry["role"] != "owner":
+        raise JoinError(f"审查者 {reviewer} 不是已登记的负责人，请先让负责人接入")
+    if not nodes or any(n not in reviews.NODES for n in nodes):
+        raise JoinError(f"审查节点只能是 {'、'.join(reviews.NODES)} 中的若干类")
+
+
+def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
+         project, reviewer, nodes, confirm: bool, now: str) -> Outcome:
+    """A working session joins: roster entry, its role's block, optionally its reviewer."""
+    if role not in ROLE_NAMES:
+        raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
+    g = store.open_group(group)
+    hub_relay = _hub_relay(g)
+    home = os.path.abspath(project)
+    entry = {"relayName": relay_name, "shortName": short_name, "role": role, "line": list(lines), "host": host}
+    if role == "dev":
+        entry["repo"] = home
+    if desktop_session:
+        entry["desktopSession"] = desktop_session
+    _check_entry(group, entry)
+    _check_reviewer(g, role, reviewer, nodes)
+    rules = Path(home) / RULES_FILES[host]
+    before = _read(rules)
+    after = place(before, role, block(role, group, hub_relay))
+    steps = [_register_step(relay_name)]
+    if host == "claude-desktop" and not desktop_session:
+        steps.append("用桌面版的 get_session(\"self\") 取得本会话编号（local_ 开头），带上 --desktop-session "
+                     "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
+    steps.append(HOOK_STEP)
+    out = Outcome(rules, before, after, after != before, entry, steps)
+    if confirm:
+        _commit(g, entry, rules, after, now)
+        if reviewer is not None:
+            reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
     return out
