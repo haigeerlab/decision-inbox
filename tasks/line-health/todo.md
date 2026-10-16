@@ -7,12 +7,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_health.py -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`
 
-- [ ] Task 2：7 个状态词
+- [x] Task 2：7 个状态词
   - 验收：Spec 验收 1（判定顺序）、2（阻塞两种写法）、3（干活中与 running 不算）、4（停住 N 小时）、5（已结项、无能力图退回无活动）
   - 验证：`python3 -m unittest discover -s tests -p test_health.py -v`
   - 文件：`decision_inbox/health.py`、`tests/test_health.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 170 tests, OK（2026-10-16）
 
 - [ ] Task 3：会话与积压类信号 1、2、4、5、10
   - 验收：Spec 验收 6、7（各信号的正例与边界反例）

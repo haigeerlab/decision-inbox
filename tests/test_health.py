@@ -3,7 +3,11 @@ import unittest
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import health, relay, specguard, store
+from pathlib import Path
+
+from decision_inbox import health, items, relay, specguard, store, tickets
+
+WAIT_USER = (Path(__file__).resolve().parent / "fixtures" / "protocol" / "wait-user.txt").read_text(encoding="utf-8")
 
 NOW = "2026-10-16T12:00:00+08:00"
 
@@ -67,6 +71,14 @@ class HealthCase(TempHomeTestCase):
                     entry["repo"] = repo
                 tx.add_session(entry)
 
+    def wait(self, waiter="fe", target="API", sent_ago=5, end="无"):
+        text = f"【等待其他会话】\n结束：{end}\n在等谁：{target}\n等什么：接口\n"
+        return tickets.receive(self.g, text, sender=waiter, relay_id=1, sent_at=at(sent_ago)).opened
+
+    def ask_user(self, sender="fe", stopped=True):
+        text = WAIT_USER if stopped else WAIT_USER.replace("是否完全停住：是", "是否完全停住：否")
+        return items.receive(self.g, text, sender=sender, relay_id=2, received_at=at(5)).item
+
     def assess(self, relay_snapshot=None, maps=None, previous=None, now=NOW):
         return health.assess(self.g, now=now, relay=relay_snapshot, maps=maps or {}, previous=previous)
 
@@ -95,6 +107,71 @@ class SnapshotTest(HealthCase):
         files = {p: p.read_bytes() for p in self.g.path.rglob("*") if p.is_file()}
         self.assess(snapshot(agent("fe")), maps={"fe": line_map([module()])})
         self.assertEqual({p: p.read_bytes() for p in self.g.path.rglob("*") if p.is_file()}, files)
+
+
+class StateTest(HealthCase):
+    def word(self, r, name="fe"):
+        return r.lines[name].word, r.lines[name].text
+
+    def test_order(self):
+        self.wait()
+        r = self.assess(snapshot(agent("fe", state="stopped", activity_ago=1)))
+        self.assertEqual(self.word(r), ("offline", "掉线"))
+        r = self.assess(snapshot(agent("fe", state="waiting-approval", activity_ago=1)))
+        self.assertEqual(self.word(r), ("needs-user", "等你确认"))
+        self.assertNotIn("hub", r.lines)
+
+    def test_blocked(self):
+        self.wait(target="API")
+        r = self.assess(snapshot(agent("fe", activity_ago=1)))
+        self.assertEqual(self.word(r), ("blocked", "阻塞：等 API"))
+        self.assertEqual(r.lines["fe"].target, "API")
+        no = self.ask_user(sender="api")
+        r = self.assess(snapshot(agent("api", activity_ago=1)))
+        self.assertEqual(self.word(r, "api"), ("blocked", f"阻塞：等你决定 #{no}"))
+        self.assertEqual(r.lines["api"].item, no)
+
+    def test_not_fully_stopped_item_is_not_blocking(self):
+        self.ask_user(sender="api", stopped=False)
+        r = self.assess(snapshot(agent("api", activity_ago=1)))
+        self.assertEqual(r.lines["api"].word, "working")
+
+    def test_working(self):
+        r = self.assess(snapshot(agent("fe", activity_ago=5)))
+        self.assertEqual(self.word(r), ("working", "干活中"))
+        r = self.assess(snapshot(agent("fe", activity_ago=120)))
+        self.assertNotEqual(r.lines["fe"].word, "working")
+        prev = self.assess(maps={"fe": line_map([module(done=1)])}).snapshot
+        prev["sessions"]["fe"]["m1"]["changedAt"] = at(300)
+        r = self.assess(snapshot(agent("fe", activity_ago=120)), maps={"fe": line_map([module(done=2)])},
+                        previous=prev)
+        self.assertEqual(r.lines["fe"].word, "working")
+
+    def test_stalled(self):
+        maps = {"fe": line_map([module(last_tick=at(130), first_tick=at(500), ticks=3)])}
+        r = self.assess(snapshot(agent("fe", activity_ago=180)), maps=maps)
+        self.assertEqual(self.word(r), ("stalled", "停住 2 小时"))
+        unapproved = {"fe": line_map([module(plan="pending")])}
+        self.assertNotEqual(self.assess(snapshot(agent("fe", activity_ago=180)), maps=unapproved).lines["fe"].word,
+                            "stalled")
+        finished = {"fe": line_map([module(done=5, total=5)])}
+        self.assertNotEqual(self.assess(snapshot(agent("fe", activity_ago=180)), maps=finished).lines["fe"].word,
+                            "stalled")
+
+    def test_done_and_idle(self):
+        done = {"fe": line_map([module(status="done", step=None, done=5, total=5)], stage="DONE", active=None)}
+        r = self.assess(snapshot(agent("fe", activity_ago=180)), maps=done)
+        self.assertEqual(self.word(r), ("done", "已结项（空闲）"))
+        self.ask_user(sender="fe", stopped=False)
+        self.assertEqual(self.assess(snapshot(agent("fe", activity_ago=180)), maps=done).lines["fe"].word, "idle")
+        no_map = {"fe": specguard.ReadResult("no-map", "无能力图", 3)}
+        r = self.assess(snapshot(agent("fe", activity_ago=180)), maps=no_map)
+        self.assertEqual(self.word(r), ("idle", "3 小时无活动"))
+        r = self.assess(snapshot(agent("owner", activity_ago=40)))
+        self.assertEqual(self.word(r, "owner"), ("idle", "40 分钟无活动"))
+        r = self.assess(None)
+        self.assertEqual(r.lines["fe"].word, "idle")
+        self.assertNotIn("未知", r.lines["fe"].text)
 
 
 if __name__ == "__main__":
