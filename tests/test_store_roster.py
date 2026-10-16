@@ -1,0 +1,70 @@
+import unittest
+
+from helpers import TempHomeTestCase
+
+from decision_inbox import store
+
+HUB = {"relayName": "hub-claude", "shortName": "收件枢纽", "role": "hub",
+       "line": [], "host": "claude-desktop"}
+DEV = {"relayName": "fe-codex", "shortName": "前端", "role": "dev",
+       "line": ["前端"], "host": "codex-desktop", "repo": "/tmp/shop-fe"}
+OWNER = {"relayName": "fe-owner", "shortName": "前端负责人", "role": "owner",
+         "line": ["前端", "UI"], "host": "claude-desktop"}
+
+
+class RosterTest(TempHomeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.g, _ = store.init_group("demo")
+        with self.g.transaction() as tx:
+            for s in (HUB, DEV, OWNER):
+                tx.add_session(dict(s))
+
+    def test_roster_lookup(self):
+        self.assertEqual([s["relayName"] for s in store.roster(self.g)],
+                         ["hub-claude", "fe-codex", "fe-owner"])
+        self.assertEqual(store.find_session(self.g, relay_name="fe-codex")["shortName"], "前端")
+        self.assertEqual(store.find_session(self.g, short_name="前端负责人")["role"], "owner")
+        self.assertIsNone(store.find_session(self.g, short_name="后台"))
+
+    def test_replace_existing_entry(self):
+        with self.g.transaction() as tx:
+            tx.replace_session(dict(DEV, repo="/tmp/shop-fe-2"))
+        self.assertEqual(len(store.roster(self.g)), 3)
+        self.assertEqual(store.find_session(self.g, relay_name="fe-codex")["repo"], "/tmp/shop-fe-2")
+
+    def test_invalid_entries_rejected_and_roster_unchanged(self):
+        before = (self.g.path / "roster.json").read_bytes()
+        bad = {
+            "duplicate relay name": dict(DEV, shortName="API"),
+            "duplicate short name": dict(DEV, relayName="api-codex"),
+            "second hub": dict(HUB, relayName="hub-2", shortName="枢纽二"),
+            "hub on codex": dict(HUB, host="codex-desktop"),
+            "dev without line": dict(DEV, relayName="x", shortName="X", line=[]),
+            "dev with two lines": dict(DEV, relayName="x", shortName="X", line=["a", "b"]),
+            "dev without repo": {k: v for k, v in dict(DEV, relayName="x", shortName="X").items() if k != "repo"},
+            "relative repo": dict(DEV, relayName="x", shortName="X", repo="shop"),
+            "owner without line": dict(OWNER, relayName="x", shortName="X", line=[]),
+            "coordinator with line": {"relayName": "x", "shortName": "总协调", "role": "coordinator",
+                                      "line": ["前端"], "host": "codex-desktop"},
+            "unknown role": dict(DEV, relayName="x", shortName="X", role="observer"),
+            "unknown host": dict(DEV, relayName="x", shortName="X", host="cli"),
+            "short name too long": dict(DEV, relayName="x", shortName="一二三四五六七八九十十一十二十三"),
+            "empty relay name": dict(DEV, relayName="", shortName="X"),
+        }
+        for label, entry in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(store.InvalidSession):
+                    with self.g.transaction() as tx:
+                        tx.add_session(entry)
+        with self.assertRaises(store.InvalidSession):
+            with self.g.transaction() as tx:
+                tx.replace_session(dict(DEV, relayName="nobody", shortName="无人"))
+        with self.assertRaises(store.InvalidSession):
+            with self.g.transaction() as tx:
+                tx.replace_session(dict(DEV, shortName="收件枢纽"))
+        self.assertEqual((self.g.path / "roster.json").read_bytes(), before)
+
+
+if __name__ == "__main__":
+    unittest.main()

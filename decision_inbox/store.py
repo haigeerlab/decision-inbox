@@ -30,6 +30,50 @@ class StoreCorrupt(StoreError):
     """A state file exists but cannot be trusted; never overwrite it."""
 
 
+class InvalidSession(StoreError):
+    """A roster entry breaks the roster rules."""
+
+
+ROLES = ("hub", "coordinator", "owner", "dev")
+HOSTS = ("claude-desktop", "codex-desktop")
+
+
+def _validate_session(entry: dict, others: list[dict]) -> dict:
+    """Check one roster entry against the rest of the roster (spec: 会话名册条目)."""
+    def bad(msg: str) -> InvalidSession:
+        return InvalidSession(f"名册条目不合法（{entry.get('relayName')!r}）：{msg}")
+
+    relay, short = entry.get("relayName"), entry.get("shortName")
+    role, host, line = entry.get("role"), entry.get("host"), entry.get("line", [])
+    repo = entry.get("repo")
+    if not isinstance(relay, str) or not relay:
+        raise bad("relayName 必填")
+    if not isinstance(short, str) or not 1 <= len(short) <= 12:
+        raise bad("shortName 必填，1～12 个字符")
+    if role not in ROLES:
+        raise bad(f"role 只能是 {'／'.join(ROLES)}")
+    if host not in HOSTS:
+        raise bad(f"host 只能是 {'／'.join(HOSTS)}")
+    if not isinstance(line, list) or not all(isinstance(x, str) and x for x in line):
+        raise bad("line 必须是短名数组")
+    if repo is not None and (not isinstance(repo, str) or not os.path.isabs(repo)):
+        raise bad("repo 必须是绝对路径")
+    if role == "dev" and (len(line) != 1 or repo is None):
+        raise bad("开发线必须恰好属于一条线，并填写 repo")
+    if role == "owner" and not line:
+        raise bad("负责人至少负责一条线")
+    if role in ("hub", "coordinator") and line:
+        raise bad("收件枢纽和总协调不属于任何线")
+    if role == "hub" and host != "claude-desktop":
+        raise bad("收件枢纽只能是 Claude 桌面版")
+    for other in others:
+        if other["shortName"] == short:
+            raise bad(f"shortName 与 {other['relayName']} 重复")
+        if role == "hub" and other["role"] == "hub":
+            raise bad(f"每组只能有一个收件枢纽，已有 {other['relayName']}")
+    return dict(entry, line=list(line))
+
+
 def now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -159,6 +203,7 @@ class Transaction:
         self._states: dict[str, dict] = {}
         self._counter: dict | None = None
         self._counter_dirty = False
+        self._roster: dict | None = None
         self._events: list[dict] = []
         self._last_seq: int | None = None
         self.warnings: list[str] = []
@@ -220,6 +265,27 @@ class Transaction:
         })
         return self._last_seq
 
+    def _sessions(self) -> list[dict]:
+        if self._roster is None:
+            self._roster = _read_json(self.group.path / "roster.json")
+        return self._roster.setdefault("sessions", [])
+
+    def add_session(self, entry: dict) -> None:
+        """Add a new roster entry; a duplicate relayName is rejected."""
+        sessions = self._sessions()
+        if any(s.get("relayName") == entry.get("relayName") for s in sessions):
+            raise InvalidSession(f"名册条目不合法（{entry.get('relayName')!r}）：relayName 已存在")
+        sessions.append(_validate_session(entry, sessions))
+
+    def replace_session(self, entry: dict) -> None:
+        """Replace the existing entry with the same relayName."""
+        sessions = self._sessions()
+        for i, s in enumerate(sessions):
+            if s.get("relayName") == entry.get("relayName"):
+                sessions[i] = _validate_session(entry, sessions[:i] + sessions[i + 1:])
+                return
+        raise InvalidSession(f"名册里没有 {entry.get('relayName')!r}，无法替换")
+
     def _commit(self) -> None:
         # Validate every file we are about to replace before writing anything.
         for domain in self._states:
@@ -245,6 +311,8 @@ class Transaction:
             _atomic_write_json(_state_path(self.group, domain), out)
         if self._counter_dirty:
             _atomic_write_json(self.group.path / "counter.json", self._counter)
+        if self._roster is not None:
+            _atomic_write_json(self.group.path / "roster.json", self._roster)
 
 
 class Group:
@@ -296,6 +364,21 @@ def read_events(group: Group, ref: int | None = None,
     if ref is not None:
         events = [e for e in events if e.get("ref") == ref]
     return sorted(events, key=lambda e: e["seq"])
+
+
+def roster(group: Group) -> list[dict]:
+    """Lock-free read of the roster entries, in insertion order."""
+    return list(_read_json(group.path / "roster.json").get("sessions", []))
+
+
+def find_session(group: Group, relay_name: str | None = None,
+                 short_name: str | None = None) -> dict | None:
+    for s in roster(group):
+        if relay_name is not None and s.get("relayName") == relay_name:
+            return s
+        if short_name is not None and s.get("shortName") == short_name:
+            return s
+    return None
 
 
 def read_state(group: Group, domain: str) -> dict:

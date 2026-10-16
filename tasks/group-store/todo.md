@@ -33,7 +33,7 @@
   - 验证：`python3 -m unittest discover -s tests -p "test_store_[gs]*.py" -v`
   - 文件：`decision_inbox/store.py`、`decision_inbox/__main__.py`、`tests/test_store_group.py`、`tests/test_store_state.py`
 
-- [ ] Task 6：会话名册
+- [x] Task 6：会话名册
   - 验收：Spec 验收 9；`roster(g)` 返回条目列表，可按 `relayName`、`shortName` 查找
   - 验证：`python3 -m unittest discover -s tests -p test_store_roster.py -v`
   - 文件：`decision_inbox/store.py`、`tests/test_store_roster.py`
