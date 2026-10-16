@@ -29,9 +29,11 @@
 | map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，不改它给的模块状态；「Spec/Plan 评审」列取 spec-guard、「架构审查」列取 review-registry，不共用「审查」一词；外部等待写进模块备注；叠加负责人、跨线归属和收件箱里等你决定的事项；未推送数显示在该线表头；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, wait-tickets |
 | stop-hook | 停止钩子，只管协作义务：第一版只在「有别的会话开着等待单在等本会话、本会话又没报阻塞」时拦一次；用户已答复未恢复、未读消息、提到在等却没报阻塞第一版不拦（用户 2026-10-16 确认）；不判断「还有已批准任务」（归 spec-guard，由巡视发现）；Codex 与 Claude 桌面版工作会话 | group-store, wait-tickets, decision-queue |
 | patrol | 巡视：定时任务跑信号检测，每次记下各模块已勾数快照供下次对比；自动叫醒已停止的 Claude 会话（需求 13.2 的例外），叫不醒再通知；全线停住时主动推送；进度预警先给负责人、未处理再给用户；收件枢纽超时提醒 | group-store, line-health, relay-reader, spec-guard-reader, decision-queue, hub-view |
-| onboarding | 一条命令接入与卸载：写约定块（第 4、5 节规则、负责人模式标签、阻塞报告），装停止钩子并提示 Codex 信任，录入审查者登记 | group-store, message-protocol, review-registry, stop-hook |
+| hub-loop | 收件枢纽的主循环命令：`inbox receive` 读一条消息原文并分发给待答表、等待单、审查登记、已恢复处理，输出要退回的说明和要做的事；`inbox reply` 解析用户回复并给出要发的答复；`inbox sent` 记下发送编号；`view` 与四种展开视图的命令；收件枢纽会话自己的约定块（用户 2026-10-16 确认新增） | message-protocol, review-registry, decision-queue, wait-tickets, hub-view |
+| onboarding | 一条命令接入与卸载：按角色（开发线、负责人、总协调）写约定块（第 4、5 节规则、负责人模式标签、被挡住必须报阻塞、审查结论写「模块」），用 BEGIN/END 标记包住、重装整块替换；提示在 Claude Code 和 Codex 各信任一次插件自带的钩子；登记名册（含 desktopSession）与审查者；创建巡视定时任务；卸载时删约定块和巡视任务，状态目录保留（第 12 节第 9 项，用户 2026-10-16 确认） | group-store, message-protocol, review-registry, patrol, hub-loop |
+| plugin-packaging | 插件打包：Claude Code 插件清单；插件自带 `hooks/hooks.json` 注册 Stop 钩子（两边共用，stop-hook 返工：`--group` 改为可选，不给时按工作目录在所有协作组里找）；斜杠命令 `/lines`、`/flow`、`/item`、`/map`（先调 MCP 工具存原文、再跑命令行）；README 与安装说明（从 onboarding 拆出，用户 2026-10-16 确认） | query-commands, map-view, stop-hook, onboarding |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → onboarding
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
