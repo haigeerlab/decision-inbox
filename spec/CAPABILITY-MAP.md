@@ -20,13 +20,13 @@
 | relay-reader | 只读解析 agent-relay 的 `bridge_agents`（presence、waiting）与 `bridge_outbox`（投递、确认、回复），转成统一的只读数据；`/item` 需要的 `bridge_wake_status`、`bridge_thread` 留待 query-commands 时返工追加 | — |
 | spec-guard-reader | 只读调用各线仓库的 `spec-guard map --json`：模块表与状态查询（含每模块最后勾选时间、第二步的卡点信号），核对 schemaVersion；未启用 spec-guard 时如实降级为「无能力图」；不自己解析能力图和 todo | — |
 | message-protocol | 第 4 节消息约定的解析与校验：消息类型、结束写法、选项写法、多线事项字段、架构审查状态行、「阻塞：等谁交付」报告 | — |
-| review-registry | 审查者登记（哪个会话有审查者、审哪类节点、经用户批准才增改）与审查状态行的显示规则 | group-store, message-protocol |
+| review-registry | 审查者登记（哪个会话有审查者、审哪类节点、经用户批准才增改）、审查状态行的显示规则，以及同一审查节点来回的轮数（供信号 7） | group-store, message-protocol |
 | decision-queue | 待答表：收单校验与退回（含多线事项缺各线范围）、有效性标记、排序、用户回复解析、答复转达（含多线分发） | group-store, message-protocol, review-registry |
 | wait-tickets | 等待单：登记、四种理由关单、今天已关闭区、等待时长与对方离线标记 | group-store, message-protocol, relay-reader, decision-queue |
-| line-health | 把 agent-relay 与 spec-guard 的事实组合成各线状态（统一状态词）与需求 8.1 的卡住信号，纯只读；信号 3「悄悄停下」取自 spec-guard 的状态查询 | relay-reader, spec-guard-reader, decision-queue, wait-tickets |
+| line-health | 把 agent-relay、spec-guard 与本插件自己的事实组合成各线状态（统一状态词）与需求 8.1 的卡住信号，纯只读；信号 3「悄悄停下」取自 spec-guard 的状态查询，信号 7「反复返工」由本插件的审查结论统计 | relay-reader, spec-guard-reader, review-registry, decision-queue, wait-tickets |
 | hub-view | 收件枢纽主视图（需求第 6 节固定顺序与卡片）：「要你去原会话亲自确认」算进「等你决定」并排第一；第一行显示全线停住推送；「详情 / 看等待 / 看已关闭 / 看失效」展开 | review-registry, decision-queue, wait-tickets, line-health |
 | query-commands | 只读查询 `/lines`、`/flow`、`/item`；`/flow` 顺着等待链找源头、按需求第 7 节归类并写明谁来做什么 | decision-queue, wait-tickets, line-health |
-| map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，叠加负责人、跨线归属、外部等待和收件箱里等你决定的事项；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, line-health |
+| map-view | 只读查询 `/map <线>`、`/map <线> 全部`、`/map all`：显示 spec-guard 给的模块表，叠加审查列（架构审查状态，来自 review-registry）、负责人、跨线归属、外部等待和收件箱里等你决定的事项；`/map all` 做跨线汇总 | spec-guard-reader, review-registry, decision-queue, line-health |
 | stop-hook | 停止钩子，只管协作义务：未回的请求、没抛出的等待、被挡住没报「阻塞：等谁交付」时拦下；不判断「还有已批准任务」（归 spec-guard，由巡视发现）；Codex 与 Claude 桌面版工作会话 | message-protocol, relay-reader, wait-tickets |
 | patrol | 巡视：定时任务跑信号检测；自动叫醒已停止的 Claude 会话（需求 13.2 的例外），叫不醒再通知；全线停住时主动推送；进度预警先给负责人、未处理再给用户；收件枢纽超时提醒 | group-store, line-health |
 | onboarding | 一条命令接入与卸载：写约定块（第 4、5 节规则、负责人模式标签、阻塞报告），装停止钩子并提示 Codex 信任，录入审查者登记 | group-store, message-protocol, review-registry, stop-hook |
@@ -42,10 +42,10 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 | 模块 | 组件 | 接口 | 状态 |
 |---|---|---|---|
 | relay-reader | agent-relay | `bridge_agents`、`bridge_outbox`（MCP，经会话转交原文） | 已有（0.6.10） |
-| relay-reader | agent-relay | 只读命令行入口（`agents`、`outbox`，后续可能加 `wake-status`） | 已提需求，由用户转交 |
+| relay-reader | agent-relay | 只读命令行入口（`agents`、`outbox`，后续可能加 `wake-status`） | 已提需求，用户已转交 |
 | relay-reader | agent-relay | `bridge_wake_status`、`bridge_thread`（供 `/item`） | 已有；`bridge_thread` 带正文，纳入前先问用户 |
 | spec-guard-reader | spec-guard | `/spec-guard:map --json`（map-view，0.62.0） | 契约已核对，等发布 |
-| spec-guard-reader | spec-guard | 状态查询：每模块最后勾选时间、挂起时长、审查轮数（stall-signals） | 已提需求，等 spec-guard 第二步 |
+| spec-guard-reader | spec-guard | 状态查询：每模块最后勾选时间、挂起时长（stall-signals） | 已提需求，等 spec-guard 第二步；需求里的「审查轮数」应去掉（见下） |
 | patrol | Claude 桌面版 | 会话消息工具（叫醒已停止的 Claude 会话） | 已验证可用；需求 13.2 的例外 |
 | patrol | Claude 桌面版 | 定时任务 | 已验证可用；周期间隔与补跑待验证（第 12 节第 1 项） |
 | stop-hook | Codex、Claude 桌面版 | `Stop` 钩子 | Codex 已验证；Claude 桌面版未验证（第 12 节第 5 项） |
@@ -73,10 +73,11 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 
 单个项目的模块表与卡点信号改由 spec-guard 新增的 `/spec-guard:map`（`--json`）提供，decision-inbox 只读调用，不自己解析能力图和 todo，全系统只有一份解析逻辑。decision-inbox 负责跨线汇总（`/map all`）、每条线的负责人与跨线归属、外部等待（等某人交付）、收件箱、会话空闲或离线、定时巡检和唤醒。
 
-- 受影响的模块：spec-guard-reader、map-view 的职责；line-health 的信号 3、6、7、8 改用 spec-guard 的数据。模块 id 不变。
+- 受影响的模块：spec-guard-reader、map-view 的职责；line-health 的信号 3、6、8 改用 spec-guard 的数据；信号 7「反复返工」是架构审查在同一节点来回的轮数，审查结论走本插件的消息约定和审查者登记，由 review-registry 统计，不找 spec-guard 要。模块 id 不变。
 - 2026-10-16 按需求第 13 节再调整（用户确认）：stop-hook 只管协作义务、去掉对 spec-guard-reader 的依赖；`/flow` 加源头诊断；hub-view 把「要你去原会话亲自确认」算进「等你决定」；patrol 加全线停住推送；新增「外部依赖」一节。
 - 开发顺序：spec-guard-reader 挪到 wait-tickets 之后，给 spec-guard 定稿 JSON 留出时间。
 - 在 spec-guard 的 JSON 契约定稿前，不写任何解析能力图或 todo 的代码。
+- 2026-10-16 按 spec-guard-monitor 的核对意见再修订（用户确认）：信号 7 改由 review-registry 统计，line-health 增加对 review-registry 的依赖；map-view 明确叠加审查列；给 spec-guard 的状态查询需求去掉「审查轮数」。
 
 ---
 
