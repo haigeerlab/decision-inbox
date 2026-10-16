@@ -212,5 +212,87 @@ class ReviewLineTest(unittest.TestCase):
         self.assertTrue(msg.ok)
 
 
+ORIGINAL = "12 B\n  补充：先做 A 的接口，#3 那项也一起！\n最后一行：「就这样」。"
+
+
+class UserReplyTest(unittest.TestCase):
+    def test_round_trip(self):
+        for original in (ORIGINAL, "12 A", "按推荐来"):
+            with self.subTest(original=original):
+                text = protocol.format_user_reply(item=12, original=original, answered_at="2026-10-16 14:05",
+                                                  option_text="B：先接支付宝")
+                msg = protocol.parse(text)
+                self.assertEqual(msg.kind, "user-reply")
+                self.assertTrue(msg.ok, msg.problems)
+                self.assertEqual(msg.item, 12)
+                self.assertEqual(msg.fields["用户原话"], original)
+                self.assertEqual(msg.fields["选项原文"], "B：先接支付宝")
+                self.assertIn("选项 B 原文：", text)
+                self.assertEqual(msg.fields["答复时间"], "2026-10-16 14:05")
+
+    def test_without_option_text(self):
+        text = protocol.format_user_reply(item=7, original="自己写的一句话", answered_at="t")
+        self.assertNotIn("原文", text)
+        self.assertTrue(protocol.parse(text).ok)
+
+    def test_required_fields(self):
+        text = protocol.format_user_reply(item=7, original="x", answered_at="t")
+        for drop, code in (("答复时间：t\n", "missing-field:答复时间"), ("事项：#7\n", "missing-field:事项")):
+            with self.subTest(code=code):
+                self.assertIn(code, codes(protocol.parse(text.replace(drop, "")).problems))
+
+    def test_multiline_replies(self):
+        original_item = fixture("wait-user-multiline.txt")
+        out = protocol.format_multiline_replies(item=30, sender="总协调", original=ORIGINAL,
+                                                answered_at="2026-10-16 14:10", wait_user_text=original_item)
+        self.assertEqual(sorted(out), ["API", "前端"])
+        source = protocol.parse(original_item)
+        for line, text in out.items():
+            with self.subTest(line=line):
+                msg = protocol.parse(text)
+                self.assertEqual(msg.kind, "user-reply")
+                self.assertTrue(msg.ok, msg.problems)
+                self.assertEqual(msg.item, 30)
+                self.assertIn("多线事项，发起方：总协调", msg.fields["事项"])
+                self.assertEqual(msg.fields["用户原话"], ORIGINAL)
+                self.assertEqual(msg.fields["适用于你的范围"], source.scopes[line])
+                self.assertEqual(msg.fields["原事项全文"], original_item.rstrip("\n"))
+
+    def test_multiline_reply_requires_scope_and_original(self):
+        text = protocol.format_multiline_replies(item=30, sender="总协调", original="30 A", answered_at="t",
+                                                 wait_user_text=fixture("wait-user-multiline.txt"))["前端"]
+        cut = text[:text.index("原事项全文")]
+        self.assertIn("missing-field:原事项全文", codes(protocol.parse(cut).problems))
+
+    def test_multiline_needs_valid_source(self):
+        with self.assertRaises(ValueError):
+            protocol.format_multiline_replies(item=12, sender="前端", original="x", answered_at="t",
+                                              wait_user_text=fixture("wait-user.txt"))
+
+
+class CodeTableTest(unittest.TestCase):
+    @staticmethod
+    def family(code):
+        return code.split(":")[0] + ":" if ":" in code else code
+
+    def test_table_matches_spec(self):
+        spec = (Path(__file__).resolve().parent.parent / "spec" / "message-protocol.md").read_text(encoding="utf-8")
+        for code in protocol.PROBLEM_CODES + protocol.HINT_CODES:
+            with self.subTest(code=code):
+                self.assertIn(code.rstrip(":"), spec)
+
+    def test_emitted_codes_are_in_table(self):
+        texts = [p.read_text(encoding="utf-8") for p in FIX.glob("*.txt")]
+        texts += ["", "【等待用户】【取代】\n", "【已恢复】\n", "【撤回】\n", "【用户答复】\n", "【等待其他会话】\n",
+                  fixture("wait-user.txt").replace("是否完全停住：是", "是否完全停住：大概"),
+                  fixture("wait-user-multiline.txt").replace("- 前端：", "- 后台：")]
+        for text in texts:
+            msg = protocol.parse(text)
+            for issue in msg.problems:
+                self.assertIn(self.family(issue.code), protocol.PROBLEM_CODES, issue.code)
+            for issue in msg.hints:
+                self.assertIn(self.family(issue.code), protocol.HINT_CODES, issue.code)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,7 +25,7 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录：`python3 -m unittest discover -s tests -v` → Ran 70 tests, OK（2026-10-16）
 
-- [ ] Task 5：生成【用户答复】与多线版本
+- [x] Task 5：生成【用户答复】与多线版本
   - 验收：Spec 验收 9、10；往返后用户原话逐字相同（含换行、全角标点、#）
   - 验证：`python3 -m unittest discover -s tests -p test_protocol.py -v`
   - 文件：`decision_inbox/protocol.py`、`tests/test_protocol.py`

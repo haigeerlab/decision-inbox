@@ -30,6 +30,11 @@ FIELDS = {
 # A terminal field takes every remaining line, whatever it looks like.
 TERMINAL = {"原事项全文"}
 
+# Stable issue codes (spec 关键决策 5): only ever added to. A trailing ":" takes a suffix.
+PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-options", "bad-stop-flag",
+                 "scope-missing:", "scope-unknown:")
+HINT_CODES = ("no-consequence:", "no-recommendation")
+
 _TAG_RE = re.compile(r"【([^】]*)】")
 _COLON = "[：:]"
 _END_RE = re.compile(rf"^结束\s*{_COLON}\s*(.*)$")
@@ -309,6 +314,13 @@ def parse(text: str) -> Message:
     elif kind == "resumed":
         if not (end.ids or end.unnumbered_reason):
             problems.append(Issue("missing-end", "【已恢复】开头要写「结束：#编号」或「结束：无编号（原因）」"))
+    elif kind == "user-reply":
+        item = _item(fields.get("事项"))
+        if item is None:
+            problems.append(Issue("missing-field:事项", "缺少「事项：#编号」"))
+        _require(fields, ("用户原话", "答复时间"), problems)
+        if "多线事项" in fields.get("事项", ""):
+            _require(fields, ("适用于你的范围", "原事项全文"), problems)
     elif kind == "withdraw":
         item = _item(fields.get("事项"))
         if item is None:
@@ -320,3 +332,36 @@ def parse(text: str) -> Message:
                    suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
                    lines_in_scope=in_scope, scopes=scopes,
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"))
+
+
+def format_user_reply(item: int, original: str, answered_at: str, option_text: str | None = None) -> str:
+    """【用户答复】 to the proposer; the user's words are copied unchanged (requirement 6.4)."""
+    lines = ["【用户答复】", f"事项：#{item}", f"用户原话：{original}"]
+    if option_text is not None:
+        m = _OPTION_RE.match(option_text.strip())
+        if not m:
+            raise ValueError(f"option_text must start with an option letter: {option_text!r}")
+        lines.append(f"选项 {m.group(2)} 原文：{option_text}")
+    lines.append(f"答复时间：{answered_at}")
+    return "\n".join(lines) + "\n"
+
+
+def format_multiline_replies(item: int, sender: str, original: str, answered_at: str,
+                             wait_user_text: str) -> dict[str, str]:
+    """One 【用户答复】 per session in 适用会话, each with its own scope (requirement 4.4)."""
+    source = parse(wait_user_text)
+    if source.kind != "wait-user" or not source.ok or not source.lines_in_scope:
+        raise ValueError("wait_user_text must be a valid multi-line 【等待用户】")
+    full = wait_user_text.rstrip("\n")
+    return {
+        line: "\n".join([
+            "【用户答复】",
+            f"事项：#{item}（多线事项，发起方：{sender}）",
+            f"用户原话：{original}",
+            f"适用于你的范围：{source.scopes[line]}",
+            f"答复时间：{answered_at}",
+            "原事项全文：",
+            full,
+        ]) + "\n"
+        for line in source.lines_in_scope
+    }
