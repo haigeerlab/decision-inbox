@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：`bin/decision-inbox`、`shim`、固定命令路径
+- [x] Task 1：`bin/decision-inbox`、`shim`、固定命令路径
   - 验收：Spec 验收 1（转发脚本可执行、等价于插件的 `bin/decision-inbox`、内容不变不重写、`--if-installed` 在目录不存在时什么都不建）、Spec 验收 4（收件枢纽约定块、巡视提示词、onboarding 步骤里的命令都是固定路径；`onboard hub`／`join` 确认时写出转发脚本）
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`bin/decision-inbox`、`decision_inbox/install.py`、`decision_inbox/__main__.py`、`decision_inbox/hub.py`、`decision_inbox/patrol.py`、`decision_inbox/onboard.py`、`tests/test_install.py` 及相关测试

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, items, store, view
+from decision_inbox import health, install, items, store, view
 
 DOMAIN = "patrol"
 OFFLINE = ("offline", "unreachable")
@@ -230,7 +230,7 @@ PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 
 """
 
 
-def prompt(group: str, cli: str = "python3 -m decision_inbox", workdir: str = "$TMPDIR") -> str:
+def prompt(group: str, cli: str | None = None, workdir: str = "$TMPDIR") -> str:
     """The self-contained scheduled-task prompt (spec 关键决策 7); onboarding installs it."""
-    return PROMPT.format(group=group, cli=cli, agents=f"{workdir}/decision-inbox-{group}-agents.json",
+    return PROMPT.format(group=group, cli=cli or install.cli(), agents=f"{workdir}/decision-inbox-{group}-agents.json",
                          plan=f"{workdir}/decision-inbox-{group}-plan.json")

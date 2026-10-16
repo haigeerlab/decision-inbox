@@ -1,0 +1,7 @@
+#!/bin/sh
+# decision-inbox command entry: run the package from this plugin directory.
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+DECISION_INBOX_PLUGIN_ROOT="$ROOT"
+PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+export DECISION_INBOX_PLUGIN_ROOT PYTHONPATH
+exec python3 -m decision_inbox "$@"

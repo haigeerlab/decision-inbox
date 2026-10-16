@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from decision_inbox import hub as hub_loop
-from decision_inbox import patrol, reviews, store
+from decision_inbox import install, patrol, reviews, store
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
 
@@ -223,7 +223,6 @@ def block(role: str, group: str, hub_relay: str) -> str:
 
 
 DOMAIN = "onboarding"
-CLI = "python3 -m decision_inbox"
 RULES_FILES = {"claude-desktop": "CLAUDE.md", "codex-desktop": "AGENTS.md"}
 PATROL_CRON = "*/5 * * * *"
 
@@ -285,14 +284,15 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
     task_id = f"decision-inbox-patrol-{group}"
+    cli = install.cli()
     steps = [
         _register_step(relay_name),
         f"用桌面版定时任务工具 create_scheduled_task 建巡视任务：taskId 用 {task_id}，"
         f"cronExpression 用 \"{PATROL_CRON}\"，prompt 用下面打印的巡视提示词原文",
-        f"运行 {CLI} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
+        f"运行 {cli} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
         "请用户在定时任务列表里手动「立即运行」一次这个任务，把 Bash 和 agent-relay 工具的权限批一遍",
         HOOK_STEP,
-        f"其他会话各自接入：负责人先接入，再接开发线和总协调，例如 {CLI} onboard join {group} --role dev "
+        f"其他会话各自接入：负责人先接入，再接开发线和总协调，例如 {cli} onboard join {group} --role dev "
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
         "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
     ]
@@ -301,6 +301,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         g, _ = store.init_group(group)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         _commit(g, entry, rules, after, now)
+        install.write_shim(install.plugin_root())
     return out
 
 
@@ -349,6 +350,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     out = Outcome(rules, before, after, after != before, entry, steps)
     if confirm:
         _commit(g, entry, rules, after, now)
+        install.write_shim(install.plugin_root())
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
     return out

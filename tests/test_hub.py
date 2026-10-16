@@ -4,7 +4,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import hub, items, relay, reviews, store
+from decision_inbox import hub, install, items, relay, reviews, store
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 WAIT_USER = (PROTO / "wait-user.txt").read_text(encoding="utf-8")
@@ -343,7 +343,7 @@ class ConventionTest(HubCase):
         text = hub.convention("demo")
         self.assertEqual(text.count("<!-- BEGIN"), 1)
         self.assertEqual(text.count("<!-- END"), 1)
-        self.assertIn("python3 -m decision_inbox inbox receive demo", text)
+        self.assertIn(f"{install.cli()} inbox receive demo", text)
 
 
 class CommandLineTest(HubCase):

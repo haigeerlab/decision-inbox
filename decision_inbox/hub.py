@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, items, protocol, reviews, store, tickets, view
+from decision_inbox import health, install, items, protocol, reviews, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -308,7 +308,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 """
 
 
-def convention(group: str, cli: str = "python3 -m decision_inbox", workdir: str | None = None) -> str:
+def convention(group: str, cli: str | None = None, workdir: str | None = None) -> str:
     """The hub session's own convention block; onboarding writes it into place."""
     io = workdir or str(store.root_dir() / group / "io")
-    return CONVENTION.format(group=group, cli=cli, io=io)
+    return CONVENTION.format(group=group, cli=cli or install.cli(), io=io)

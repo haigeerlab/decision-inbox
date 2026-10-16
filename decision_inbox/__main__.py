@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-from decision_inbox import health, hub, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
@@ -12,7 +12,8 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
-         "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...")
+         "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...\n"
+         "      python3 -m decision_inbox shim [--if-installed]")
 
 
 def _init(name: str) -> int:
@@ -418,6 +419,10 @@ def _onboard(argv: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):
+        # Silent on purpose: SessionStart runs it in every session.
+        install.write_shim(install.plugin_root(), if_installed=argv[1:] == ["--if-installed"])
+        return 0
     if argv[:1] == ["onboard"]:
         return _onboard(argv[1:])
     if argv[:1] == ["inbox"]:
