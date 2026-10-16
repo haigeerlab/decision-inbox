@@ -1,12 +1,14 @@
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from decision_inbox import health, mapview, query, relay, specguard, store
+from decision_inbox import health, mapview, query, relay, specguard, stophook, store
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
-         "      python3 -m decision_inbox map <协作组> <线|all> [全部]")
+         "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
+         "      python3 -m decision_inbox hook stop --group <协作组> [--session <身份名>]")
 
 
 def _init(name: str) -> int:
@@ -138,7 +140,34 @@ def _map(argv: list[str]) -> int:
     return 0
 
 
+def _hook(argv: list[str]) -> int:
+    """Stop hook entry: never fails the host; any problem means "let it stop" (spec 关键决策 6)."""
+    try:
+        parser = argparse.ArgumentParser(prog="python3 -m decision_inbox hook", add_help=False)
+        parser.add_argument("event", choices=["stop"])
+        parser.add_argument("--group", required=True)
+        parser.add_argument("--session")
+        args, _ = parser.parse_known_args(argv)
+        payload = json.loads(sys.stdin.read())
+        if not isinstance(payload, dict):
+            raise ValueError("钩子输入不是 JSON 对象")
+        d = stophook.decide(store.open_group(args.group), payload, session=args.session)
+    except SystemExit:
+        print("decision-inbox 停止钩子：参数不对，已放行", file=sys.stderr)
+        return 0
+    except Exception as e:  # noqa: BLE001 - a broken hook must not trap the session
+        print(f"decision-inbox 停止钩子出错，已放行：{e}".replace("\n", " "), file=sys.stderr)
+        return 0
+    if d.block:
+        print(json.dumps({"decision": "block", "reason": d.reason}, ensure_ascii=False))
+    elif d.note:
+        print(f"decision-inbox 停止钩子放行：{d.note}", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["hook"]:
+        return _hook(argv[1:])
     if argv[:1] == ["query"]:
         return _query(argv[1:])
     if argv[:1] == ["map"]:

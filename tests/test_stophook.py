@@ -112,5 +112,61 @@ class DecideTest(HookCase):
         self.assertTrue(self.decide(cwd=link).block)
 
 
+class CommandLineTest(HookCase):
+    def run_hook(self, stdin, *extra, group="demo"):
+        import subprocess
+        import sys
+        from helpers import REPO
+        env = dict(os.environ, PYTHONPATH=str(REPO))
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop", "--group", group, *extra],
+                              input=stdin, capture_output=True, text=True, env=env, timeout=30)
+        return done.returncode, done.stdout, done.stderr
+
+    def digest(self):
+        import hashlib
+        return {str(p.relative_to(self.g.path)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(self.g.path.rglob("*")) if p.is_file()}
+
+    def test_block_and_pass(self):
+        import json
+        self.wait("fe-codex", "API", 40)
+        before = self.digest()
+        code, out, err = self.run_hook(json.dumps(self.payload()))
+        self.assertEqual(code, 0)
+        doc = json.loads(out)
+        self.assertEqual(doc["decision"], "block")
+        self.assertTrue(doc["reason"].startswith("【decision-inbox】收工前请先处理：有会话在等你。"))
+        code, out, err = self.run_hook(json.dumps(self.payload(active=True)))
+        self.assertEqual((code, out), (0, ""))
+        self.assertIn("本轮已经拦过一次", err)
+        code, out, _ = self.run_hook(json.dumps(self.payload(cwd="/nowhere")), "--session", "api-codex")
+        self.assertEqual(json.loads(out)["decision"], "block")
+        self.assertEqual(self.digest(), before)
+
+    def test_errors_pass(self):
+        import json
+        cases = [("not json", ("demo",)), (json.dumps(self.payload()), ("nope",)),
+                 (json.dumps([1, 2]), ("demo",)), ("", ("demo",))]
+        for stdin, (group,) in cases:
+            with self.subTest(stdin=stdin[:10], group=group):
+                code, out, err = self.run_hook(stdin, group=group)
+                self.assertEqual((code, out), (0, ""))
+                self.assertEqual(len(err.strip().splitlines()), 1, err)
+        self.wait("fe-codex", "API", 40)
+        (self.g.path / "state" / "tickets.json").write_text("{broken", encoding="utf-8")
+        code, out, err = self.run_hook(json.dumps(self.payload()))
+        self.assertEqual((code, out), (0, ""))
+        self.assertTrue(err.strip())
+
+    def test_bad_arguments_still_pass(self):
+        import subprocess
+        import sys
+        from helpers import REPO
+        env = dict(os.environ, PYTHONPATH=str(REPO))
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop"], input="{}",
+                              capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
+
+
 if __name__ == "__main__":
     unittest.main()
