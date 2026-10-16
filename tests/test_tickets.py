@@ -187,5 +187,28 @@ class MarksTest(TicketsCase):
         self.assertEqual(tickets.open_tickets(self.g, now=SENT), [])
 
 
+class ClosedTodayTest(TicketsCase):
+    def test_closed_on_local_day_and_counts(self):
+        a = self.receive(wait_session(), relay_id=1).opened
+        b = self.receive(wait_session(what="二"), relay_id=2).opened
+        c = self.receive(wait_session(what="三"), relay_id=3).opened
+        self.receive(wait_session(what="四"), relay_id=4)
+        # 2026-10-15T16:30Z is already 2026-10-16 00:30 in Asia/Shanghai
+        tickets.close_by_user(self.g, ticket=a, reason=None, at="2026-10-15T16:30:00Z")
+        tickets.close_by_user(self.g, ticket=b, reason="不等了", at="2026-10-16T08:00:00+08:00")
+        tickets.close_by_user(self.g, ticket=c, reason=None, at="2026-10-15T15:59:00Z")  # 10-15 23:59 local
+        today = tickets.closed_on(self.g, day="2026-10-16")
+        self.assertEqual(sorted(t["no"] for t in today), [a, b])
+        self.assertEqual([t["close"]["basis"] for t in today if t["no"] == b], ["不等了"])
+        self.assertEqual(tickets.counts(self.g, day="2026-10-16"), {"open": 1, "closed_today": 2})
+        self.assertEqual(len(store.read_state(self.g, "tickets")["tickets"]), 4)
+
+    def test_consistency(self):
+        no = self.receive(wait_session()).opened
+        self.receive(f"【已恢复】\n结束：#{no}\n", relay_id=9)
+        self.assertEqual(store.check(self.g)["problems"], [])
+        self.assertEqual([e["type"] for e in store.read_events(self.g, ref=no)], ["tickets.opened", "tickets.closed"])
+
+
 if __name__ == "__main__":
     unittest.main()

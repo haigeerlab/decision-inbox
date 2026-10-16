@@ -20,7 +20,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
 
-- [ ] Task 4：今天已关闭与计数
+- [x] Task 4：今天已关闭与计数
   - 验收：Spec 验收 9（按本机时区的日期、计数、已关闭仍保留）、10（快照与事件一致）
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`

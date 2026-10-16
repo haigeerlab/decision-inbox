@@ -171,3 +171,18 @@ def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
                          f"请看一下 {t['target']} 是否已完成却没通知 {waiter}")
         views.append(TicketView(int(key), t["waiter"], t["target"], t["what"], minutes, tuple(marks), tuple(notes)))
     return sorted(views, key=lambda v: v.no)
+
+
+def closed_on(g: store.Group, day: str) -> list[dict]:
+    """Tickets closed on `day` (YYYY-MM-DD, local time zone), with reason and basis."""
+    found = []
+    for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
+        if t["status"] == "closed" and _instant(t["close"]["at"]).astimezone().date().isoformat() == day:
+            found.append(dict(t, no=int(key)))
+    return sorted(found, key=lambda t: _instant(t["close"]["at"]))
+
+
+def counts(g: store.Group, day: str) -> dict:
+    all_tickets = store.read_state(g, DOMAIN).get("tickets", {}).values()
+    return {"open": sum(1 for t in all_tickets if t["status"] == "open"),
+            "closed_today": len(closed_on(g, day))}
