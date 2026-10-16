@@ -45,7 +45,7 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 | relay-reader | agent-relay | 只读命令行入口（`agents`、`outbox`，后续可能加 `wake-status`） | 已提需求，用户已转交 |
 | relay-reader | agent-relay | `bridge_wake_status`、`bridge_thread`（供 `/item`） | 已有；`bridge_thread` 带正文，纳入前先问用户 |
 | spec-guard-reader | spec-guard | `/spec-guard:map --json`（map-view；`hooks/map_view.py --project <路径> --json`） | 已发布（0.62.0，契约定稿，见 spec-guard 仓库 `spec/map-view.md` 的 Contract） |
-| spec-guard-reader | spec-guard | 状态查询：每模块最后勾选时间、挂起时长（stall-signals） | 已提需求，等 spec-guard 第二步；需求里的「审查轮数」应去掉（见下） |
+| spec-guard-reader | spec-guard | 状态查询：`lastTickAt`、`firstTickAt`、`tickCommits`、`suspendedAt`、顶层 `history`（stall-signals） | 已发布（0.63.0，见 spec-guard 仓库 `spec/stall-signals.md` 的 Contract；审查轮数已去掉；`tickCommits` 小于 2 的模块算不出平均间隔） |
 | patrol | Claude 桌面版 | 会话消息工具（叫醒已停止的 Claude 会话） | 已验证可用；需求 13.2 的例外 |
 | patrol | Claude 桌面版 | 定时任务 | 已验证可用；周期间隔与补跑待验证（第 12 节第 1 项） |
 | stop-hook | Codex、Claude 桌面版 | `Stop` 钩子 | Codex 已验证；Claude 桌面版未验证（第 12 节第 5 项） |
