@@ -20,12 +20,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_items.py -v`
   - 文件：`decision_inbox/items.py`、`tests/test_items.py`
 
-- [ ] Task 4：生成答复与多线分发
+- [x] Task 4：生成答复与多线分发
   - 验收：Spec 验收 9（多线三份外发、各自范围）、10（审查中照样转发）；「12 B」附选项原文
   - 验证：`python3 -m unittest discover -s tests -p test_items.py -v`
   - 文件：`decision_inbox/items.py`、`tests/test_items.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 2（report）：全部测试全绿，记下命令与结果后继续
+  - 记录：`python3 -m unittest discover -s tests -v` → Ran 124 tests, OK（2026-10-16）
 
 - [ ] Task 5：状态推进与追溯
   - 验收：Spec 验收 11（状态推进、多收件人取最慢、别人的【已恢复】不影响）、12（history）、13（快照与事件一致）

@@ -234,6 +234,42 @@ def interpret_reply(g: store.Group, text: str) -> ReplyParse:
     return ReplyParse(answers=tuple(answers))
 
 
+@dataclass(frozen=True)
+class Outgoing:
+    to: str
+    text: str
+    item: int
+
+
+def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
+    """Record the user's answers and build the 【用户答复】 texts; the hub sends them."""
+    out: list[Outgoing] = []
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        for a in answers:
+            it = doc["items"].get(str(a.item))
+            if it is None or it["status"] != "pending":
+                raise ValueError(f"#{a.item} is not waiting for an answer")
+            option = next((o for o in it["options"] if o["letter"] == a.letter), None)
+            option_text = f"{option['letter']}：{option['text']}" if option else None
+            batch = [Outgoing(it["sender"], protocol.format_user_reply(
+                item=a.item, original=a.original, answered_at=answered_at, option_text=option_text), a.item)]
+            if it["multi"]:
+                sender = (store.find_session(g, relay_name=it["sender"]) or {}).get("shortName", it["sender"])
+                texts = protocol.format_multiline_replies(item=a.item, sender=sender, original=a.original,
+                                                          answered_at=answered_at, wait_user_text=it["text"])
+                for short, text in texts.items():
+                    batch.append(Outgoing(store.find_session(g, short_name=short)["relayName"], text, a.item))
+            it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at})
+            it["recipients"] = [o.to for o in batch]
+            _set_status(doc, a.item, "forwarded", answered_at)
+            tx.append_event("items.answered", ref=a.item, actor="user",
+                            data={"letter": a.letter, "original": a.original, "recipients": it["recipients"]})
+            out += batch
+        tx.write_state(DOMAIN, doc)
+    return tuple(out)
+
+
 def receive(g: store.Group, text: str, sender: str, relay_id, received_at: str) -> ReceiveResult:
     """Take one incoming message; only 【等待用户】 and 【撤回】 belong here."""
     msg = protocol.parse(text)

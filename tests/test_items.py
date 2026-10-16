@@ -3,7 +3,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import items, reviews, store
+from decision_inbox import items, protocol, reviews, store
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 T1 = "2026-10-16T11:00:00+08:00"
@@ -203,6 +203,65 @@ class InterpretTest(ItemsCase):
     def test_same_answer_twice_in_one_reply_is_one(self):
         p = self.parse(f"{self.a} B，{self.a} B")
         self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B")])
+
+
+class AnswerTest(ItemsCase):
+    def test_single_answer_with_option_text(self):
+        no = self.receive(SINGLE).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} B").answers, answered_at=T2)
+        self.assertEqual(len(out), 1)
+        self.assertEqual((out[0].to, out[0].item), ("fe-codex", no))
+        parsed = protocol.parse(out[0].text)
+        self.assertEqual(parsed.kind, "user-reply")
+        self.assertEqual(parsed.fields["用户原话"], f"{no} B")
+        self.assertEqual(parsed.fields["选项原文"], "B：先接支付宝")
+        self.assertEqual(self.item(no)["status"], "forwarded")
+        self.assertEqual(store.read_events(self.g, ref=no)[-1]["type"], "items.answered")
+
+    def test_free_sentence_forwarded_verbatim(self):
+        no = self.receive(SINGLE).item
+        text = f"{no} 按推荐来，支付宝下周再说"
+        out = items.answer(self.g, items.interpret_reply(self.g, text).answers, answered_at=T2)
+        parsed = protocol.parse(out[0].text)
+        self.assertEqual(parsed.fields["用户原话"], text)
+        self.assertNotIn("选项原文", parsed.fields)
+
+    def test_multiline_fan_out(self):
+        no = self.receive(MULTI, sender="coord").item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        self.assertEqual(sorted(o.to for o in out), ["api-codex", "coord", "fe-codex"])
+        source = protocol.parse(MULTI)
+        for o in out:
+            parsed = protocol.parse(o.text)
+            self.assertTrue(parsed.ok, parsed.problems)
+            if o.to == "fe-codex":
+                self.assertEqual(parsed.fields["适用于你的范围"], source.scopes["前端"])
+            if o.to == "api-codex":
+                self.assertEqual(parsed.fields["适用于你的范围"], source.scopes["API"])
+        self.assertEqual(sorted(self.item(no)["recipients"]), ["api-codex", "coord", "fe-codex"])
+
+    def test_in_review_is_still_forwarded(self):
+        reviews.register(self.g, session="fe-codex", reviewer="fe-owner", nodes=("spec",),
+                         approval_item=None, approval_note="接入时用户确认", at=T1)
+        text = SINGLE.replace("要点：", "架构审查：进行中，请勿先批\n要点：")
+        no = self.receive(text, at=T2).item
+        self.assertTrue(self.item(no)["review"]["highlight"])
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} B").answers, answered_at=T3)
+        self.assertEqual(protocol.parse(out[0].text).fields["用户原话"], f"{no} B")
+
+    def test_changed_answer_after_forwarding_is_a_question(self):
+        no = self.receive(SINGLE).item
+        items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        p = items.interpret_reply(self.g, f"{no} B")
+        self.assertEqual(p.answers, ())
+        self.assertTrue(p.question)
+
+    def test_answer_rejects_non_pending(self):
+        no = self.receive(SINGLE).item
+        answers = items.interpret_reply(self.g, f"{no} A").answers
+        items.answer(self.g, answers, answered_at=T2)
+        with self.assertRaises(ValueError):
+            items.answer(self.g, answers, answered_at=T3)
 
 
 if __name__ == "__main__":
