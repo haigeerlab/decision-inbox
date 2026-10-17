@@ -585,6 +585,27 @@ class AutonomyTest(OnboardCase):
         self.assertEqual(onboard.join("demo", confirm=False, **args).warnings, [])
 
 
+class PatrolTaskAtBackfillTest(OnboardCase):
+    """relay-checkpoint-authority: groups registered before patrolTaskAt existed get it on a hub rerun."""
+
+    def test_rerun_fills_missing_time(self):
+        self.hub()
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            tx.write_state("onboarding", {**tx.read_state("onboarding"), "patrolTask": "decision-inbox-patrol-demo"})
+        self.hub(now="2026-10-17T02:00:00Z")
+        self.assertEqual(store.read_state(g, "onboarding")["patrolTaskAt"], "2026-10-17T02:00:00Z")
+
+    def test_existing_time_and_no_task_left_alone(self):
+        self.hub()
+        g = store.open_group("demo")
+        self.hub(now="2026-10-17T02:00:00Z")
+        self.assertNotIn("patrolTaskAt", store.read_state(g, "onboarding"))
+        onboard.record_task("demo", "decision-inbox-patrol-demo", now=NOW)
+        self.hub(now="2026-10-17T03:00:00Z")
+        self.assertEqual(store.read_state(g, "onboarding")["patrolTaskAt"], NOW)
+
+
 class CommandLineTest(OnboardCase):
     def run_cli(self, *argv):
         import contextlib

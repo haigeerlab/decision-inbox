@@ -41,10 +41,11 @@
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
   - 记录（2026-10-17）：2 个新测试先报错（常量 `items.NO_ITEM_QUESTION` 还不存在）；实现后 Ran 495 tests, OK
 
-- [ ] Task 7：重新接入收件枢纽时补 `patrolTaskAt`
+- [x] Task 7：重新接入收件枢纽时补 `patrolTaskAt`
   - 验收：Spec 验收 8
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
+  - 记录（2026-10-17）：补时间的测试先失败（「已有时间、没有任务不动」的守护测试实现前已通过）；实现后 Ran 497 tests, OK
 
 - [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑各项新行为，记下输出后继续
 

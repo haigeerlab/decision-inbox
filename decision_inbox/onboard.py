@@ -334,8 +334,19 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         g, _ = store.init_group(group)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         _commit(g, entry, rules, after, now)
+        _backfill_patrol_time(g, now)
         install.write_shim(install.plugin_root())
     return out
+
+
+def _backfill_patrol_time(g: store.Group, now: str) -> None:
+    """Groups registered before patrolTaskAt existed get it on a hub rerun, so the
+    「巡视还没跑完过」 alarm can work for them too (relay-checkpoint-authority)."""
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        if doc.get("patrolTask") and not doc.get("patrolTaskAt"):
+            doc["patrolTaskAt"] = now
+            tx.write_state(DOMAIN, doc)
 
 
 def _hub_relay(g: store.Group) -> str:
