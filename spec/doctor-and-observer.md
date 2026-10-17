@@ -1,7 +1,7 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 24db4374debf -->
 # Spec: doctor-and-observer
 
-> 能力图模块 `doctor-and-observer`（待用 add-module 插入，排在 wait-honesty-and-briefs 之后）。来源：`docs/requirements-record.md` 第 13 节「后续模块待办」与 13.5「依赖插件升级核对」；spec-guard-monitor 转来的审查清单 A4、A5、A6、A10、C、C1、D、E（经用户同意转来）。用户在本会话同意按「模块乙」拆分；agent-relay 0.8 的新字段（空闲／忙碌、送达存疑、合并答复）另开模块丙，不在本模块。
+> 能力图模块 `doctor-and-observer`（2026-10-17 用 add-module 插入，排在 wait-honesty-and-briefs 之后）。来源：`docs/requirements-record.md` 第 13 节「后续模块待办」与 13.5「依赖插件升级核对」；spec-guard-monitor 转来的审查清单 A4、A5、A6、A10、C、C1、D、E（经用户同意转来）。用户在本会话同意按「模块乙」拆分；agent-relay 0.8 的新字段（空闲／忙碌、送达存疑、合并答复）另开模块丙，不在本模块。
 
 ## 目标
 
@@ -98,8 +98,10 @@ onboard.permission_preview(hub_dir) -> (path, diff)   # 只预览；写入要 --
 
 ## 未决问题
 
-1. 权限放行写收件枢纽目录的 `.claude/settings.local.json`，还是只打印让用户自己贴？推荐写本地文件（确认后），理由是实测里用户被权限确认打断了三次，而这个文件只影响收件枢纽目录。
-2. `query stats` 里「绕过收件枢纽」怎么判：推荐按「开发线写了结束行，指向的事项没有用户答复记录」算；另一种是按「agent-relay 里有开发线发给负责人的请求却没进收件枢纽」算，要读别人的邮箱，不推荐。
+无。两项已由用户在 2026-10-17 按推荐决定：
+
+1. 权限放行：用户确认后写收件枢纽目录的 `.claude/settings.local.json`，不确认只打印。
+2. 「绕过收件枢纽」按「开发线写了结束行，指向的事项没有用户答复记录」算，不读别人的邮箱。
 
 ## 文档建议
 
