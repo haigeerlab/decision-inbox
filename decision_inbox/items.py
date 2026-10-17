@@ -36,7 +36,13 @@ def _instant(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _not_owner(no) -> Issue:
+def _not_owner(no, doc: dict | None = None, sender: str | None = None) -> Issue:
+    """A mail id of one's own pending item gets named (p0-field-fixes F-P0-1); the code stays not-owner."""
+    if doc is not None:
+        mine = next((k for k, it in doc["items"].items()
+                     if it["sender"] == sender and it["relayId"] == no and it["status"] not in FINAL), None)
+        if mine is not None:
+            return Issue("not-owner", f"#{no} 是邮箱号，对应事项 #{mine}；去掉【取代】靠默认取代，或改写【取代 #{mine}】")
     return Issue("not-owner", f"#{no} 不存在，或不是你抛出的事项")
 
 
@@ -103,7 +109,7 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
         for kind, no in msg.markers:
             if kind == "supersede":
                 if _owned(doc, no, sender) is None:
-                    problems.append(_not_owner(no))
+                    problems.append(_not_owner(no, doc, sender))
                 else:
                     superseded.append(no)
         if problems:

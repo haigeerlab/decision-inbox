@@ -20,10 +20,11 @@
   - 文件：`decision_inbox/patrol.py`、`decision_inbox/view.py`
   - 记录（2026-10-18）：先加 6 个用例（空闲且最早未读 ≥5 分钟才叫、<5 分钟不叫、同一积压只叫一次后通知用户且措辞为「消息还没读」、空闲无信或忙碌不叫、收件枢纽空闲积压被叫醒、停着的收件枢纽同轮只叫一次；主视图建议按宿主分），3 失败 1 报错；实现 `IDLE_WAKE_MINUTES`、`_idle_backlog`，`_wakes` 纳入收件枢纽，`_wake_hub` 同轮不重复，`view.advice` 对 Codex 写「打开 X 的任务」。Ran 583 tests, OK
 
-- [ ] Task 4：取代写邮箱号的退回说明与约定块（F-P0-1）
+- [x] Task 4：取代写邮箱号的退回说明与约定块（F-P0-1）
   - 验收：Spec 验收 1
   - 验证：`tests/test_items.py`、`tests/test_onboard.py`
   - 文件：`decision_inbox/items.py`、`decision_inbox/onboard.py`
+  - 记录（2026-10-18）：先加用例（【取代 #邮箱号】且是本会话待答事项时，退回说明写「#5538 是邮箱号，对应事项 #1；去掉【取代】靠默认取代，或改写【取代 #1】」，问题代码仍为 not-owner；别人的邮箱号照旧说明；约定块须含「还不知道事项号就别写」），2 失败；实现后通过。Ran 585 tests, OK
 
 - [ ] Task 5：文档与版本 0.0.12（F-P0-4）
   - 验收：Spec 验收 3、6
