@@ -66,10 +66,11 @@
   - 文件：`decision_inbox/tickets.py`、`items.py`、`onboard.py`、`README.md`、对应测试
   - 记录（2026-10-17）：6 个新测试先失败；实现后 Ran 475 tests, OK。另有一个守护测试（自己的事项邮箱号不报 `end-unknown`）在实现前就通过，用来防止误报
 
-- [ ] Task 10：卡片看得出该回什么（F12）
+- [x] Task 10：卡片看得出该回什么（F12）
   - 验收：Spec 验收 15（「推荐回复」一行在复制块上方，全卡一个代码块；选项第一行完整；约定块写明不套代码块）
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/view.py`、`hub.py`、`tests/test_view.py`、`tests/test_hub.py`
+  - 记录（2026-10-17）：3 个改后的测试先失败；实现后 hub-view 规格样例的逐字比对也失败（预期内，样例没有「推荐回复」一行），测试里给样例套上 F12 的改动，已验收的 hub-view 规格不改。Ran 475 tests, OK
 
 - [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0
   - 验收：Spec 验收 12；结果写进规格的实测记录

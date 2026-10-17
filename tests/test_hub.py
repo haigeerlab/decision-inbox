@@ -340,7 +340,9 @@ class ConventionTest(HubCase):
                        "以后", "先向用户确认收件人", "一字不改", "maxChars",
                        # e2e-round1-fixes F3: only words the user typed here count
                        "亲手输入", "Another Claude session sent a message", "<cross-session-message>",
-                       "--relayed-from <来源>", "拿不准来源时按转来处理"):
+                       "--relayed-from <来源>", "拿不准来源时按转来处理",
+                       # e2e-round1-fixes F12: a code fence around the view kills the copy block
+                       "不要套进代码块"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):

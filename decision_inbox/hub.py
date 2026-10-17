@@ -372,7 +372,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 6. 输出 `more` 为真时，从第 1 步再读一页。
 7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
    `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
-   把输出的主视图和第 2 步输出的 `notes` 原样显示给用户。
+   把输出的主视图和第 2 步输出的 `notes` 原样显示给用户：按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
 
 ### 先判断是不是用户亲手输入
 
@@ -385,7 +385,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 2. 用写文件工具把用户这句话一字不改地写入 {io}/said.txt。
 3. 运行 `{cli} inbox reply {group} --text-file {io}/said.txt --agents {io}/agents.json`。
 4. 输出有 `sends` 就按上面第 3、4 步发出并记账。
-5. 把输出的 `show` 原样显示给用户。它是一个问题时，等用户回答，不要自己替用户选。
+5. 把输出的 `show` 原样显示给用户（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
 
 ### 改规则
 

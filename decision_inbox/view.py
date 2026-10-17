@@ -13,7 +13,7 @@ from datetime import datetime
 from decision_inbox import items, store, tickets
 
 RECENT_MINUTES = 10
-OPTION_CHARS = 30
+COPY_LABEL = "推荐回复（点代码块右上角复制，发给我）："  # says what the copy block is even when it is not rendered
 TOPIC_CHARS = 20
 FORWARDED = ("forwarded", "picked", "acknowledged", "closed")
 INVALIDATED = ("superseded", "withdrawn")
@@ -189,11 +189,11 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
     if rec is not None:
         options = [rec] + [o for o in options if o is not rec]
     for o in options:
-        first = clip(o["text"].split("\n")[0], OPTION_CHARS)
+        first = o["text"].split("\n")[0]  # whole first line: clipped options looked alike (e2e-round1-fixes F12)
         out.append(f"推荐 {o['letter']}：{first}" if o is rec else f"{o['letter']}：{first}")
         out.append(f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}")
         if o is rec:
-            out += ["```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
+            out += [COPY_LABEL, "```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
         else:
             out.append(f"  回 {no} {o['letter']}")
     return "\n".join(out + _review_lines(it))
