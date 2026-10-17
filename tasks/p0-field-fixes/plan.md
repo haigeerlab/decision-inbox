@@ -1,7 +1,7 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: p0-field-fixes
 
-> 依据：`spec/p0-field-fixes.md`（用户 2026-10-18 批准）。任务清单：`tasks/p0-field-fixes/todo.md`。
+> 依据：`spec/p0-field-fixes.md`（用户 2026-10-18 批准）。用户 2026-10-18 批准本计划。任务清单：`tasks/p0-field-fixes/todo.md`。
 
 ## Overview
 
