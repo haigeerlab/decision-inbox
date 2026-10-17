@@ -41,7 +41,15 @@
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`、`tests/test_package.py`
   - 记录（2026-10-17）：5 个新测试先失败；实现后 Ran 470 tests, OK。变异检查：在 hub.py 另加一处 `unlink`，被 `test_no_deletion_calls` 拦下。静态扫描同时要求放行的那一处确实存在，例外不会悄悄失效
 
-- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组上命令行跑一遍 S0 和各项新行为，记下输出后继续
+- [x] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组上命令行跑一遍 S0 和各项新行为，记下输出后继续
+  - 记录（2026-10-17）：Ran 470 tests, OK。scratchpad 临时协作组 cp2（收件枢纽 cp2-hub、开发A cp2-dev，目录原本没有规则文件），脚本 `scratchpad/cp2.sh`：
+    1. 开发A 的【等待用户】#4540 入表为 #1；
+    2. `--relayed-from spec-guard-monitor` 的「1 A」：sends 为空，提示「这不是你在这里亲手输入的，没有转达给任何会话」；
+    3. 亲手「1 A」：答复给 cp2-dev（replyTo 4540），正文「事项：#1（你的原消息 #4540）」；
+    4. 开发A 回问 #4543（replyTo 4542）和【等待其他会话】#4544（在等谁：cp2-hub）：生成一条退回给 cp2-dev（replyTo 4543），第三行「你回的 #4542 是用户对事项 #1（你的原消息 #4540）的答复。」；附注里没有「不在会话名册里」；
+    5. 主视图异常 1，行为「开发A：问了收件枢纽（#4543），已自动退回」；
+    6. 巡视登记时间改到 20 分钟前：主视图第一行「⚠ 巡视还没跑完过一轮：去定时任务列表找 decision-inbox-patrol-cp2…」；
+    7. 卸载开发A：预览写「确认后会删掉这个文件」，确认后 `dev/` 目录为空
 
 - [ ] Task 7：约定块、hub-setup、README、需求记录、版本 0.0.4
   - 验收：Spec 验收 2、6、8、11
