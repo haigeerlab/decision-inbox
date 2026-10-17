@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 0df73059102f -->
+<!-- spec-guard: review approved 237031aafc6d -->
 # Spec: e2e-round1-fixes
 
 > 能力图模块 `e2e-round1-fixes`（2026-10-17 用 add-module 插入）。来源：spec-guard-monitor 会话主持的 di-e2e 本地实测（0.0.3，用户授权），发现记录在其 scratchpad 的 `di-e2e/FINDINGS.md`（F1–F8，证据为邮箱消息 4539–4544、事件日志 seq7–10）。用户在本会话决定四项都按推荐做，并确认插入本模块。
@@ -54,7 +54,7 @@
    - 名册登记了巡视任务（onboarding 记有 `patrolTask`），却出现下面任一情况时，主视图第一行报警：
      - 巡视从没跑完过（patrol 状态里没有 `lastRunAt`），且距接入已超过 15 分钟：「⚠ 巡视还没跑完过一轮：去定时任务列表找 decision-inbox-patrol-<组>，看它是否停在权限确认上，批完或立即运行一次」。
      - 最近一轮跑完已超过 15 分钟：「⚠ 巡视 N 分钟没跑：……」，后半句同上。
-   - `/flow` 用的是同一个主视图开头，自然带上这条报警。
+   - `/flow`（`query flow`）开头也加同一条报警，和主视图共用一个判断函数。
    - hub-setup 最后一步：请用户立即运行一次，然后运行 `view` 核对第一行没有「巡视还没跑完过」，有就说明还没批完权限。
    - 「距接入」按登记巡视任务的时间算：`onboard task` 登记时在 onboarding 记录里多记一个 `patrolTaskAt`。已有协作组没有这个字段，就只按 `lastRunAt` 判断是否超时，不报「从没跑完过」。
 5. **F5：「在等谁」也认身份名**（返工 `tickets.receive`）：先按短名找，找不到再按 agent-relay 身份名找。
