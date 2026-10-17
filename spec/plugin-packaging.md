@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 2db421a3fcb8 -->
+<!-- spec-guard: review approved 05984cfc362e -->
 # Spec: plugin-packaging
 
 > 能力图模块 `plugin-packaging`。需求来源：`docs/requirements-record.md` 第 9 节（停止钩子）、第 10.4 节（接入）、第 7.1 节（查询视图）、第 7.3 节（Codex 侧）、第 12 节第 2 项。
