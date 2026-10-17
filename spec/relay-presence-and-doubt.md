@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved c280147e7982 -->
 # Spec: relay-presence-and-doubt
 
 > 能力图模块 `relay-presence-and-doubt`（2026-10-17 用 add-module 插入，排在 protocol-contract-v1 之后）。来源：`docs/requirements-record.md` 13.5「依赖插件升级核对」（agent-relay 0.8.0–0.8.2 的新事实），以及 wait-honesty-and-briefs、doctor-and-observer 实测记录里的观察。用户 2026-10-17 同意另开本模块。
@@ -87,8 +87,7 @@ hub Reply.sends[i]["alsoAnswers"]: list[int]   # 收件枢纽照填进 bridge_se
 
 ## 未决问题
 
-1. 第 3 条两头都做（推荐），还是只做收件枢纽兜底（约定块不改，开发线不用学新参数）。
-2. 第 6 条只改说明文字（推荐），还是等 agent-relay 提供只读的发件查询后再改判断。
+无。两项用户 2026-10-18 按推荐决定：第 3 条两头都做（约定块写 `withdraws`，收件枢纽兜底 `alsoAnswers`）；第 6 条只改停止钩子的说明文字。
 
 ## 文档建议
 
