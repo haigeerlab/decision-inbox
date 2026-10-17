@@ -13,7 +13,7 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
-         "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...\n"
+         "      python3 -m decision_inbox onboard <hub|join|allow|task|leave|teardown> <协作组> ...\n"
          "      python3 -m decision_inbox shim [--if-installed]\n"
          "      python3 -m decision_inbox whoami [--cwd <目录>]\n"
          "      python3 -m decision_inbox doctor [--group <协作组>] [--json|--report]")
@@ -430,6 +430,10 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--session-cwd")
     p.add_argument("--checkpoint-authority", action="store_true")
     p.add_argument("--confirm", action="store_true")
+    p = sub.add_parser("allow")
+    p.add_argument("group")
+    p.add_argument("--project", default=".")
+    p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("task")
     p.add_argument("group")
     p.add_argument("--task-id", required=True)
@@ -453,6 +457,18 @@ def _onboard(argv: list[str]) -> int:
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority)
+        elif args.command == "allow":
+            out = onboard.allow(args.group, args.project, args.confirm)
+            print(f"设置文件：{out.path}")
+            for e in out.present:
+                print(f"  已有：{e}")
+            for e in out.added:
+                print(f"  {'已加' if args.confirm else '要加'}：{e}")
+            if not out.added:
+                print("都已放行，没有要改的")
+            elif not args.confirm:
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次")
+            return 0
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")

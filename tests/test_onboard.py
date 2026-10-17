@@ -660,3 +660,48 @@ class CommandLineTest(OnboardCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AllowTest(TempHomeTestCase):
+    """doctor-and-observer Task 5: one-time permission allowlist for the hub directory."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        self.json = json
+        self.hub_dir = self.home / "hubdir"
+        self.hub_dir.mkdir()
+        onboard.hub("g", "g-hub", "local_1", self.hub_dir, True, "2026-10-17T22:00:00+08:00")
+        self.settings = self.hub_dir / ".claude" / "settings.local.json"
+
+    def test_preview_writes_nothing(self):
+        out = onboard.allow("g", self.hub_dir, confirm=False)
+        self.assertEqual(out.path, self.settings)
+        self.assertFalse(self.settings.exists())
+        self.assertIn("mcp__agent-relay__bridge_inbox", out.added)
+        self.assertIn(f"Bash({onboard.install.cli()}:*)", out.added)
+        self.assertIn("mcp__ccd_session_mgmt__send_message", out.added)
+
+    def test_confirm_merges_without_duplicates(self):
+        self.settings.parent.mkdir()
+        self.settings.write_text(self.json.dumps({"permissions": {"allow": ["Bash(ls:*)", "mcp__agent-relay__bridge_inbox"],
+                                                                  "deny": ["Bash(rm:*)"]}, "model": "x"}), encoding="utf-8")
+        out = onboard.allow("g", self.hub_dir, confirm=True)
+        doc = self.json.loads(self.settings.read_text(encoding="utf-8"))
+        allow = doc["permissions"]["allow"]
+        self.assertEqual(allow[:2], ["Bash(ls:*)", "mcp__agent-relay__bridge_inbox"])
+        self.assertEqual(len(allow), len(set(allow)))
+        self.assertEqual((doc["permissions"]["deny"], doc["model"]), (["Bash(rm:*)"], "x"))
+        self.assertNotIn("mcp__agent-relay__bridge_inbox", out.added)
+        self.assertEqual(onboard.allow("g", self.hub_dir, confirm=False).added, ())
+
+    def test_unreadable_settings_refused(self):
+        self.settings.parent.mkdir()
+        self.settings.write_text("{oops", encoding="utf-8")
+        with self.assertRaises(onboard.JoinError):
+            onboard.allow("g", self.hub_dir, confirm=True)
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), "{oops")
+
+    def test_hub_steps_mention_allow(self):
+        out = onboard.hub("g", "g-hub", "local_1", self.hub_dir, False, "2026-10-17T22:00:00+08:00")
+        self.assertTrue(any("onboard allow g" in s for s in out.steps))

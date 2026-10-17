@@ -6,6 +6,7 @@ as plain text, so everything outside the block stays byte for byte.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -334,6 +335,8 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"cronExpression 用 \"{PATROL_CRON}\"，prompt 用下面打印的巡视提示词原文",
         f"运行 {cli} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
         "请用户在定时任务列表里手动「立即运行」一次这个任务，把 Bash 和 agent-relay 工具的权限批一遍",
+        f"运行 {cli} onboard allow {group} --project <收件枢纽目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
+        "之后巡视和收件枢纽不再为这些工具停下来问",
         HOOK_STEP,
         f"其他会话各自接入：负责人先接入，再接开发线和总协调，例如 {cli} onboard join {group} --role dev "
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
@@ -538,4 +541,44 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
         out.steps.append(f"没有记下巡视任务编号：先用 list_scheduled_tasks 核对，通常是 decision-inbox-patrol-{group}，"
                          "再用 delete_scheduled_task 删除")
     out.steps.append("协作组的状态目录保留，不删")
+    return out
+
+
+# One-time permission allowlist (doctor-and-observer decision 5): the hub and its patrol task
+# stop on every new tool's prompt, so the user approves this list once for the hub directory.
+RELAY_TOOLS = ("bridge_inbox", "bridge_ack", "bridge_send", "bridge_agents", "bridge_outbox",
+               "bridge_wake_status", "bridge_register")
+DESKTOP_TOOLS = ("mcp__ccd_session_mgmt__send_message",)
+
+
+@dataclass
+class Allow:
+    path: Path
+    added: tuple[str, ...]
+    present: tuple[str, ...]
+
+
+def allow_entries() -> list[str]:
+    return [f"Bash({install.cli()}:*)", *(f"mcp__agent-relay__{t}" for t in RELAY_TOOLS), *DESKTOP_TOOLS]
+
+
+def allow(group: str, project, confirm: bool) -> Allow:
+    """Preview, and with confirm write, the allowlist into <hub dir>/.claude/settings.local.json only."""
+    store.open_group(group)
+    path = Path(os.path.abspath(project)) / ".claude" / "settings.local.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError) as e:
+        raise JoinError(f"{path} 读不懂（{e}），没有改它；请先修好这个文件") from None
+    if not isinstance(doc, dict) or not isinstance(doc.get("permissions", {}), dict) \
+            or not isinstance(doc.get("permissions", {}).get("allow", []), list):
+        raise JoinError(f"{path} 的格式不是预期的设置文件，没有改它")
+    current = list(doc.get("permissions", {}).get("allow", []))
+    wanted = allow_entries()
+    added = tuple(e for e in wanted if e not in current)
+    out = Allow(path, added, tuple(e for e in wanted if e in current))
+    if confirm and added:
+        doc.setdefault("permissions", {})["allow"] = current + list(added)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        store._atomic_write_bytes(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return out

@@ -29,10 +29,11 @@
   - 文件：`decision_inbox/query.py`、`__main__.py`、对应测试
   - 记录（2026-10-17）：新测试 `tests/test_stats.py` 5 个先失败（1 失败 4 报错）；实现后 Ran 543 tests, OK。「绕过收件枢纽」= 有 `items.closed` 却没有 `items.answered` 的事项；`--since` 按日期（含当天）筛。在 di-e2e 上实跑发现开发B 的追问（#4747）被退回却统计为 0：追问退回只记在收件枢纽状态里，补一项「追问被退回」（测试先失败后通过）
 
-- [ ] Task 5：hub-setup 一次性权限放行
+- [x] Task 5：hub-setup 一次性权限放行
   - 验收：Spec 验收 6（不带 --confirm 不写；带了只写收件枢纽目录的本地设置文件；已有条目保留、不重复）
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、对应测试
+  - 记录（2026-10-17）：4 个新测试先失败（1 失败 3 报错）；实现后 Ran 547 tests, OK。和计划的差别：做成单独的 `onboard allow <组> --project <收件枢纽目录> [--confirm]`，hub 的接入步骤里加一步提示运行它（老协作组也能单独补）；放行条目：转发脚本命令、7 个 agent-relay 工具、桌面版会话消息工具。在 di-e2e 收件枢纽目录上只跑了预览，没写入
 
 - [ ] Task 6：来源标注
   - 验收：Spec 验收 7
