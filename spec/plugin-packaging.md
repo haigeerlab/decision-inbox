@@ -150,6 +150,27 @@ decision-inbox hook stop [--group <协作组>] [--session <身份名>]   # 不�
 9. 原有子命令和测试不受影响。
 10. 实测：按测试策略走完，记录写进本规格的「实测记录」。其中包括从 onboarding 挪过来的「按提示建巡视任务并手动立即运行一次」。
 
+## 实测记录
+
+2026-10-17 00:40–12:25，用户同意后做，后半段用户授权全权操作。用了真实的 `~/.decision-inbox`，测试协作组 `pp-probe`；scratchpad 里建了三个临时目录 `pp-hub`、`pp-fe`、`pp-api`；agent-relay 测试身份 `di-pp-hub`、`di-pp-fe`。
+
+| 步骤 | 结果 |
+|---|---|
+| `claude plugin validate .` | 通过；marketplace 缺描述的警告已补；「根目录 CLAUDE.md 不作为插件内容加载」的警告属于假设 3，不影响 |
+| `claude plugin marketplace add` + `install`（scope user） | 识别出 8 个命令、1 个技能，钩子 Stop 和 SessionStart；插件被复制到 `~/.claude/plugins/cache/decision-inbox-marketplace/decision-inbox/0.0.2` |
+| 新会话 pp-hub 运行 `/decision-inbox:hub-setup pp-probe di-pp-hub` | **发现**：命令里写的 `${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}` 没有被替换，Bash 里取到的是空值。改成原样写 `${CLAUDE_PLUGIN_ROOT}`，加测试，重装（5b4c358）。pp-hub 本轮改用实际安装路径完成：预览 → 用户确认 → 写 `CLAUDE.md`、建组、写转发脚本 → `bridge_register` → `create_scheduled_task`（`*/5 * * * *`）→ `onboard task` 记下编号 |
+| 巡视任务第一次运行 | 成功；按固定路径跑完 `patrol plan` 和 `patrol record`，留下 `patrol.run` 事件；没有停在权限确认上（任务保存为 Auto 模式） |
+| 新会话 pp-fe 运行 `/decision-inbox:join pp-probe dev di-pp-fe 前端 前端` | 修正后的命令里 `${CLAUDE_PLUGIN_ROOT}` 被替换成插件目录，一次跑通；预览 → 用户确认 → 写 `CLAUDE.md`、登记名册（含 `desktopSession`）、`bridge_register` |
+| SessionStart 刷新转发脚本 | pp-fe 开会话后，转发脚本从缓存目录改指向本次加载的插件目录，说明自动刷新生效 |
+| 名册加 API（`pp-api`），开等待单「API 等前端」，请 pp-fe 回一句后结束 | 插件自带的 Stop 钩子拦了一次，pp-fe 复述第一行「【decision-inbox】收工前请先处理：有会话在等你。」；第二次结束放行 |
+| 定时巡视（每 5 分钟，共 131 轮） | 等待单开出后的第一轮（相隔 5 秒）判为信号 1「全线互等」，发了桌面通知并叫醒收件枢纽，两个动作都记为完成；其余各轮没有动作、没有报错 |
+| 卸载：pp-hub 运行 `/decision-inbox:teardown`、pp-fe 运行 `/decision-inbox:leave` | 两边预览正常。pp-hub 收到主会话转达的用户授权后执行：约定块删除、`delete_scheduled_task` 删除任务、状态目录保留。pp-fe 不认其他会话转来的批准（符合约定），由主会话用同一命令加 `--confirm` 执行，规则文件只剩原有一行 |
+| 卸载后核对 | **发现**：退出后 `whoami` 仍认出该目录，钩子仍会拦。原因是名册保留，却没有「已退出」记号。修正：退出时在领域 `onboarding` 记下「已退出」，按目录查找时跳过，重新接入时清掉（59aa8c8，含测试）。补跑确认后 `whoami` 退出码 4，钩子静默放行，一致性正常 |
+| 卸载插件和 marketplace | 插件列表与安装前相比只差 spec-guard 自己从 0.64.0 升到了 0.64.2（与本插件无关）；marketplace 列表一致 |
+| Codex：`codex plugin marketplace add` + `codex plugin add` | `codex plugin list` 显示 installed, enabled, 0.0.2；缓存里有 `.codex-plugin/plugin.json`（含 skills、hooks）、接入技能、`hooks.json`，启动脚本可执行；Stop 钩子命令以缓存副本运行退出码 0。随后 remove，`~/.codex/config.toml` 与安装前逐字节一致 |
+
+留下的东西：`~/.decision-inbox/pp-probe`（按规定保留）和 `~/.decision-inbox/bin/decision-inbox`；agent-relay 测试身份 `di-pp-hub`、`di-pp-fe`，待用户退役；131 个巡视运行会话和 pp-hub、pp-fe 两个会话，待用户决定是否归档。
+
 ## 假设
 
 1. Claude Code 在插件根目录有 `hooks/hooks.json` 时自动加载，命令从 `commands/` 自动发现；同一目录下的 `marketplace.json` 和 `plugin.json` 可以共存（spec-guard 等插件就是这样放的）。
