@@ -125,6 +125,21 @@ protocol.format_answer_notice(item, owner_short, original, answered_at) -> str
 10. 两份清单版本为 0.0.3；原有测试全部通过。
 11. 实测：按测试策略走完，记录写进本规格。
 
+## 实测记录
+
+2026-10-17 12:49–12:51（用户同意后做），agent-relay 0.7.x。本会话登记三个测试身份 `di-ahg-hub`（收件枢纽）、`di-ahg-owner`（前端负责人）、`di-ahg-fe`（前端开发线），都不绑定唤醒；scratchpad 临时协作组 `ahg-live`，用 `onboard hub`／`join` 接入。
+
+| 步骤 | 结果 |
+|---|---|
+| `di-ahg-owner` 用 `bodyFile` 发单线【等待用户】给收件枢纽 | 消息 4414 |
+| `bridge_inbox` 原样写入 `io/inbox.json`，`inbox receive` | 入表为 #1，`ack` 为 [4414] |
+| 用户原话「1 A」写入 `io/said.txt`，`inbox reply` | 回复显示「已转达：#1 → 前端负责人（另告知：前端）」；`out:1` 答复给 `di-ahg-owner`（`replyTo` 4414），`out:2`【答复告知】给 `di-ahg-fe`（不填 `replyTo`） |
+| `bridge_send` 用 `bodyFile` 发出两条 | 答复 4415，告知 4416 |
+| `inbox sent --done out:1=4415 out:2=4416` | 事项状态仍是 `forwarded`，发送记录只有 4415；告知只记在收件枢纽的待发记录里 |
+| `di-ahg-fe` 的收件箱 | 收到 4416，正文与文件逐字一致（103 字），含「不是批准，不作执行依据」，`replyTo` 为空 |
+
+停止钩子和巡视的新行为在检查点 2 用命令行实跑过（见 `tasks/answer-handoff-gaps/todo.md`）。三个测试身份仍登记着，退役命令交给用户执行。
+
 ## 假设
 
 1. 事项状态 `forwarded` 能代表「答复还在邮箱里没被取走」：decision-queue 在收到 `accepted` 后才把状态推进到 `picked`。依据是 hub-loop 实测。
