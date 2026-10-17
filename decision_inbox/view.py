@@ -130,14 +130,14 @@ def _anomaly_row(g: store.Group, signal) -> str:
     return f"- {who}：{signal.text}。建议：{advice(g, signal)}"
 
 
-def _anomaly_section(g: store.Group, assessment) -> str | None:
-    rows = [_anomaly_row(g, s) for s in _anomalies(assessment)]
+def _anomaly_section(g: store.Group, assessment, extra=()) -> str | None:
+    rows = [_anomaly_row(g, s) for s in _anomalies(assessment)] + list(extra)
     return "\n".join(["异常", *rows]) if rows else None
 
 
-def _overview(g: store.Group, now: str, assessment) -> str:
+def _overview(g: store.Group, now: str, assessment, extra=()) -> str:
     decide = len(items.pending(g)) + len(_needs_user(g, assessment))
-    text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment))}"
+    text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment)) + len(extra)}"
     recent = [it for it in items.by_status(g, *FORWARDED)
               if _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES]
     if recent:
@@ -204,11 +204,14 @@ def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
     return confirms + [_item_card(g, now, it) for it in items.pending(g)]
 
 
-def render(g: store.Group, now: str, assessment, relay=None) -> str:
-    """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts."""
+def render(g: store.Group, now: str, assessment, relay=None, extra=()) -> str:
+    """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts.
+
+    `extra` holds anomaly rows the caller found outside line-health (hub-loop's returned questions).
+    """
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
-    head.append(_overview(g, now, assessment))
-    sections = ["\n".join(head), _anomaly_section(g, assessment), *_cards(g, now, assessment, relay),
+    head.append(_overview(g, now, assessment, extra))
+    sections = ["\n".join(head), _anomaly_section(g, assessment, extra), *_cards(g, now, assessment, relay),
                 _footer(g, now)]
     return "\n\n".join(s for s in sections if s)
 

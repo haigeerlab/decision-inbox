@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import time
 from pathlib import Path
@@ -473,3 +474,60 @@ class AnswerNoticeTest(HubCase):
         self.assertEqual((it["status"], it["sent"], closed), ("forwarded", [], ()))
         self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:2"]["relayId"], 3990)
         self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:1"])
+
+
+def asking(mid, sender, body, reply_to=None, expects=True):
+    return dataclasses.replace(message(mid, sender, body), reply_to=reply_to, expects_reply=expects)
+
+
+class QuestionReturnTest(HubCase):
+    """e2e-round1-fixes F2: a line asking the hub something gets a fixed return, never silence."""
+
+    def answered(self):
+        self.receive(message(4540, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 4542}, [], at=NOW)
+
+    def test_s0_question_about_an_answer_is_returned(self):
+        self.answered()
+        r = self.receive(asking(4543, "fe-codex", "回复：#4542\n本线抛出的是 #4540，答复写 #1，请说明映射", reply_to=4542))
+        self.assertEqual([(s["to"], s["replyTo"], s["kind"]) for s in r.sends], [("fe-codex", 4543, "return")])
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertEqual(body, "\n".join([
+            "回复：#4543",
+            "收件枢纽只转达用户的话，不答疑，也不做决定。",
+            "你回的 #4542 是用户对事项 #1（你的原消息 #4540）的答复。",
+            "还有疑问，请抛一项【等待用户】，写清要用户确认什么。"]) + "\n")
+        self.assertIn("前端 称：回复：#4542（说「4543 原文」看全文）", r.notes)
+
+    def test_question_without_reply_to_gets_the_short_return(self):
+        r = self.receive(asking(2001, "fe-codex", "收件枢纽，现在几点了？"))
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertNotIn("你回的", body)
+        self.assertTrue(body.startswith("回复：#2001\n收件枢纽只转达用户的话"))
+
+    def test_notice_reply_names_the_notice(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 1601, r.sends[1]["id"]: 1602}, [], at=NOW)
+        r = self.receive(asking(1603, "fe-codex", "回复：#1602\n这条要我做什么？", reply_to=1602))
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertIn("你回的 #1602 是事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
+
+    def test_no_return_for_plain_notes_bridge_or_replies_to_a_return(self):
+        r = self.receive(asking(2001, "fe-codex", "问一句"))
+        hub.sent(self.g, {r.sends[0]["id"]: 2002}, [], at=NOW)
+        r = self.receive(
+            message(2003, "fe-codex", "随口一句"),
+            asking(2004, "fe-codex", "回复：#2002\n好的", reply_to=2002),
+            asking(2005, "bridge", "Message #1 failed."),
+        )
+        self.assertEqual(r.sends, [])
+        self.assertIn("前端 称：回复：#2002（说「2004 原文」看全文）", r.notes)
+
+    def test_returned_question_counts_as_an_anomaly_today(self):
+        self.receive(asking(2001, "fe-codex", "问一句"))
+        main = hub.main_view(self.g, now=NOW)
+        self.assertIn("异常 1", main)
+        self.assertIn("- 前端：问了收件枢纽（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
+        self.assertIn("异常 0", hub.main_view(self.g, now="2026-10-17T05:30:00Z"))

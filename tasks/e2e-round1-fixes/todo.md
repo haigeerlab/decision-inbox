@@ -8,12 +8,14 @@
   - 文件：`decision_inbox/protocol.py`、`items.py`、`hub.py`、对应测试
   - 记录（2026-10-17）：4 个新测试先失败；实现后 Ran 451 tests, OK。【答复告知】本来不被 `protocol.parse` 识别（kind 为 unknown），测试改为只核对正文
 
-- [ ] Task 2：开发线追问自动退回
+- [x] Task 2：开发线追问自动退回
   - 验收：Spec 验收 3（标了要回复或填了 replyTo 的未知消息退回；replyTo 指向已发答复或告知时第三行带事项号和原消息号；主视图附注照旧；异常计数加一）、验收 4（回复退回消息、bridge 通知不退回；没标要回复的未知消息只记附注）；F2 回归：#4543 产生退回
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`view.py`（若需要）、`tests/test_hub.py`
+  - 记录（2026-10-17）：5 个新测试先失败；实现后全量 Ran 456 tests, OK。变异检查：去掉「不退回对退回的回复」，被 `test_no_return_for_plain_notes_bridge_or_replies_to_a_return` 抓住。异常行经 `view.render(extra=…)` 进入主视图的异常段和计数
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 456 tests, OK
 
 - [ ] Task 3：`inbox reply --relayed-from`
   - 验收：Spec 验收 5（不改事项和等待单；记 `hub.relayed-input`，actor 为来源；提示含来源、原话和「请你在这里亲手回一遍」）

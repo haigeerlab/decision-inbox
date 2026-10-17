@@ -102,7 +102,40 @@ def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | 
     if msg.kind == "user-reply":
         return msg.kind, [], [f"{short} 发来一条【用户答复】，收件枢纽不处理"], None
     note = f"{short} 称：{_first_line(m.body)}（说「{m.id} 原文」看全文）"
-    return "unknown", [], [note], {"sender": m.sender, "text": m.body, "at": at}
+    question = _question_return(g, m)
+    record = {"sender": m.sender, "text": m.body, "at": at, "returned": question is not None}
+    return "unknown", [question] if question else [], [note], record
+
+
+def _question_return(g: store.Group, m) -> str | None:
+    """A line asking the hub something gets a fixed answer, never silence (e2e-round1-fixes F2).
+
+    Only messages that want a reply; a reply to one of the hub's own returns is never returned
+    again, so two sessions cannot bounce returns forever.
+    """
+    if not (m.expects_reply or m.reply_to is not None):
+        return None
+    replied = next((e for e in store.read_state(g, DOMAIN).get("outgoing", {}).values()
+                    if m.reply_to is not None and e["relayId"] == m.reply_to), None)
+    if replied is not None and replied["kind"] == "return":
+        return None
+    lines = [f"回复：#{m.id}", "收件枢纽只转达用户的话，不答疑，也不做决定。"]
+    it = items.get(g, replied["item"]) if replied is not None and replied["item"] is not None else None
+    if it is not None and replied["kind"] == "answer":
+        lines.append(f"你回的 #{m.reply_to} 是用户对事项 #{it['no']}（你的原消息 #{it['relayId']}）的答复。")
+    elif it is not None and replied["kind"] == "notice":
+        lines.append(f"你回的 #{m.reply_to} 是事项 #{it['no']}（原消息 #{it['relayId']}）的【答复告知】，只是告知。")
+    lines.append("还有疑问，请抛一项【等待用户】，写清要用户确认什么。")
+    return "\n".join(lines) + "\n"
+
+
+def returned_today(g: store.Group, now: str) -> list[str]:
+    """Anomaly rows for questions returned today: someone is stuck enough to ask the hub."""
+    day = today(now)
+    return [f"- {_short(g, rec['sender'])}：问了收件枢纽（#{relay_id}），已自动退回。"
+            f"建议：说「{relay_id} 原文」看它问了什么"
+            for relay_id, rec in store.read_state(g, DOMAIN).get("unknown", {}).items()
+            if rec.get("returned") and today(rec["at"]) == day]
 
 
 def receive(g: store.Group, inbox, now: str) -> Receipt:
@@ -215,7 +248,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
         head.append("⚠ 读不到 agent-relay，各线状态不全")
     previous = store.read_state(g, "patrol").get("snapshot")
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous)
-    return "\n".join([*head, view.render(g, now, assessment, relay)])
+    return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now))])
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
