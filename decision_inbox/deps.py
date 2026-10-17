@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,3 +88,46 @@ def read_interface(root: str, major: int, rel: str = "interface.json") -> Interf
     if parsed[0] != major:
         return Interface("incompatible", version, data, f"接口版本 {version}，本插件只认 {major}.x")
     return Interface("ok", version, data)
+
+
+# Accepted interface major per dependency (spec/doctor-and-observer.md decision 2).
+MAJORS = {"spec-guard": 1, "delegate": 1, "agent-relay": 2}
+_DELEGATE_DEFAULTS = {"review": "/delegate:review", "run": "/delegate:run", "doctor": "/delegate:doctor"}
+_DELEGATE_COMMAND = re.compile(r"^/delegate:[a-z-]+$")
+
+
+@dataclass(frozen=True)
+class Dependency:
+    name: str
+    version: str | None          # None: not found
+    reason: str = ""             # why not found
+    interface: Interface = Interface("absent")
+
+
+def dependency(name: str, project: str | None = None) -> Dependency:
+    found = find(name, project)
+    if isinstance(found, NotFound):
+        return Dependency(name, None, found.reason)
+    return Dependency(name, found.version, interface=read_interface(found.root, MAJORS[name]))
+
+
+def describe(d: Dependency) -> str:
+    """One line for doctor: installed version and whether its interface is usable."""
+    if d.version is None:
+        return f"{d.name}：{d.reason}"
+    head = f"{d.name} {d.version}"
+    state = d.interface.state
+    if state == "ok":
+        return f"{head}：接口 {d.interface.version}，兼容"
+    if state == "absent":
+        return f"{head}：读不到接口说明（可能早于提供 interface.json 的版本）"
+    return f"{head}：{d.interface.detail}"
+
+
+def delegate_command(d: Dependency, purpose: str) -> str:
+    """delegate's command name for `purpose`, from its interface when well-formed, else the default."""
+    entry = d.interface.data.get(purpose) if d.interface.state == "ok" else None
+    command = entry.get("command") if isinstance(entry, dict) else None
+    if isinstance(command, str) and _DELEGATE_COMMAND.match(command):
+        return command
+    return _DELEGATE_DEFAULTS[purpose]

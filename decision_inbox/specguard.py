@@ -133,6 +133,7 @@ class ModuleFact:
     first_tick_at: str | None
     tick_commits: int | None
     suspended_at: str | None
+    external_review: str = "none"   # none | recorded | declined (spec-guard 0.66.0+)
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,7 @@ def _module(m: dict) -> ModuleFact:
         review_spec=review.get("spec", "none"), review_plan=review.get("plan", "none"),
         last_tick_at=m.get("lastTickAt"), first_tick_at=m.get("firstTickAt"),
         tick_commits=m.get("tickCommits"), suspended_at=m.get("suspendedAt"),
+        external_review=m.get("externalReview", "none"),
     )
 
 

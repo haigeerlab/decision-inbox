@@ -8,10 +8,11 @@
   - 文件：`decision_inbox/deps.py`、`specguard.py`、对应测试
   - 记录（2026-10-17）：4 个新测试先失败（2 失败 2 报错）；实现后 Ran 516 tests, OK。和计划的差别：不兼容时 `locate` 返回新类型 `Incompatible`，`read_line` 给新状态 `incompatible`（显示走原因文字，调用方不用改）；interface.json 里 mapView 的 schemaVersion 不是 1 也按不兼容处理
 
-- [ ] Task 2：delegate、agent-relay 接口读取与审查对照表
+- [x] Task 2：delegate、agent-relay 接口读取与审查对照表
   - 验收：Spec 验收 3、4
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/deps.py`、`mapview.py`、对应测试
+  - 记录（2026-10-17）：新测试 5 个先报错；实现后 2 个原有整表测试按新对照表失败（✔／— 改为通过／不适用），改期望后 Ran 521 tests, OK。`ModuleFact` 多了 `external_review`（默认 none）；delegate 命令名不合 `/delegate:小写-连字符` 时用默认值
 
 - [ ] Task 3：doctor 命令、`--json`、`--report`
   - 验收：Spec 验收 1
