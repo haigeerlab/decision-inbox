@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: doctor-and-observer
 
 > 依据：`spec/doctor-and-observer.md`（已批准）。任务清单：`tasks/doctor-and-observer/todo.md`。
