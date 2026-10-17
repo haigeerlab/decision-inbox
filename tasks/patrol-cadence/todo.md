@@ -17,4 +17,5 @@
   - 文件：`README.md`、`docs/stage6-field-acceptance.md`、两份 `plugin.json`、`tests/test_packaging.py`
   - 记录（2026-10-18）：先改打包测试（0.0.13、README 三处新措辞），2 失败；README 功能简介、`query stats` 说明、排查两行，实地验收 P3 指标拆成「卡在权限确认」与「宿主没按时触发」两行、日报改存 `query stats --json`。Ran 586 tests, OK
 
-- [ ] Checkpoint（gate）：模块最终验收，等用户确认
+- [x] Checkpoint（gate）：模块最终验收，等用户确认
+  - 记录（2026-10-18）：用户验收通过；观察（F-P0-6 对策 A）结束、H24 结论写完后一起开 PR。Ran 586 tests, OK
