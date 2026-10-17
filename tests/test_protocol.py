@@ -335,7 +335,9 @@ class CodeTableTest(unittest.TestCase):
         return code.split(":")[0] + ":" if ":" in code else code
 
     def test_table_matches_spec(self):
-        spec = (Path(__file__).resolve().parent.parent / "spec" / "message-protocol.md").read_text(encoding="utf-8")
+        # Codes added by later rework modules are specified in their own specs (accepted specs stay as written).
+        spec = "\n".join(p.read_text(encoding="utf-8")
+                         for p in (Path(__file__).resolve().parent.parent / "spec").glob("*.md"))
         for code in protocol.PROBLEM_CODES + protocol.HINT_CODES:
             with self.subTest(code=code):
                 self.assertIn(code.rstrip(":"), spec)
@@ -357,3 +359,25 @@ class CodeTableTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BriefTest(unittest.TestCase):
+    """wait-honesty-and-briefs B2: a thin brief is flagged, never returned."""
+
+    BASE = fixture("wait-user.txt")
+
+    def brief(self, text):
+        import re
+        return re.sub(r"要点：.*\n来自：.*\n", text, self.BASE, count=1)  # the fixture's brief spans two lines
+
+    def test_thin_or_empty_words_flagged(self):
+        for text in ("要点：Mock 已就绪。\n", "要点：详见 docs/plan.md\n第二行\n", "要点：方案已明确\n第二行\n"):
+            with self.subTest(text=text):
+                msg = protocol.parse(self.brief(text))
+                self.assertTrue(msg.ok, msg.problems)
+                hint = next(h for h in msg.hints if h.code == "brief-thin")
+                self.assertEqual(hint.text, "要点太简略，用户可能没法直接决定，见约定块里的要点写法")
+
+    def test_proper_brief_not_flagged(self):
+        msg = protocol.parse(self.brief("要点：Mock 已就绪，两种方式工作量差一倍。\n微信支付有现成 SDK，支付宝要补签名接口。\n最大风险是支付宝联调要等 API 三天。\n"))
+        self.assertNotIn("brief-thin", {h.code for h in msg.hints})

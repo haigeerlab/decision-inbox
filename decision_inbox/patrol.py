@@ -87,7 +87,7 @@ def _wake(ctx: _Context, entry: dict, text: str) -> None:
     if tried is None:
         ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
     elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
-        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开")
+        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开（来源：Claude 桌面版）")
 
 
 def _wakes(ctx: _Context) -> None:
@@ -159,13 +159,17 @@ def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
     for signal in signals:
         if signal.no == 1:
             ctx.notify("all-waiting", signal.text)
+        elif signal.no == 11:  # one notice per batch of doubtful ids (relay-presence-and-doubt)
+            short = (store.find_session(ctx.g, relay_name=signal.sessions[0]) or {}).get("shortName", signal.sessions[0])
+            ctx.notify(f"doubt:{signal.sessions[0]}:{signal.text}",
+                       f"{signal.text}。完全退出 ChatGPT 再打开 {short} 的任务")
     for it in items.pending(ctx.g):
         waited = (_instant(ctx.now) - _instant(it["receivedAt"])).total_seconds() / 60
         if it["blocks"] and waited >= HUB_REMINDER_MINUTES:
             topic = it["decide"].splitlines()[0]
             ctx.notify(f"item:{it['no']}", f"#{it['no']}「{topic}」已等 {int(waited)} 分钟，挡住 {it['blocks']} 条线")
     if relay_error:
-        ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态")
+        ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态（来源：agent-relay）")
 
 
 def _cap(ctx: _Context) -> None:

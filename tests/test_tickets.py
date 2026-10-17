@@ -128,6 +128,16 @@ class OpenAndCloseTest(TicketsCase):
         r = self.receive(f"【已恢复】\n结束：#4540\n")
         self.assertEqual((r.closed, r.hints), ((), ()))
 
+    def test_end_line_naming_an_item_outside_resumed_is_flagged(self):
+        """relay-checkpoint-authority F13: 结束 in a new wait does not end an item; say so."""
+        item = items.receive(self.g, SINGLE, sender="fe-codex", relay_id=4707, received_at=SENT).item
+        for written in (item, 4707):
+            r = self.receive(SINGLE.replace("结束：无", f"结束：#{written}"), relay_id=4752 + written)
+            hint = next(h for h in r.hints if h.code == "end-is-item")
+            self.assertEqual(hint.text, f"#{written} 是事项，不是等待；结束事项要发【已恢复】")
+        r = self.receive(wait_session(end=f"#{item}"), relay_id=4800)
+        self.assertIn("end-is-item", {h.code for h in r.hints})
+
     def test_unknown_target(self):
         r = self.receive(wait_session(target="后台老王"))
         self.assertIsNotNone(r.opened)

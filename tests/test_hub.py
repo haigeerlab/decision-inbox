@@ -5,7 +5,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import hub, install, items, relay, reviews, store
+from decision_inbox import health, hub, install, items, relay, reviews, store, tickets, view
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 WAIT_USER = (PROTO / "wait-user.txt").read_text(encoding="utf-8")
@@ -321,7 +321,11 @@ class ReplyTest(HubCase):
         text = hub.main_view(self.g, now=NOW, relay=None)
         lines = text.split("\n")
         self.assertEqual(lines[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
-        self.assertEqual(lines[1], "⚠ 读不到 agent-relay，各线状态不全")
+        self.assertEqual(lines[1], "⚠ 本次没带 agent-relay 状态，各线状态不全")  # wait-honesty-and-briefs A3
+        self.assertIn("本次没有 agent-relay 状态，无法判断", text)
+        self.assertNotIn("agent-relay 没有它的数据", text)
+        unreadable = hub.main_view(self.g, now=NOW, relay=None, relay_status="unreadable", relay_error="第 1 行不是 JSON")
+        self.assertEqual(unreadable.split("\n")[1], "⚠ 读不到 agent-relay（第 1 行不是 JSON），各线状态不全（来源：agent-relay）")
 
 
 class ConventionTest(HubCase):
@@ -342,7 +346,9 @@ class ConventionTest(HubCase):
                        "亲手输入", "Another Claude session sent a message", "<cross-session-message>",
                        "--relayed-from <来源>", "拿不准来源时按转来处理",
                        # e2e-round1-fixes F12: a code fence around the view kills the copy block
-                       "不要套进代码块"):
+                       "不要套进代码块",
+                       # wait-honesty-and-briefs B5
+                       "先用一两句大白话说清为什么卡在这里"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
@@ -424,10 +430,11 @@ class CommandLineTest(HubCase):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1403, "api-codex", "【等待用户】\n结束：无\n")))
         code, out, _ = self.run_cli("view", "demo", "--agents", self.write("agents.json", "not json"))
         self.assertEqual(code, 0)
-        self.assertEqual(out.split("\n")[:2], ["⚠ 有 1 条消息没发出去，说「重发」再试", "⚠ 读不到 agent-relay，各线状态不全"])
+        self.assertEqual(out.split("\n")[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
+        self.assertTrue(out.split("\n")[1].startswith("⚠ 读不到 agent-relay（"), out)
         code, out, _ = self.run_cli("view", "demo")
         self.assertEqual(code, 0)
-        self.assertIn("读不到 agent-relay", out)
+        self.assertIn("⚠ 本次没带 agent-relay 状态，各线状态不全", out)
 
     def test_expanded_views(self):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1404, "fe-codex", WAIT_USER)))
@@ -587,12 +594,12 @@ class PatrolAlarmTest(HubCase):
 
     def test_never_ran_after_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:14:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}（来源：Claude 桌面版）")
         self.assertTrue(hub.main_view(self.g, now=NOW).startswith(f"⚠ 巡视还没跑完过一轮：{self.FIX}"))
 
     def test_stale_last_run(self):
         self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:10:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
     def test_quiet_within_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:16:00Z")
@@ -608,7 +615,7 @@ class PatrolAlarmTest(HubCase):
         self.patrol()
         self.assertIsNone(hub.patrol_alarm(self.g, NOW))
         self.patrol(last_run="2026-10-16T05:00:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
 
 class EndLineRelayIdTest(HubCase):
@@ -619,3 +626,93 @@ class EndLineRelayIdTest(HubCase):
         self.assertEqual([t["status"] for t in self.tickets().values()], ["open"])
         self.receive(message(4610, "fe-codex", WAIT_USER.replace("结束：无", "结束：#4544")))
         self.assertEqual([t["status"] for t in self.tickets().values() if t["relayId"] == 4544], ["closed"])
+
+
+class StatusQuestionTest(HubCase):
+    """relay-checkpoint-authority: 「卡住了吗」 with nothing to answer gets the main view, not just a nudge."""
+
+    def test_nothing_pending_shows_the_view(self):
+        r = hub.reply(self.g, "卡住了吗", now=NOW)
+        self.assertEqual(r.sends, [])
+        self.assertTrue(r.show.startswith(items.NO_ITEM_QUESTION + "\n\n"))
+        self.assertIn("等你决定 0 项", r.show)
+
+    def test_with_pending_items_only_asks_for_the_number(self):
+        self.receive(message(1401, "fe-codex", WAIT_USER), message(1402, "api-codex", WAIT_USER))
+        r = hub.reply(self.g, "卡住了吗", now=NOW)
+        self.assertEqual(r.show, items.NO_ITEM_QUESTION)
+
+
+class StaleTicketTest(HubCase):
+    """wait-honesty-and-briefs A2: a wait its sender has since moved past is flagged, not counted as all-waiting."""
+
+    def stale_setup(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        no = int(next(iter(self.tickets())))
+        self.receive(message(4610, "fe-codex", WAIT_USER))   # 结束：无 — the old wait stays open
+        return no
+
+    def test_flagged_and_explained(self):
+        no = self.stale_setup()
+        views = {t.no: t for t in tickets.open_tickets(self.g, NOW)}
+        self.assertEqual(views[no].maybe_stale, 4610)
+        waits = view.render_waits(self.g, NOW)
+        self.assertIn(f"（可能已失效：之后又发过 #4610，回『关掉 #{no}』）", waits)
+        self.assertIn("等待中 1 单（其中 1 单可能已失效）", hub.main_view(self.g, now=NOW))
+
+    def test_not_counted_as_all_waiting(self):
+        self.stale_setup()
+        main = hub.main_view(self.g, now=NOW)
+        self.assertNotIn("全线停住", main)
+        a = health.assess(self.g, now=NOW)
+        self.assertNotIn(1, [s.no for s in a.signals])
+
+    def test_fresh_wait_still_counts(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        self.assertIsNone(tickets.open_tickets(self.g, NOW)[0].maybe_stale)
+        empty = relay.parse_agents('{"agents": []}', relay_version="0.8.2")
+        self.assertIn(1, [s.no for s in health.assess(self.g, now=NOW, relay=empty).signals])
+        # without agent-relay this time there is no verdict (relay-presence-and-doubt)
+        self.assertNotIn(1, [s.no for s in health.assess(self.g, now=NOW).signals])
+
+    def test_old_receipts_without_sender_use_the_event_log(self):
+        no = self.stale_setup()
+        with self.g.transaction() as tx:
+            doc = tx.read_state("hub")
+            for rec in doc["received"].values():
+                rec.pop("sender", None)
+            tx.write_state("hub", doc)
+        self.assertEqual({t.no: t for t in tickets.open_tickets(self.g, NOW)}[no].maybe_stale, 4610)
+
+    def test_user_can_still_close_it(self):
+        no = self.stale_setup()
+        r = hub.reply(self.g, f"关掉 #{no} 旧单", now=NOW)
+        self.assertEqual(self.tickets()[str(no)]["status"], "closed")
+
+
+class AlsoAnswersTest(HubCase):
+    """relay-presence-and-doubt Task 4: close the proposer's superseded and withdrawn requests too."""
+
+    def answer(self, no, letter="A"):
+        outs = items.answer(self.g, items.interpret_reply(self.g, f"{no} {letter}").answers, answered_at=NOW)
+        return hub._queue_answers(self.g, outs, now=NOW)
+
+    def test_superseded_and_withdrawn_closed_once(self):
+        self.receive(message(1401, "fe-codex", WAIT_USER))                                  # #1
+        self.receive(message(1402, "fe-codex", WAIT_USER.replace("【等待用户】", "【与 #1 并行】\n【等待用户】")))  # #2
+        self.receive(message(1403, "fe-codex", "【撤回】\n事项：#2\n原因：不要了\n"))
+        self.receive(message(1404, "fe-codex", WAIT_USER))                                  # #3 supersedes #1
+        self.receive(message(1405, "api-codex", WAIT_USER))                                 # #4 other session
+        self.receive(message(1406, "api-codex", WAIT_USER))                                 # #5 supersedes #4
+        sends = self.answer(3)
+        self.assertEqual((sends[0]["replyTo"], sends[0]["alsoAnswers"]), (1404, [1401, 1402]))
+        self.receive(message(1407, "fe-codex", WAIT_USER))                                  # #6
+        self.assertNotIn("alsoAnswers", self.answer(6)[0])                                  # not repeated
+        self.assertEqual(self.answer(5)[0]["alsoAnswers"], [1405])
+
+    def test_plain_answer_has_no_also_answers(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        self.assertNotIn("alsoAnswers", self.answer(1)[0])
+
+    def test_hub_convention_says_to_fill_it(self):
+        self.assertIn("有 `alsoAnswers` 就照填", hub.convention("demo"))

@@ -13,7 +13,8 @@ from decision_inbox import items, protocol, reviews, store, tickets
 from decision_inbox.view import clip, waited
 
 _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
-_REVIEW_MARKS = {"approved": "✔", "pending": "待审", "revised": "已改待复审", "invalid": "标记无效", "none": "—"}
+# spec-guard review values -> words shown here; this mapping is ours (spec/doctor-and-observer.md decision 3).
+_REVIEW_MARKS = {"approved": "通过", "pending": "待审", "revised": "改后待复审", "invalid": "异常", "none": "不适用"}
 _STEPS = {"spec": "写 Spec", "plan": "写 Plan"}
 
 
@@ -35,7 +36,8 @@ def status_cell(m) -> str:
 
 
 def review_cell(m) -> str:
-    return f"Spec {_REVIEW_MARKS.get(m.review_spec, m.review_spec)} Plan {_REVIEW_MARKS.get(m.review_plan, m.review_plan)}"
+    cell = f"Spec {_REVIEW_MARKS.get(m.review_spec, m.review_spec)} Plan {_REVIEW_MARKS.get(m.review_plan, m.review_plan)}"
+    return cell + ("（有参考意见）" if m.external_review == "recorded" else "")
 
 
 def _verdict(r) -> str:

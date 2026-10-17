@@ -4,18 +4,19 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import doctor, health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
-         "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
+         "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
          "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
-         "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...\n"
+         "      python3 -m decision_inbox onboard <hub|join|allow|task|leave|teardown> <协作组> ...\n"
          "      python3 -m decision_inbox shim [--if-installed]\n"
-         "      python3 -m decision_inbox whoami [--cwd <目录>]")
+         "      python3 -m decision_inbox whoami [--cwd <目录>]\n"
+         "      python3 -m decision_inbox doctor [--group <协作组>] [--json|--report]")
 
 
 def _init(name: str) -> int:
@@ -86,6 +87,12 @@ def _query(argv: list[str]) -> int:
         p.add_argument("--relay-version")
         if name == "flow":
             p.add_argument("--wakes", required=True)
+    for name in ("stats", "events"):
+        p = sub.add_parser(name)
+        p.add_argument("group")
+        p.add_argument("--since")
+        if name == "events":
+            p.add_argument("--json", action="store_true", required=True)
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -107,11 +114,15 @@ def _query(argv: list[str]) -> int:
             if alarm := hub.patrol_alarm(g, now):
                 print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
+        elif args.command == "stats":
+            print(query.render_stats(query.stats(g, args.since), args.group, args.since))
+        elif args.command == "events":
+            print(json.dumps(query.events(g, args.since), ensure_ascii=False, indent=1))
         elif args.command == "item-ids":
             for relay_id in query.item_message_ids(g, args.number):
                 print(relay_id)
         else:
-            statuses = {}
+            statuses = {} if args.status else None
             for path in args.status:
                 st = _parse(relay.parse_message_status, _read(path))
                 statuses[st.id] = st
@@ -235,6 +246,16 @@ def _patrol(argv: list[str]) -> int:
     return 0
 
 
+def _relay_read(path: str | None, version: str | None):
+    """(snapshot or None, "ok"／"absent"／"unreadable", first line of the error)."""
+    if not path:
+        return None, "absent", None
+    try:
+        return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version), "ok", None
+    except (OSError, relay.RelayDataError) as e:
+        return None, "unreadable", (str(e).splitlines() or ["原因不明"])[0]
+
+
 def _relay_or_none(path: str | None, version: str | None):
     """The hub keeps going without agent-relay facts; the main view says so."""
     if not path:
@@ -338,7 +359,7 @@ def _view(argv: list[str]) -> int:
         print(str(e), file=sys.stderr)
         return 2
     now = store.now()
-    agents = _relay_or_none(args.agents, args.relay_version)
+    agents, relay_status, relay_error = _relay_read(args.agents, args.relay_version)
     if not what:
         hub_entry = next((e for e in store.roster(g) if e["role"] == "hub"), None)
         if args.outbox and hub_entry is not None:
@@ -347,7 +368,7 @@ def _view(argv: list[str]) -> int:
                 items.update_delivery(g, {m.id: (m.delivery_state, m.acknowledged_at) for m in out.messages}, at=now)
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
-        print(hub.main_view(g, now, agents, _dev_maps(g)))
+        print(hub.main_view(g, now, agents, _dev_maps(g), relay_status=relay_status, relay_error=relay_error))
     elif what[0] == "detail":
         print(view.render_detail(g, int(what[1])))
     elif what[0] == "waits":
@@ -360,6 +381,11 @@ def _view(argv: list[str]) -> int:
 
 
 def _print_outcome(out, confirm: bool) -> None:
+    if out.warnings:
+        for warning in out.warnings:
+            print(f"⚠ {warning}")
+        for note in onboard.CODEX_NOTES if out.codex_unseen else ():
+            print(f"  {note}")
     if out.drops:
         state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
                  else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
@@ -401,6 +427,12 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--project", default=".")
     p.add_argument("--reviewer")
     p.add_argument("--nodes", default="")
+    p.add_argument("--session-cwd")
+    p.add_argument("--checkpoint-authority", action="store_true")
+    p.add_argument("--confirm", action="store_true")
+    p = sub.add_parser("allow")
+    p.add_argument("group")
+    p.add_argument("--project", default=".")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("task")
     p.add_argument("group")
@@ -423,7 +455,20 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "join":
             nodes = [n for n in args.nodes.split(",") if n]
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
-                               args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now)
+                               args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
+                               session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority)
+        elif args.command == "allow":
+            out = onboard.allow(args.group, args.project, args.confirm)
+            print(f"设置文件：{out.path}")
+            for e in out.present:
+                print(f"  已有：{e}")
+            for e in out.added:
+                print(f"  {'已加' if args.confirm else '要加'}：{e}")
+            if not out.added:
+                print("都已放行，没有要改的")
+            elif not args.confirm:
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次")
+            return 0
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")
@@ -459,7 +504,28 @@ def _whoami(argv: list[str]) -> int:
     return 0
 
 
+def _doctor(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox doctor")
+    parser.add_argument("--group", action="append")
+    out = parser.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true")
+    out.add_argument("--report", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        checks = doctor.run(args.group)
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    print(doctor.to_json(checks) if args.json else doctor.report(checks) if args.report else doctor.render(checks))
+    return 3 if any(c.state == "bad" for c in checks) else 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["doctor"]:
+        return _doctor(argv[1:])
     if argv[:1] == ["whoami"]:
         return _whoami(argv[1:])
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):

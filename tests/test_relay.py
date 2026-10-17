@@ -309,3 +309,32 @@ class ParseInboxTest(unittest.TestCase):
         self.assertEqual((inbox.agent, m.id, m.sender, m.expects_reply, m.truncated), ("di-hub-probe", 3982, "di-dev-probe", True, False))
         self.assertTrue(m.body.startswith("【等待用户】\n结束：无"))
         self.assertEqual(inbox.warnings, ())
+
+
+class Relay08FieldsTest(unittest.TestCase):
+    """relay-presence-and-doubt Task 1: activity, doubtfulIds and wake.doubt (agent-relay 0.8.1+)."""
+
+    def test_activity_and_doubtful_ids(self):
+        text = json.dumps({"agents": [
+            {"name": "hub", "host": {"app": "claude"}, "presence": {"state": "running", "activity": "idle"},
+             "waiting": {"count": 1, "from": ["a"], "ids": [7], "oldestAt": "2026-10-18T00:00:00Z"}},
+            {"name": "dev", "host": {"app": "codex"}, "presence": {"state": "running"},
+             "waiting": {"count": 2, "from": ["hub"], "ids": [8, 9], "oldestAt": "2026-10-18T00:00:00Z",
+                         "doubtfulIds": [8]}},
+            {"name": "old", "host": {"app": "claude"}, "presence": {"state": "running", "activity": "napping"}}]})
+        agents = relay.parse_agents(text).agents
+        self.assertEqual((agents["hub"].activity, agents["hub"].doubtful_ids), ("idle", ()))
+        self.assertEqual((agents["dev"].activity, agents["dev"].doubtful_ids), (None, (8,)))
+        self.assertIsNone(agents["old"].activity)   # unknown value -> None
+
+    def test_outbox_and_wake_status_doubt(self):
+        out = relay.parse_outbox(json.dumps({"entries": [
+            {"id": 1, "toAgent": "dev", "wake": {"state": "accepted", "doubt": {"reason": "accepted-unread",
+                                                                               "since": "2026-10-18T00:00:00Z"}}},
+            {"id": 2, "toAgent": "dev", "wake": {"state": "accepted"}},
+            {"id": 3, "toAgent": "dev"}]}), "hub")
+        self.assertEqual([m.wake_doubt for m in out.messages], [True, False, False])
+        st = relay.parse_message_status(json.dumps({"message": {"id": 5}, "wake": {
+            "state": "accepted", "doubt": {"reason": "accepted-unread", "since": "x"}}}))
+        self.assertTrue(st.wake_doubt)
+        self.assertFalse(relay.parse_message_status(json.dumps({"message": {"id": 6}})).wake_doubt)

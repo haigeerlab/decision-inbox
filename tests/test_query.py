@@ -261,6 +261,14 @@ class ItemTest(QueryCase):
         self.assertEqual(query.item_message_ids(self.g, no), (received, 7001))
         self.assertEqual(query.item_message_ids(self.g, 999), ())
 
+    def test_timeline_without_statuses_says_not_brought(self):
+        """wait-honesty-and-briefs A3: no --status this time is not the mailbox lacking the message."""
+        no = self.lifecycle()
+        received = items.get(self.g, no)["relayId"]
+        text = query.render_item(self.g, no)
+        self.assertIn(f"本次没带 #{received} 的 agent-relay 状态", text)
+        self.assertNotIn("查不到", text)
+
     def test_timeline(self):
         no = self.lifecycle()
         received = items.get(self.g, no)["relayId"]
@@ -389,3 +397,15 @@ class CommandLineTest(QueryCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoubtTimelineTest(QueryCase):
+    lifecycle = ItemTest.lifecycle
+
+    def test_doubt_wording(self):
+        from decision_inbox.relay import MessageStatusFact
+        no = self.lifecycle()
+        st = MessageStatusFact(7001, "hub", "fe", at(39), "accepted", None, (), "accepted", None, None, wake_doubt=True)
+        text = query.render_item(self.g, no, {7001: st})
+        self.assertIn("agent-relay #7001：已接受但没读到（送达存疑，来源：agent-relay）", text)
+        self.assertNotIn("投递 accepted", text)

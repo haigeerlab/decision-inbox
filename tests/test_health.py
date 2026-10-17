@@ -209,6 +209,7 @@ class SessionSignalTest(HealthCase):
     def test_codex_backlog(self):
         r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 11))))
         self.assertIn((10, "codex-backlog", ("fe",)), codes(r))
+        self.assertTrue(next(x for x in r.signals if x.code == "codex-backlog").text.endswith("（来源：Codex 桌面版）"))
         r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 9))))
         self.assertNotIn("codex-backlog", [x.code for x in r.signals])
         r = self.assess(snapshot(agent("fe", app="codex", state="running", waiting=(2, ["api"], 30))))
@@ -307,3 +308,65 @@ class ProgressSignalTest(HealthCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def with_activity(a, activity):
+    a["presence"]["activity"] = activity
+    return a
+
+
+class PresenceActivityTest(HealthCase):
+    """relay-presence-and-doubt Task 2."""
+
+    def test_busy_counts_idle_does_not(self):
+        r = self.assess(snapshot(with_activity(agent("owner", activity_ago=120), "busy")))
+        self.assertEqual(r.lines["owner"].word, "working")
+        r = self.assess(snapshot(with_activity(agent("owner", activity_ago=1), "idle")))
+        self.assertNotEqual(r.lines["owner"].word, "working")
+
+    def test_idle_backlog_is_not_called_busy(self):
+        idle = with_activity(agent("owner", activity_ago=1, since_ago=30, waiting=(2, ["fe"], 20)), "idle")
+        r = self.assess(snapshot(idle))
+        self.assertNotIn("busy-backlog", [x.code for x in r.signals])
+        sig = next(x for x in r.signals if x.code == "idle-backlog")
+        self.assertEqual((sig.no, sig.text), (5, "前端负责人 空闲，有 2 条消息没读"))
+        busy = with_activity(agent("owner", activity_ago=1, since_ago=30, waiting=(2, ["fe"], 20)), "busy")
+        self.assertIn("busy-backlog", [x.code for x in self.assess(snapshot(busy)).signals])
+
+    def test_no_relay_no_all_waiting(self):
+        self.wait()
+        self.assertNotIn("all-waiting", [x.code for x in self.assess(None).signals])
+        r = self.assess(snapshot(agent("fe", activity_ago=120), agent("api", activity_ago=120),
+                                 agent("owner", activity_ago=120)))
+        self.assertIn("all-waiting", [x.code for x in r.signals])
+
+
+class HonestLineTest(HealthCase):
+    """relay-presence-and-doubt Task 2: skip possibly stale tickets, show short names."""
+
+    def test_short_name_for_relay_target(self):
+        self.wait(target="api")
+        r = self.assess(snapshot(agent("fe", activity_ago=1)))
+        self.assertEqual(r.lines["fe"].text, "阻塞：等 API")
+
+    def test_stale_ticket_skipped(self):
+        self.wait(target="API")
+        self.ask_user(sender="fe")                   # fe moved on: a later message to the hub
+        with self.g.transaction() as tx:
+            tx.write_state("hub", {"received": {"9": {"at": at(1), "kind": "wait-user", "returned": False,
+                                                      "sender": "fe"}}})
+        r = self.assess(snapshot(agent("fe", activity_ago=1)))
+        self.assertTrue(r.lines["fe"].text.startswith("阻塞：等你决定 #"), r.lines["fe"].text)
+
+
+class DeliveryDoubtTest(HealthCase):
+    """relay-presence-and-doubt Task 3."""
+
+    def test_signal_11(self):
+        a = agent("fe", app="codex", activity_ago=1, waiting=(2, ["hub"], 10))
+        a["waiting"]["doubtfulIds"] = [8, 9]
+        sig = next(x for x in self.assess(snapshot(a)).signals if x.code == "delivery-doubt")
+        self.assertEqual((sig.no, sig.sessions), (11, ("fe",)))
+        self.assertEqual(sig.text, "前端 有 2 条消息送达存疑（#8、#9）（来源：agent-relay）")
+        self.assertNotIn("delivery-doubt",
+                         [x.code for x in self.assess(snapshot(agent("fe", app="codex", activity_ago=1))).signals])

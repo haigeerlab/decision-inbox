@@ -44,13 +44,14 @@ def _close(tx, doc: dict, no, reason: int, basis: str, at: str, actor: str) -> N
     tx.append_event("tickets.closed", ref=int(no), actor=actor, data={"reason": reason, "basis": basis})
 
 
-def _resolve_end(tx, doc, no: int, sender: str, hints) -> int | None:
+def _resolve_end(tx, doc, no: int, sender: str, hints, resumed: bool) -> int | None:
     """A 结束 number as a ticket number, or None when it is not one.
 
     The hub's own number wins; failing that, a line may write the agent-relay id of
     its own message, the only number it ever knew (e2e-round1-fixes F10). Item numbers
     and the sender's own item message ids are decision-queue's business; anything else
-    is reported instead of silently skipped.
+    is reported instead of silently skipped. An item named outside 【已恢复】 ends
+    nothing, so that is reported too (relay-checkpoint-authority F13).
     """
     if str(no) in doc["tickets"]:
         return no
@@ -59,6 +60,8 @@ def _resolve_end(tx, doc, no: int, sender: str, hints) -> int | None:
         return int(own[0])
     known = tx.read_state("items").get("items", {})
     if str(no) in known or any(it["relayId"] == no and it["sender"] == sender for it in known.values()):
+        if not resumed:
+            hints.append(Issue("end-is-item", f"#{no} 是事项，不是等待；结束事项要发【已恢复】"))
         return None
     hints.append(Issue("end-unknown", f"#{no} 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西"))
     return None
@@ -68,7 +71,7 @@ def _close_by_end_line(tx, doc, ids, sender, reason, basis, at, hints) -> list[i
     """Explicit 结束 lines only close the sender's own open tickets (spec 关键决策 2)."""
     closed = []
     for written in ids:
-        no = _resolve_end(tx, doc, written, sender, hints)
+        no = _resolve_end(tx, doc, written, sender, hints, resumed=reason == 1)
         if no is None:
             continue
         t = doc["tickets"][str(no)]
@@ -156,6 +159,7 @@ class TicketView:
     minutes: int
     marks: tuple[str, ...]
     notes: tuple[str, ...]
+    maybe_stale: int | None = None  # the waiter's later message id (wait-honesty-and-briefs A2)
 
 
 def _instant(value: str) -> datetime:
@@ -166,9 +170,34 @@ def _short(g: store.Group, relay_name: str) -> str:
     return (store.find_session(g, relay_name=relay_name) or {}).get("shortName", relay_name)
 
 
+def stale_tickets(g: store.Group) -> dict[int, int]:
+    """Open tickets whose waiter has since sent the hub another message: {ticket no: that message id}.
+
+    A wait the sender has moved past without ending it is most likely forgotten
+    (wait-honesty-and-briefs A2). Only the hub's own receipts count; receipts written
+    before they carried the sender are read back from the hub.received events.
+    """
+    senders: dict[int, str] = {}
+    for e in store.read_events(g):
+        if e.get("type") == "hub.received" and isinstance(e.get("data", {}).get("relayId"), int):
+            senders[e["data"]["relayId"]] = e.get("actor")
+    for key, rec in store.read_state(g, "hub").get("received", {}).items():
+        if rec.get("sender") and key.isdigit():
+            senders[int(key)] = rec["sender"]
+    out = {}
+    for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
+        if t["status"] != "open" or not isinstance(t.get("relayId"), int):
+            continue
+        later = [i for i, who in senders.items() if who == t["waiter"] and i > t["relayId"]]
+        if later:
+            out[int(key)] = min(later)
+    return out
+
+
 def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
     """Open tickets with the requirement 4.5 marks; `relay` is a relay-reader AgentsSnapshot or None."""
     views = []
+    stale = stale_tickets(g)
     moment = _instant(now)
     for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
         if t["status"] != "open":
@@ -192,7 +221,8 @@ def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
             marks.append("maybe-stuck")
             notes.append(f"可能卡住：{waiter} 在等 {t['target']} 的「{t['what']}」，"
                          f"请看一下 {t['target']} 是否已完成却没通知 {waiter}")
-        views.append(TicketView(int(key), t["waiter"], t["target"], t["what"], minutes, tuple(marks), tuple(notes)))
+        views.append(TicketView(int(key), t["waiter"], t["target"], t["what"], minutes, tuple(marks), tuple(notes),
+                                stale.get(int(key))))
     return sorted(views, key=lambda v: v.no)
 
 

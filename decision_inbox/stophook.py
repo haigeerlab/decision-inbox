@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import items, store, tickets
+from decision_inbox import items, specguard, store, tickets
 from decision_inbox.view import waited
 
 
@@ -47,7 +47,8 @@ def _who(g: store.Group, payload: dict, session: str | None) -> tuple[dict | Non
     return found[0], None
 
 
-def decide(g: store.Group, payload: dict, session: str | None = None, now: str | None = None) -> Decision:
+def decide(g: store.Group, payload: dict, session: str | None = None, now: str | None = None,
+           read_map=None) -> Decision:
     now = now or store.now()
     if payload.get("stop_hook_active"):
         return _pass("本轮已经拦过一次")
@@ -63,6 +64,9 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
     waiting = sorted((t for t in open_ if t.target == short), key=lambda t: t.no)
     answered = _answered(g, me, now)
     if not waiting and not answered:
+        silent = _silent_stop(g, entry, read_map or specguard.read_line)
+        if silent is not None:
+            return Decision(True, silent, None)
         return _pass("没有会话在等本会话，也没有已答未恢复的事项")
     out = []
     if waiting:
@@ -75,8 +79,34 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
         out.append("另外，用户已答复你抛的事项，你还没发【已恢复】：" if waiting
                    else "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。")
         out += [*answered, "做完了：发【已恢复】，结束行写这个编号。",
-                "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。"]
+                "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
+                # the hook cannot see this session's own sent mail (relay-presence-and-doubt 关键决策 6)
+                "已经发过【已恢复】、收件枢纽还没收进：回一句「已发 #邮箱号」即可收工，不用重发。"]
     return Decision(True, "\n".join(out), None)
+
+
+def _silent_stop(g: store.Group, entry: dict, read_map) -> str | None:
+    """A dev line stopping with open todos and nothing reported (wait-honesty-and-briefs B1).
+
+    Only when spec-guard can be read for its repository; anything else stays silent.
+    """
+    if entry["role"] != "dev" or not entry.get("repo"):
+        return None
+    if any(it["sender"] == entry["relayName"] for it in items.pending(g)):
+        return None
+    read = read_map(entry["repo"])
+    line_map = getattr(read, "map", None)
+    if getattr(read, "status", None) != "ok" or line_map is None or not line_map.active_module:
+        return None
+    m = next((m for m in line_map.modules if m.id == line_map.active_module), None)
+    if m is None or m.progress_done >= m.progress_total:
+        return None
+    return "\n".join([
+        f"【decision-inbox】收工前请先处理：当前模块 {m.id} 还有 {m.progress_total - m.progress_done} 项没勾，"
+        "你既没报阻塞也没抛事项。",
+        "手上没有已批准、还没做完的下一步：抛一项【等待用户】，说明要用户定什么。",
+        "在等别人：抛【等待其他会话】。",
+        "还能接着做：继续做，不要停下。"])
 
 
 ANSWERED = ("forwarded", "picked", "acknowledged")

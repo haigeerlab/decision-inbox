@@ -731,3 +731,35 @@ agent-relay 路线图（由其维护方告知，2026-10-16）：
 - **agent-relay**：第 4～7 项现有接口已基本够用，规格阶段先逐项核对字段；不够再提。身份失效自愈请保持排期。
 
 规格阶段每个模块的 Spec 都要写一节「依赖」：用到哪个组件的哪个接口，缺的接口先向该组件提需求，不在本插件里补。
+
+## 13. 后续模块待办（2026-10-17 汇总，来源：di-e2e 实测与 spec-guard-monitor 转来的审查清单、生态接缝结论）
+
+模块乙 `doctor-and-observer`（用户已同意拆分，规格待写）：
+
+- **doctor**（审查清单 A6 + C）：按会话列出约定块版本是否与当前代码一致、转发脚本指向与版本、钩子信任状态、巡视最近一轮、Codex 会话能否加载约定块；hub-setup 里要用户亲手做的几步由它核对；一并列出依赖插件（agent-relay、spec-guard、装了的话还有 delegate）的版本与接口是否兼容。
+- **只读接口**（C）：`query stats`（绕过收件枢纽结束的事项数、抛出到答复到恢复的耗时、被取代／退回／拒收转述数、过期挂着的等待单）、`query events --json`（字段固定、写明格式）、`doctor --report`（可直接转发的异常报告：现象、证据编号、版本）。
+- **依赖方问题标来源**（C1）：根源在依赖插件的问题交给该插件负责人修，本插件不打补丁绕过；提示文字标明来源。
+- **一次性权限放行**（A4、A5）：hub-setup 列出巡视与收件枢纽要用的命令和 agent-relay 工具，用户确认一次后写入（改的是用户的 Claude 权限配置，预览、确认都由用户做）。实测中巡视每遇新工具就停在权限确认上（3 次），收件枢纽空闲时被桌面版停掉、巡视又叫不醒。
+- **按依赖方的接口读数据**：spec-guard 的 plugin-interface 模块发布 `interface.json`（map-view 入口、schemaVersion 1、退出码与取值含义，模块多 `externalReview` 字段：none／recorded／declined）后，读取方式从翻 installed_plugins.json 改为按 interface.json；delegate 的 `plugins/delegate/interface.json`（接口 1.0）与 README「对外接口」写明 v1 报告的稳定字段和解读规则，「审查」行引用写「参考意见：delegate，N 条，review_outcome=…」，按其解读规则判断有无结论，不依赖严重程度；探测到已安装不等于能用，以 `/delegate:doctor` 为准，`backends` 只表示支持哪些后端。agent-relay 会在接口说明里写明 presence、lastSeen、waiting、owesReplies 的含义：`running` 不代表连接正常，`lastSeen` 不是心跳，doctor 和巡视按其说明解释。
+- **spec-guard 接口已发布**（v0.66.0，https://github.com/haigeerlab/spec-guard-plugin/releases/tag/v0.66.0）：插件根目录 `interface.json`，接口版本 1.0，按 `>=1.0,<2.0` 检查；`mapView.command` 为 `["python3","-B","hooks/map_view.py","--json","--project","<project-root>"]`（相对插件根目录），`mapView.schemaVersion` 1；`exitCodes` 写了 0/2/3/4；`values.review`、`values.externalReview` 写了各取值含义；每个模块新增 `externalReview`（recorded 可显示为「参考意见」）。doctor 读不到 interface.json 时报「未知」，不报「没装」。
+- **审查状态对照表**：由本插件维护。spec-guard 给的参考：approved→通过，pending／revised→进行中，none→不适用，invalid→异常。
+- **宿主差异文档**（D）：由本插件维护（spec-guard 仓库公开、本仓库私有，不做跨仓引用）。修订 H10（守卫信任会话加载的 AGENTS.md 与用户「按收到的任务做」的授权，见 relay-checkpoint-authority 实测记录）；新增 H18（Codex 会话目录决定加载哪份 AGENTS.md）、H19（Claude 自动模式会拦部分命令，`--relayed-from` 被拦两次）、H20（Claude 定时任务不继承创建者会话的权限，遇新工具就停）；H3 状态与第 5 节第 6 条改为「agent-relay 0.7.1 已有引导式恢复，完全自动不可行」。开发环境专属的 F11（本地目录市场与 SessionStart 钩子互相覆盖转发脚本）只写进开发说明。
+- **README 使用注意事项**（E）：一张表，每条写现象、原因与来源（宿主／依赖插件／本插件设计）、使用者怎么做、出问题找谁。
+- **实测补缺口**（A10）：至少补 S1（负责人离线自动叫醒）、S3（Codex 桌面版停止钩子）。
+
+其他观察（未定去处）：各线一行仍按可能已失效的等待单写「阻塞：等X」；`inbox reply` 附的主视图读不到 agent-relay 时按「没带」写。
+
+### 13.5 依赖插件升级核对（2026-10-17 晚）
+
+本机实际版本：spec-guard 0.67.0（Claude）；agent-relay 0.8.2（两边，接口 2.5，信箱 schema 7）；delegate 0.5.3（Claude，带 `interface.json`）；Codex 侧的 delegate 缓存仍是 10-14 的 0.5.0（本地克隆停在另一个分支），没有 `interface.json`，doctor 遇到这种情况按「读不到接口」报，不报没装。
+
+- **spec-guard 0.67.0**：`interface.json` 与 0.66.0 相同（接口 1.0）。新增的是它自己读 delegate 的 `interface.json`：版本 `>=1.0,<2.0` 才用文件里的命令名；文件不存在按老版本处理、不当成没装。本插件读 delegate 时照同一规则。
+- **delegate 0.5.3**：`plugins/delegate/interface.json` 接口 1.0，`review.command` `/delegate:review`（后端 codex、claude-code，只读，报告 schemaVersion 1）、`run.command` `/delegate:run`（只 codex，写入要显式）、`doctor.command` `/delegate:doctor`。
+- **agent-relay 0.8.0–0.8.2**，对本插件有用的新事实（已在本机 `bridge_agents` 实读到）：
+  - `presence.activity`（Claude 会话 `running` 时 `busy`／`idle`）：现在主视图把「running 且有积压」一律写「已忙 N 分钟」，空闲时是错的，应改为按 activity 区分。
+  - 送达存疑：`waiting.doubtfulIds`、`bridge_outbox`／`bridge_wake_status` 的 `wake.doubt`（Codex 唤醒 accepted 满 5 分钟仍未读）。主视图和巡视应显示「送达存疑」，提示完全退出 ChatGPT 再打开那个任务，而不是当成已送达。
+  - `bridge_send` 的 `alsoAnswers`（一份答复关多条请求）与 `withdraws`（撤回自己发出的请求）、`bridge_outbox` 的 `closedBy`、结果 `withdrawn`。收件枢纽转达合并答复时可一次关掉多条；事项被取代时可撤回旧请求。`owesReplies` 不再统计已关闭的请求。
+  - `bridge_agents` 带参数时分页（`hasMore`／`nextAfterName`）；不带参数行为不变，本插件现有调用不受影响。
+  - 接口文档写明 `lastSeen`／`lastActivity` 不是心跳、`running` 不代表信箱连接正常（D231），doctor 与巡视按此解释。
+
+**转给 agent-relay 的用例（2026-10-18，relay-presence-and-doubt 关键决策 6）**：停止钩子在会话收工时运行，只能读文件、不能调 MCP 工具，看不到本会话自己发出的邮件。实测（2026-10-17 di-e2e）负责人已发出【已恢复】#5256，收件枢纽还没收进，钩子仍拦了一次。需要 agent-relay 提供只读的命令行查询：某个身份最近发出的消息（编号、收件方、时间、`replyTo`），不含正文。有了之后停止钩子改为先查本会话的发件记录再判断。

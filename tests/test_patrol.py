@@ -69,6 +69,8 @@ class WakeTest(PatrolCase):
         self.assertEqual([i for i in self.ids(second) if "fe-owner" in i], ["notify:unwakeable:fe-owner"])
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
                         .startswith("decision-inbox：叫不醒 前端负责人"))
+        self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
+                        .endswith("请手动打开（来源：Claude 桌面版），详见收件枢纽"))
         for minutes in (10, 12):  # still stopped: neither another wake nor another notice
             quiet = self.run_round(minutes, [owner])
             self.assertEqual([i for i in self.ids(quiet) if "fe-owner" in i], [], minutes)
@@ -372,11 +374,29 @@ class HandoffTest(PatrolCase):
         self.assertFalse(any(i.startswith("notify:handoff") for i in self.ids(p)))
 
     def test_kept_when_notices_are_capped(self):
-        for _ in range(3):
-            items.receive(self.g, WAIT_USER, sender="api", relay_id=70, received_at=later(-40))
+        prev = None
+        for _ in range(3):  # parallel on purpose: a new item replaces the old one by default
+            text = WAIT_USER if prev is None else WAIT_USER.replace("【等待用户】", f"【等待用户】【与 #{prev} 并行】")
+            prev = items.receive(self.g, text, sender="api", relay_id=70, received_at=later(-40)).item
         no = self.answered_item(stopped=False)
         p = self.run_round(0, [self.offline("fe-owner")])
         notices = [a.id for a in p.actions if a.kind == "notify"]
         self.assertEqual(len(notices), 3)
         self.assertEqual(notices[0], f"notify:handoff:{no}|fe-owner")
         self.assertEqual(notices[-1], "notify:more")
+
+
+class DoubtNoticeTest(PatrolCase):
+    def test_once_per_batch(self):
+        def fe(ids):
+            a = agent("fe", app="codex", activity_ago=1, waiting=(len(ids), ["hub"], 10))
+            a["waiting"]["doubtfulIds"] = list(ids)
+            return a
+        first = self.run_round(0, [fe([8])])
+        doubt = [a for a in first.actions if a.id.startswith("notify:doubt:")]
+        self.assertEqual(len(doubt), 1)
+        self.assertIn("完全退出 ChatGPT 再打开 前端 的任务", doubt[0].text)
+        again = self.run_round(5, [fe([8])])
+        self.assertEqual([a for a in again.actions if a.id.startswith("notify:doubt:")], [])
+        new = self.run_round(10, [fe([8, 9])])
+        self.assertEqual(len([a for a in new.actions if a.id.startswith("notify:doubt:")]), 1)

@@ -10,7 +10,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from decision_inbox import items, reviews, store
+from decision_inbox import deps, items, reviews, store, tickets
 
 # Thresholds decided by the user on 2026-10-16 (requirement section 12 item 3).
 REWORK_FALLBACK_ROUNDS = 3
@@ -127,6 +127,9 @@ def _facts(g, relay, maps, snap) -> dict[str, _Facts]:
 
 
 def _is_working(f: _Facts, now: datetime) -> bool:
+    activity = f.fact.activity if f.fact is not None else None
+    if activity is not None:   # agent-relay 0.8.1+ says it outright (relay-presence-and-doubt)
+        return activity == "busy"
     window = timedelta(minutes=WORKING_MINUTES)
     return any(t is not None and now - t <= window for t in (f.activity, f.changed))
 
@@ -137,16 +140,26 @@ def _has_open_work(f: _Facts) -> bool:
             and m.progress_done < m.progress_total)
 
 
-def _state(f: _Facts, now: datetime) -> LineState:
-    """The seven words, first match wins (requirement section 12 item 14)."""
+def _target_name(f: _Facts, t: dict, names: dict[str, str]) -> str:
+    """The waited-on session's short name when the roster knows it."""
+    return names.get(t.get("targetRelay") or t["target"], t["target"])
+
+
+def _state(f: _Facts, now: datetime, stale=frozenset(), names: dict | None = None) -> LineState:
+    """The seven words, first match wins (requirement section 12 item 14).
+
+    Possibly stale tickets do not make a line blocked (relay-presence-and-doubt).
+    """
     presence = f.fact.presence if f.fact is not None else None
     if presence in ("offline", "unreachable"):
         return LineState("offline", "掉线")
     if presence == "needs-user":
         return LineState("needs-user", "等你确认")
-    if f.tickets:
-        t = f.tickets[0]
-        return LineState("blocked", f"阻塞：等 {t['target']}", target=t["target"], since=t["sentAt"])
+    live = [t for t in f.tickets if t["no"] not in stale]
+    if live:
+        t = live[0]
+        target = _target_name(f, t, names or {})
+        return LineState("blocked", f"阻塞：等 {target}", target=target, since=t["sentAt"])
     if f.asks:
         it = f.asks[0]
         return LineState("blocked", f"阻塞：等你决定 #{it['no']}", item=it["no"], since=it["receivedAt"])
@@ -161,18 +174,24 @@ def _state(f: _Facts, now: datetime) -> LineState:
     if f.activity is not None:
         return LineState("idle", f"{_duration((now - f.activity).total_seconds() / 60)}无活动",
                          since=f.activity.isoformat())
-    return LineState("idle", "无活动记录（agent-relay 没有它的数据）")
+    return LineState("idle", NO_RECORD)
+
+
+NO_RECORD = "无活动记录（agent-relay 没有它的数据）"
+NO_RELAY = "本次没有 agent-relay 状态，无法判断"  # not read this time, not missing (wait-honesty-and-briefs A3)
 
 
 def _short(f: _Facts) -> str:
     return f.entry["shortName"]
 
 
-def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime) -> list[Signal]:
-    """Signals 1, 2, 4, 5 and 10: waiting chains and message backlogs."""
+def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime,
+                     stale=frozenset(), relay_read: bool = True) -> list[Signal]:
+    """Signals 1, 2, 4, 5, 10 and 11: waiting chains, message backlogs and doubtful deliveries."""
     out = []
-    open_count = sum(len(f.tickets) for f in facts.values())
-    if open_count and all(state.word != "working" for state in lines.values()):
+    open_count = sum(1 for f in facts.values() for t in f.tickets if t["no"] not in stale)
+    # Without agent-relay this time nobody can be seen working, so no verdict (relay-presence-and-doubt).
+    if relay_read and open_count and all(state.word != "working" for state in lines.values()):
         out.append(Signal(1, "all-waiting", tuple(sorted(facts)),
                           f"全线互等：所有会话都没在干活，还有 {open_count} 张等待单没关"))
     for name, f in facts.items():
@@ -184,11 +203,17 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
                 out.append(Signal(2, "delivered-not-picked", (name, target),
                                   f"交付了没人接：{t['target']} 已发消息给 {_short(f)}，"
                                   f"{_short(f)} 还没去取（{_short(f)} 在等 {t['target']}）"))
+        if fact is not None and fact.doubtful_ids:
+            ids = "、".join(f"#{i}" for i in fact.doubtful_ids)
+            out.append(Signal(11, "delivery-doubt", (name,), deps.sourced(
+                f"{_short(f)} 有 {len(fact.doubtful_ids)} 条消息送达存疑（{ids}）", "agent-relay")))
         if fact is None or not fact.waiting_count:
             continue
         if fact.presence in ("offline", "unreachable"):
             out.append(Signal(4, "offline-backlog", (name,),
                               f"{_short(f)} 掉线，有 {fact.waiting_count} 条消息送不进去"))
+        elif fact.activity == "idle":
+            out.append(Signal(5, "idle-backlog", (name,), f"{_short(f)} 空闲，有 {fact.waiting_count} 条消息没读"))
         elif fact.presence_since is not None:
             busy = (now - _instant(fact.presence_since)).total_seconds() / 60
             if busy >= BUSY_MINUTES:
@@ -199,7 +224,7 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
             if waited >= BACKLOG_MINUTES:
                 out.append(Signal(10, "codex-backlog", (name,),
                                   f"{_short(f)}（Codex）没被加载，有 {fact.waiting_count} 条消息积压，"
-                                  f"最早一条已等 {int(waited)} 分钟"))
+                                  f"最早一条已等 {int(waited)} 分钟（来源：Codex 桌面版）"))
     return out
 
 
@@ -273,6 +298,11 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     snap = _new_snapshot(now, maps, previous)
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap)
-    lines = {name: _state(f, moment) for name, f in facts.items()}
-    signals = _session_signals(facts, lines, moment) + _progress_signals(g, facts, lines, snap, moment)
+    stale = frozenset(tickets.stale_tickets(g))  # waits the sender has moved past (wait-honesty-and-briefs A2)
+    names = {e["relayName"]: e["shortName"] for e in store.roster(g)}
+    lines = {name: _state(f, moment, stale, names) for name, f in facts.items()}
+    if relay is None:
+        lines = {name: LineState(s.word, NO_RELAY) if s.text == NO_RECORD else s for name, s in lines.items()}
+    signals = (_session_signals(facts, lines, moment, stale, relay_read=relay is not None)
+               + _progress_signals(g, facts, lines, snap, moment))
     return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)

@@ -44,6 +44,8 @@ class AgentFact:
     wake_bound: bool | None
     retired: bool
     presence_detail: str | None = None
+    activity: str | None = None            # "busy" | "idle" while a Claude session runs (0.8.1+)
+    doubtful_ids: tuple[int, ...] = ()      # accepted but unread Codex deliveries (0.8.2+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ class MessageFact:
     expires_at: str | None
     reply_ids: tuple[int, ...]
     reply_to: int | None
+    wake_doubt: bool = False                # wake.doubt: accepted but unread (0.8.2+)
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,13 @@ def _relay_status(raw_agents: list[dict], version, warnings: list[str]) -> str:
     return "undetermined"
 
 
+ACTIVITIES = ("busy", "idle")
+
+
+def _doubt(wake) -> bool:
+    return isinstance(wake, dict) and isinstance(wake.get("doubt"), dict)
+
+
 def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
     raw = _load(text, "agents", "bridge_agents")
     warnings: list[str] = []
@@ -175,6 +185,8 @@ def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
             last_activity_at=_str_or_none(a.get("lastActivity")),
             wake_bound=(a["wake"] is not None) if "wake" in a else None,
             retired=retired,
+            activity=presence.get("activity") if presence.get("activity") in ACTIVITIES else None,
+            doubtful_ids=tuple(x for x in (waiting or {}).get("doubtfulIds", []) if _int_or_none(x) is not None),
         )
     return AgentsSnapshot(relay_status=status, agents=agents, warnings=tuple(warnings))
 
@@ -198,6 +210,7 @@ def parse_outbox(text: str, sender: str) -> Outbox:
             expires_at=_str_or_none(e.get("expiresAt")),
             reply_ids=tuple(x for x in e.get("replies") or [] if _int_or_none(x) is not None),
             reply_to=_int_or_none(e.get("replyTo")),
+            wake_doubt=_doubt(e.get("wake")),
         ))
     return Outbox(sender=sender, messages=tuple(messages), warnings=tuple(warnings))
 
@@ -214,6 +227,7 @@ class MessageStatusFact:
     wake_state: str | None
     wake_detail: str | None
     outcome: str | None
+    wake_doubt: bool = False
 
 
 def parse_message_status(text: str) -> MessageStatusFact:
@@ -237,6 +251,7 @@ def parse_message_status(text: str) -> MessageStatusFact:
         wake_state=_str_or_none(wake.get("state")),
         wake_detail=_str_or_none(wake.get("detail")) or None,
         outcome=_str_or_none(doc.get("outcome")),
+        wake_doubt=_doubt(wake),
     )
 
 

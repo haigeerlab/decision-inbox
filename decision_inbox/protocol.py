@@ -36,7 +36,7 @@ TERMINAL = {"原事项全文"}
 PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-options", "bad-stop-flag",
                  "scope-missing:", "scope-unknown:", "bad-node", "bad-verdict")
 REVIEW_NODES = {"Spec": "spec", "Plan": "plan", "接口提案": "interface", "最终验收": "final"}
-HINT_CODES = ("no-consequence:", "no-recommendation")
+HINT_CODES = ("no-consequence:", "no-recommendation", "brief-thin")
 
 _TAG_RE = re.compile(r"【([^】]*)】")
 _COLON = "[：:]"
@@ -190,6 +190,9 @@ def _split(text: str):
     return tags, end, reply_to, lines[i:]
 
 
+THIN_BRIEF_WORDS = ("详见", "已明确", "同上")  # a brief the user cannot decide from (wait-honesty-and-briefs B2)
+
+
 def _fields(kind: str, body: list[str]) -> dict[str, str]:
     patterns = [(name, _field_re(name)) for name in FIELDS[kind]]
     values: dict[str, list[str]] = {}
@@ -305,6 +308,10 @@ def parse(text: str) -> Message:
         if not end.present:
             problems.append(Issue("missing-end", "开头缺少「结束：#编号」或「结束：无」"))
         _require(fields, ("来自", "要你决定"), problems)
+        brief = fields.get("要点", "")
+        if (len([x for x in brief.splitlines() if x.strip()]) < 2
+                or any(word in brief for word in THIN_BRIEF_WORDS)):
+            hints.append(Issue("brief-thin", "要点太简略，用户可能没法直接决定，见约定块里的要点写法"))
         options, recommended = _options(fields.get("选项与我的建议", ""))
         if not options:
             problems.append(Issue("missing-options", "「选项与我的建议」里没有带字母的选项"))
