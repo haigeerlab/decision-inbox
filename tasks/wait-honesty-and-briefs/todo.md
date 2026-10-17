@@ -35,7 +35,13 @@
   - 文件：`decision_inbox/protocol.py`、`onboard.py`、`hub.py`、`README.md`、两份 `plugin.json`、对应测试
   - 记录（2026-10-17）：7 个测试先失败；实现后提示代码表测试要求新代码出现在规格里，改为在 spec/ 下所有规格里找（已验收的 message-protocol 规格不改，brief-thin 定义在本模块规格）；Ran 512 tests, OK
 
-- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑，记下输出；推送本分支
+- [x] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑，记下输出；推送本分支
+  - 记录（2026-10-17）：Ran 512 tests, OK。scratchpad 临时协作组 cp4（脚本 `scratchpad/cp4.sh`）：
+    1. 开发A 先发【等待其他会话】#6001（等 cp4-hub），再发两条没写标记的【等待用户】#6002、#6003：附注出现「#2 已被新事项自动取代；确实要两项都答，请写【与 #2 并行】重发」，#6003 的要点只有「详见 plan.md」，附注出现「要点太简略……」；
+    2. `view` 不带 `--agents`：第一行「⚠ 本次没带 agent-relay 状态，各线状态不全」；
+    3. `--agents` 指向坏文件：「⚠ 读不到 agent-relay（bridge_agents 的返回不是合法 JSON：…），各线状态不全」；
+    4. 「看等待」：#1 行尾「（可能已失效：之后又发过 #6002，回『关掉 #1』）」；计数行「等待中 1 单（其中 1 单可能已失效）」；主视图没有「全线停住」。
+    观察：各线一行仍写「开发A 阻塞：等cp4-hub」（来自那张可能已失效的单），规格没要求改这一行，留作后续
 
 - [ ] Task 6：di-e2e 实测
   - 验收：Spec 验收 9
