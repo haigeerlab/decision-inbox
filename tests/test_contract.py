@@ -11,7 +11,7 @@ from pathlib import Path
 
 from decision_inbox import protocol
 
-VERSION = "v1.3"
+VERSION = "v1.4"
 HERE = Path(__file__).resolve().parent
 CONTRACT = HERE / "fixtures" / "session-protocol" / VERSION
 ORIGINAL = HERE / "fixtures" / "protocol"
@@ -82,14 +82,14 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "42fe5f6"])
+                         ["session-protocol", VERSION, "e33c077"])
 
 
 class ConformanceTest(unittest.TestCase):
     def test_counts(self):
         docs = [json.loads(p.read_text(encoding="utf-8")) for p in cases()]
-        self.assertEqual(sum("parse" in d for d in docs), 45)
-        self.assertEqual(sum("generate" in d for d in docs), 5)
+        self.assertEqual(sum("parse" in d for d in docs), 52)
+        self.assertEqual(sum("generate" in d for d in docs), 6)
         skipped = [p for p in cases() if p.parent.name in NOT_PARSED]
         self.assertEqual(len(skipped), 15, "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")
 
