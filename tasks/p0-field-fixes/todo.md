@@ -14,10 +14,11 @@
   - 文件：`decision_inbox/__main__.py`、`tests/test_consume.py`、`tests/test_package.py`
   - 记录（2026-10-18）：先写 `test_consume.py`（9 项：只删临时目录与协作组 io/ 下的文件；patrol plan／record、inbox receive／reply、view 读完即删；读不出的 agents 与动作对不上的计划保留；计划文件不在时 record 返回 2；只读 query 不删），导入失败；实现 `_consume` 并接到各命令后 9 项通过。静态检查「不删除任何文件」的白名单加入 `_consume`（规格批准的删除）。Ran 577 tests, OK
 
-- [ ] Task 3：巡视叫醒空闲积压的会话与收件枢纽（F-P0-2、F-P0-3）
+- [x] Task 3：巡视叫醒空闲积压的会话与收件枢纽（F-P0-2、F-P0-3）
   - 验收：Spec 验收 2
   - 验证：`tests/test_patrol.py`、`tests/test_view.py`
   - 文件：`decision_inbox/patrol.py`、`decision_inbox/view.py`
+  - 记录（2026-10-18）：先加 6 个用例（空闲且最早未读 ≥5 分钟才叫、<5 分钟不叫、同一积压只叫一次后通知用户且措辞为「消息还没读」、空闲无信或忙碌不叫、收件枢纽空闲积压被叫醒、停着的收件枢纽同轮只叫一次；主视图建议按宿主分），3 失败 1 报错；实现 `IDLE_WAKE_MINUTES`、`_idle_backlog`，`_wakes` 纳入收件枢纽，`_wake_hub` 同轮不重复，`view.advice` 对 Codex 写「打开 X 的任务」。Ran 583 tests, OK
 
 - [ ] Task 4：取代写邮箱号的退回说明与约定块（F-P0-1）
   - 验收：Spec 验收 1

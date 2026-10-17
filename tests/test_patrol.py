@@ -111,6 +111,47 @@ class WakeTest(PatrolCase):
         self.assertEqual(self.ids(self.run_round(0, [owner])), [])
 
 
+def idle(name, waiting):
+    """A running Claude session the host reports idle (agent-relay 0.8.1+), with mail waiting."""
+    a = agent(name, waiting=waiting)
+    a["presence"]["activity"] = "idle"
+    return a
+
+
+class IdleWakeTest(PatrolCase):
+    """p0-field-fixes F-P0-2, F-P0-3: idle sessions whose mail sat 5 minutes are woken too."""
+
+    def test_idle_owner_woken_once_backlog_is_five_minutes_old(self):
+        fresh = idle("fe-owner", (1, ["fe"], 2))
+        self.assertEqual(self.ids(self.run_round(0, [fresh])), [])
+        self.assertIn("wake:fe-owner", self.ids(self.run_round(3, [fresh])))
+
+    def test_idle_owner_not_woken_twice_then_user_told(self):
+        owner = idle("fe-owner", (1, ["fe"], 6))
+        self.assertIn("wake:fe-owner", self.ids(self.run_round(0, [owner])))
+        second = self.run_round(5, [owner])
+        self.assertEqual([i for i in self.ids(second) if "fe-owner" in i], ["notify:unwakeable:fe-owner"])
+        text = next(a.text for a in second.actions if a.id == "notify:unwakeable:fe-owner")
+        self.assertIn("消息还没读", text)
+        self.assertNotIn("还停着", text)
+
+    def test_idle_without_mail_or_busy_is_left_alone(self):
+        busy = agent("fe-owner", waiting=(1, ["fe"], 30))
+        busy["presence"]["activity"] = "busy"
+        self.assertEqual(self.ids(self.run_round(0, [idle("fe-owner", None), busy])), [])
+
+    def test_idle_hub_with_old_mail_is_woken(self):
+        p = self.run_round(0, [idle("hub", (1, ["fe"], 10))])
+        wake = next(a for a in p.actions if a.id == "wake:hub")
+        self.assertEqual(wake.target, HUB_DESKTOP)
+        self.assertEqual(wake.text, "【decision-inbox 巡视】你有 1 条消息在等，请查看收件箱后继续。")
+
+    def test_stopped_hub_with_mail_and_news_is_woken_once(self):
+        p = self.run_round(0, [agent("hub", state="stopped", waiting=(1, ["fe"], 1)),
+                               agent("api-owner", **STOPPED_OWNER)])
+        self.assertEqual(self.ids(p).count("wake:hub"), 1)
+
+
 class RecordTest(PatrolCase):
     def test_plan_is_read_only_and_record_writes_patrol_only(self):
         owner = agent("fe-owner", **STOPPED_OWNER)
