@@ -1,0 +1,55 @@
+# Todo: relay-checkpoint-authority
+
+测试命令：`python3 -m unittest discover -s tests -v`
+
+- [ ] Task 1：R1 核对 Codex 会话能否加载约定块
+  - 验收：Spec 验收 1（工作目录即规则目录、在其子目录同一 git 仓库时不警告；规则目录在 git 根之上、无 `.git` 且目录不同、有 `AGENTS.override.md`、超过 32KiB 时警告并写明应在哪个目录开会话；Claude 会话不核对；警告不阻止写入）
+  - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
+  - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
+
+- [ ] Task 2：R2 检查点答复即授权
+  - 验收：Spec 验收 2（默认不写；`--checkpoint-authority` 时原文逐字写入、名册记 `checkpointAuthority`；重新接入不带时去掉；R1 有警告时多一句）、验收 3（无排除宿主审批的措辞）
+  - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
+  - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
+
+- [ ] Task 3：R3 检查点之间自主处理
+  - 验收：Spec 验收 4（三个角色都有；含重试上限 2 次和项目规则优先；项目规则含「首错即停」类字样时预览提示）
+  - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
+  - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
+
+- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+
+- [ ] Task 4：R4 组合答复复制块
+  - 验收：Spec 验收 5
+  - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
+  - 文件：`decision_inbox/view.py`、`tests/test_view.py`
+
+- [ ] Task 5：F13 结束行指向事项时提示
+  - 验收：Spec 验收 6
+  - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
+  - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
+
+- [ ] Task 6：没有待答事项时，认不出编号的话附主视图
+  - 验收：Spec 验收 7
+  - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
+  - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
+
+- [ ] Task 7：重新接入收件枢纽时补 `patrolTaskAt`
+  - 验收：Spec 验收 8
+  - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
+  - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
+
+- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑各项新行为，记下输出后继续
+
+- [ ] Task 8：接入技能、`/join` 命令、README、版本 0.0.5
+  - 验收：Spec 验收 9
+  - 验证：`python3 -m unittest discover -s tests -v`
+  - 文件：`skills/decision-inbox-join/SKILL.md`、`commands/join.md`、`README.md`、两份 `plugin.json`、`tests/test_packaging.py`
+
+- [ ] Checkpoint 3（report）：全部测试全绿；推送本分支
+
+- [ ] Task 9：di-e2e 守卫对照实测
+  - 验收：Spec 验收 10（对照组、实验组各至少 2 次，守卫评估结果写进规格）
+  - 说明：先问用户；本会话驱动；结果抄送 spec-guard-monitor
+
+- [ ] Checkpoint 4（gate）：模块最终验收，等用户确认
