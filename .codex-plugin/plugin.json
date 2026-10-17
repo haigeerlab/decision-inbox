@@ -1,6 +1,6 @@
 {
   "name": "decision-inbox",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "多会话协作的决策收件箱：集中待答事项、准确转达答复、盯住停下与掉线的会话。",
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json"
