@@ -44,13 +44,14 @@ def _close(tx, doc: dict, no, reason: int, basis: str, at: str, actor: str) -> N
     tx.append_event("tickets.closed", ref=int(no), actor=actor, data={"reason": reason, "basis": basis})
 
 
-def _resolve_end(tx, doc, no: int, sender: str, hints) -> int | None:
+def _resolve_end(tx, doc, no: int, sender: str, hints, resumed: bool) -> int | None:
     """A 结束 number as a ticket number, or None when it is not one.
 
     The hub's own number wins; failing that, a line may write the agent-relay id of
     its own message, the only number it ever knew (e2e-round1-fixes F10). Item numbers
     and the sender's own item message ids are decision-queue's business; anything else
-    is reported instead of silently skipped.
+    is reported instead of silently skipped. An item named outside 【已恢复】 ends
+    nothing, so that is reported too (relay-checkpoint-authority F13).
     """
     if str(no) in doc["tickets"]:
         return no
@@ -59,6 +60,8 @@ def _resolve_end(tx, doc, no: int, sender: str, hints) -> int | None:
         return int(own[0])
     known = tx.read_state("items").get("items", {})
     if str(no) in known or any(it["relayId"] == no and it["sender"] == sender for it in known.values()):
+        if not resumed:
+            hints.append(Issue("end-is-item", f"#{no} 是事项，不是等待；结束事项要发【已恢复】"))
         return None
     hints.append(Issue("end-unknown", f"#{no} 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西"))
     return None
@@ -68,7 +71,7 @@ def _close_by_end_line(tx, doc, ids, sender, reason, basis, at, hints) -> list[i
     """Explicit 结束 lines only close the sender's own open tickets (spec 关键决策 2)."""
     closed = []
     for written in ids:
-        no = _resolve_end(tx, doc, written, sender, hints)
+        no = _resolve_end(tx, doc, written, sender, hints, resumed=reason == 1)
         if no is None:
             continue
         t = doc["tickets"][str(no)]

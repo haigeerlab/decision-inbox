@@ -29,10 +29,11 @@
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
   - 记录（2026-10-17）：新测试先失败（「只有一项时不出现」的守护测试实现前已通过）；实现后 Ran 492 tests, OK
 
-- [ ] Task 5：F13 结束行指向事项时提示
+- [x] Task 5：F13 结束行指向事项时提示
   - 验收：Spec 验收 6
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
+  - 记录（2026-10-17）：新测试先失败；实现后 Ran 493 tests, OK。【已恢复】按关单理由 1 判断，原有「【已恢复】写事项不提示」的测试保持通过
 
 - [ ] Task 6：没有待答事项时，认不出编号的话附主视图
   - 验收：Spec 验收 7
