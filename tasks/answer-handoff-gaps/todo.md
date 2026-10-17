@@ -25,7 +25,8 @@
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/onboard.py`、`README.md`、两份 `plugin.json`、`tests/test_onboard.py`、`tests/test_packaging.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组上命令行实跑三种新行为，记下输出后继续
+- [x] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组上命令行实跑三种新行为，记下输出后继续
+  - 记录（2026-10-17）：Ran 448 tests, OK。scratchpad 临时协作组 ahg（收件枢纽、前端负责人、前端）：负责人抛单线事项 #1，回「1 A」→ out:1 答复给 fe-owner（replyTo 8001）、out:2【答复告知】给 fe-codex，正文含「不是批准，不作执行依据」，回复显示「已转达：#1 → 前端负责人（另告知：前端）」；负责人离线、答复未取走时 patrol plan 出 notify:handoff:1|fe-owner（排第一，「#1 的答复卡在离线的前端负责人，挡住 1 条线」）和 wake:fe-owner；负责人目录的停止钩子拦下「用户已答复你抛的事项，你还没发【已恢复】」
 
 - [ ] Task 5：实测【答复告知】送达
   - 验收：Spec 验收 11。先问用户：本会话扮演收件枢纽，登记负责人和开发线两个测试身份，负责人抛一项单线事项，答复后开发线测试身份收到【答复告知】；结果写进规格实测记录
