@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 21052e0e46f3 -->
+<!-- spec-guard: review approved 76315c1ac6dd -->
 # Spec: e2e-round1-fixes
 
 > 能力图模块 `e2e-round1-fixes`（2026-10-17 用 add-module 插入）。来源：spec-guard-monitor 会话主持的 di-e2e 本地实测（0.0.3，用户授权），发现记录在其 scratchpad 的 `di-e2e/FINDINGS.md`（F1–F8，证据为邮箱消息 4539–4544、事件日志 seq7–10）。用户在本会话决定四项都按推荐做，并确认插入本模块。

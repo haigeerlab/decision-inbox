@@ -56,46 +56,46 @@
 
 ### Phase 1：打通主流程
 
-- [ ] Task 1：答复、多线答复、告知写原消息号（Spec 验收 1；F1 回归场景）
-- [ ] Task 2：开发线追问自动退回（Spec 验收 3、4；F2 回归场景）
+- [x] Task 1：答复、多线答复、告知写原消息号（Spec 验收 1；F1 回归场景）
+- [x] Task 2：开发线追问自动退回（Spec 验收 3、4；F2 回归场景）
 
 ### Checkpoint 1（report）
 
-- [ ] 全部测试全绿
+- [x] 全部测试全绿
 
 ### Phase 2：安全与可见性
 
-- [ ] Task 3：`inbox reply --relayed-from`（Spec 验收 5）
-- [ ] Task 4：巡视停摆报警，主视图和 /flow 都有（Spec 验收 7）
-- [ ] Task 5：「在等谁」认身份名（Spec 验收 9）
-- [ ] Task 6：卸载删掉空的新建规则文件，静态扫描开窄例外（Spec 验收 10）
+- [x] Task 3：`inbox reply --relayed-from`（Spec 验收 5）
+- [x] Task 4：巡视停摆报警，主视图和 /flow 都有（Spec 验收 7）
+- [x] Task 5：「在等谁」认身份名（Spec 验收 9）
+- [x] Task 6：卸载删掉空的新建规则文件，静态扫描开窄例外（Spec 验收 10）
 
 ### Checkpoint 2（report）
 
-- [ ] 全部测试全绿；在 scratchpad 临时协作组上用命令行跑一遍 S0：开发线抛事项、用户答复、开发线追问、转来的话、巡视超时、卸载，记下输出
+- [x] 全部测试全绿；在 scratchpad 临时协作组上用命令行跑一遍 S0：开发线抛事项、用户答复、开发线追问、转来的话、巡视超时、卸载，记下输出
 
 ### Phase 3：约定与文档
 
-- [ ] Task 7：约定块（共用的编号对应、收件枢纽只认亲手输入）、hub-setup 最后一步、README 三处、需求记录第 12 节第 12 项、版本 0.0.4（Spec 验收 2、6、8、11）
+- [x] Task 7：约定块（共用的编号对应、收件枢纽只认亲手输入）、hub-setup 最后一步、README 三处、需求记录第 12 节第 12 项、版本 0.0.4（Spec 验收 2、6、8、11）
 
 ### Checkpoint 3（report）
 
-- [ ] 全部测试全绿；推送分支并开 PR（不合并），通知 spec-guard-monitor 可以重跑
+- [x] 全部测试全绿；推送分支并开 PR（不合并），通知 spec-guard-monitor 可以重跑
 
 ### Phase 3b：重跑发现的 F10（用户 2026-10-17 追加）
 
-- [ ] Task 9：结束行认发送方自己的邮箱号，对不上时提示；约定块加一句；README 记 F9（Spec 验收 13、14）
+- [x] Task 9：结束行认发送方自己的邮箱号，对不上时提示；约定块加一句；README 记 F9（Spec 验收 13、14）
 
-- [ ] Task 10：卡片加「推荐回复」一行、选项不截断、约定写明主视图不套代码块（F12；Spec 验收 15）
+- [x] Task 10：卡片加「推荐回复」一行、选项不截断、约定写明主视图不套代码块（F12；Spec 验收 15）
 
 ### Phase 4：实测
 
-- [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0（Spec 验收 12）。重跑由它主持，本会话只收结果，写进规格的实测记录
+- [x] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0（Spec 验收 12）。重跑由它主持，本会话只收结果，写进规格的实测记录
 
 ### Checkpoint 4（gate）：模块最终验收
 
-- [ ] 全部测试全绿；15 条验收标准逐条有测试或实测记录；列出实际改动的文件；原样附上规格的改动差异
-- [ ] 本 Plan 获批即授权：
+- [x] 全部测试全绿；15 条验收标准逐条有测试或实测记录；列出实际改动的文件；原样附上规格的改动差异
+- [x] 本 Plan 获批即授权：
   - 返工 hub-loop、decision-queue、message-protocol、wait-tickets、onboarding 的代码；
   - 静态扫描开一个窄例外；
   - 版本号升到 0.0.4；
@@ -104,4 +104,4 @@
   - Checkpoint 3 推送本分支、开 PR，并给 spec-guard-monitor 发一条「可以重跑」的会话消息；
   - Task 9、Task 10 做完后再推送，并请 spec-guard-monitor 重跑；
   - 返工 hub-view 的卡片格式（F12）。
-- [ ] 不授权：合并 PR、改 di-e2e 测试环境、替 spec-guard-monitor 重跑
+- [x] 不授权：合并 PR、改 di-e2e 测试环境、替 spec-guard-monitor 重跑
