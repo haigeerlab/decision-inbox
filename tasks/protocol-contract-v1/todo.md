@@ -14,4 +14,5 @@
   - 文件：`spec/CAPABILITY-MAP.md`、`README.md`、两份 `plugin.json`、`tests/test_packaging.py`
   - 记录（2026-10-18）：先改版本断言和 README 断言，2 个失败；改完 Ran 553 tests, OK。能力图外部依赖表加一行 session-protocol v1.0（已钉住，提交 7585be8）；README 在「使用注意事项」前加「消息协议」一小节
 
-- [ ] Checkpoint（gate）：模块最终验收，等用户确认
+- [x] Checkpoint（gate）：模块最终验收，等用户确认
+  - 记录（2026-10-18）：用户验收通过。契约缺的「要点够 2 行但含详见」样例并进契约 v1.1 补。Ran 553 tests, OK
