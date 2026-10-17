@@ -14,4 +14,5 @@
   - 文件：`spec/CAPABILITY-MAP.md`、`README.md`、两份 `plugin.json`、`tests/test_packaging.py`
   - 记录（2026-10-18）：先改版本断言和 README 断言，2 个失败；改完 Ran 568 tests, OK。能力图外部依赖行改为已钉住 v1.3（42fe5f6）；README「消息协议」写 v1.3 和跳过的三类；已发消息请契约负责人更新 conformance 登记行（已送达，对方开始处理）
 
-- [ ] Checkpoint（gate）：模块最终验收，等用户确认
+- [x] Checkpoint（gate）：模块最终验收，等用户确认
+  - 记录（2026-10-18）：用户验收通过。Ran 568 tests, OK
