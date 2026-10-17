@@ -60,6 +60,32 @@ def _read(path: str) -> str:
         raise _RelayUnreadable(f"读不出 agent-relay 原文文件 {path}：{e}") from None
 
 
+def _disposable_roots() -> list[Path]:
+    """Where the hub and patrol drop their input files: the temp dirs and each group's io/."""
+    import tempfile
+    roots = [tempfile.gettempdir(), os.environ.get("TMPDIR"), "/tmp", "/private/tmp", "/private/var/folders"]
+    groups = store.root_dir()
+    io_dirs = [d / "io" for d in groups.iterdir() if d.is_dir()] if groups.is_dir() else []
+    return [Path(r).resolve() for r in roots if r] + [d.resolve() for d in io_dirs]
+
+
+def _consume(path: str | None, roots=None) -> None:
+    """Delete an input file once read, so the next run writes a fresh one (p0-field-fixes F-P0-5).
+
+    The host's write tool refuses to overwrite a file the session has not read; a leftover
+    from the previous run made the patrol stumble. Only files under the disposable roots go.
+    """
+    if not path:
+        return
+    p = Path(path).resolve()
+    roots = [Path(r).resolve() for r in roots] if roots is not None else _disposable_roots()
+    if any(p.is_relative_to(r) for r in roots):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 def _parse(parser, text: str):
     try:
         return parser(text)
@@ -228,6 +254,7 @@ def _patrol(argv: list[str]) -> int:
         agents, error = None, None
         try:
             agents = relay.parse_agents(Path(args.agents).read_text(encoding="utf-8"), relay_version=args.relay_version)
+            _consume(args.agents)
         except (OSError, relay.RelayDataError) as e:
             error = str(e)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
@@ -236,13 +263,18 @@ def _patrol(argv: list[str]) -> int:
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
-    doc = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+    try:
+        doc = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"读不出巡视计划 {args.plan}：{e}", file=sys.stderr)
+        return 2
     known = {a["id"] for a in doc["actions"]}
     unknown = [i for i in args.done + args.failed if i not in known]
     if unknown:
         print(f"计划里没有这些动作：{'、'.join(unknown)}", file=sys.stderr)
         return 2
     patrol.record(g, doc, done=args.done, failed=args.failed)
+    _consume(args.plan)
     return 0
 
 
@@ -310,11 +342,15 @@ def _inbox(argv: list[str]) -> int:
             print(str(e), file=sys.stderr)
             return 3
         r = hub.receive(g, page, now=now)
+        _consume(args.inbox)
         _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more})
     elif args.command == "reply":
         text = Path(args.text_file).read_text(encoding="utf-8")
-        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g),
-                      relayed_from=args.relayed_from)
+        agents = _relay_or_none(args.agents, args.relay_version)
+        r = hub.reply(g, text, now=now, relay=agents, maps=_dev_maps(g), relayed_from=args.relayed_from)
+        _consume(args.text_file)
+        if agents is not None:
+            _consume(args.agents)
         _print_json({"show": r.show, "sends": r.sends})
     elif args.command == "sent":
         done = {}
@@ -366,6 +402,7 @@ def _view(argv: list[str]) -> int:
             try:
                 out = relay.parse_outbox(Path(args.outbox).read_text(encoding="utf-8"), sender=hub_entry["relayName"])
                 items.update_delivery(g, {m.id: (m.delivery_state, m.acknowledged_at) for m in out.messages}, at=now)
+                _consume(args.outbox)
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
         print(hub.main_view(g, now, agents, _dev_maps(g), relay_status=relay_status, relay_error=relay_error))
@@ -377,6 +414,8 @@ def _view(argv: list[str]) -> int:
         print(view.render_closed(g, what[1] if len(what) == 2 else hub.today(now)))
     else:
         print(view.render_invalidated(g))
+    if relay_status == "ok":
+        _consume(args.agents)
     return 0
 
 

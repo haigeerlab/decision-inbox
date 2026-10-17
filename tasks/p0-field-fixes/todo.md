@@ -8,10 +8,11 @@
   - 文件：`tests/fixtures/session-protocol/`、`tests/test_contract.py`
   - 记录（2026-10-18）：先改测试（v1.5、246e138、解析 55、跳过 18），在 v1.4 副本上 1 失败 7 报错；从契约 246e138 `git archive` 取出样例替换后 `shasum -c` 通过；e33c077→246e138 样例目录只有新增。Ran 568 tests, OK
 
-- [ ] Task 2：命令读完输入文件即删除（F-P0-5）
+- [x] Task 2：命令读完输入文件即删除（F-P0-5）
   - 验收：Spec 验收 4
   - 验证：新增 `tests/test_consume.py`；全量测试
-  - 文件：`decision_inbox/__main__.py`、`tests/test_consume.py`
+  - 文件：`decision_inbox/__main__.py`、`tests/test_consume.py`、`tests/test_package.py`
+  - 记录（2026-10-18）：先写 `test_consume.py`（9 项：只删临时目录与协作组 io/ 下的文件；patrol plan／record、inbox receive／reply、view 读完即删；读不出的 agents 与动作对不上的计划保留；计划文件不在时 record 返回 2；只读 query 不删），导入失败；实现 `_consume` 并接到各命令后 9 项通过。静态检查「不删除任何文件」的白名单加入 `_consume`（规格批准的删除）。Ran 577 tests, OK
 
 - [ ] Task 3：巡视叫醒空闲积压的会话与收件枢纽（F-P0-2、F-P0-3）
   - 验收：Spec 验收 2
