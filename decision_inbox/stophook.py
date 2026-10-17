@@ -79,7 +79,9 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
         out.append("另外，用户已答复你抛的事项，你还没发【已恢复】：" if waiting
                    else "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。")
         out += [*answered, "做完了：发【已恢复】，结束行写这个编号。",
-                "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。"]
+                "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
+                # the hook cannot see this session's own sent mail (relay-presence-and-doubt 关键决策 6)
+                "已经发过【已恢复】、收件枢纽还没收进：回一句「已发 #邮箱号」即可收工，不用重发。"]
     return Decision(True, "\n".join(out), None)
 
 

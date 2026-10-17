@@ -761,3 +761,5 @@ agent-relay 路线图（由其维护方告知，2026-10-16）：
   - `bridge_send` 的 `alsoAnswers`（一份答复关多条请求）与 `withdraws`（撤回自己发出的请求）、`bridge_outbox` 的 `closedBy`、结果 `withdrawn`。收件枢纽转达合并答复时可一次关掉多条；事项被取代时可撤回旧请求。`owesReplies` 不再统计已关闭的请求。
   - `bridge_agents` 带参数时分页（`hasMore`／`nextAfterName`）；不带参数行为不变，本插件现有调用不受影响。
   - 接口文档写明 `lastSeen`／`lastActivity` 不是心跳、`running` 不代表信箱连接正常（D231），doctor 与巡视按此解释。
+
+**转给 agent-relay 的用例（2026-10-18，relay-presence-and-doubt 关键决策 6）**：停止钩子在会话收工时运行，只能读文件、不能调 MCP 工具，看不到本会话自己发出的邮件。实测（2026-10-17 di-e2e）负责人已发出【已恢复】#5256，收件枢纽还没收进，钩子仍拦了一次。需要 agent-relay 提供只读的命令行查询：某个身份最近发出的消息（编号、收件方、时间、`replyTo`），不含正文。有了之后停止钩子改为先查本会话的发件记录再判断。
