@@ -549,6 +549,42 @@ class CheckpointAuthorityTest(OnboardCase):
         self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[1])
 
 
+AUTONOMY = """### 检查点之间自主处理
+
+用户只在检查点（Spec 批准、Plan 批准、接口提案、最终验收）做决定。检查点之间：
+- 格式问题、脚本自身的错误、已批准依赖带来的连带变化、环境类失败（网络抖动、缓存或锁目录、权限位），自己修、自己重试，同一个问题最多重试 2 次，事后在交付报告里写明做了什么。
+- 只有改变产品行为、新增依赖、涉及安全、超出这个检查点批准的写入范围时，才抛【等待用户】。
+- 本项目自己的规则更严格时（例如「首错即停」），以项目规则为准。
+"""
+
+
+class AutonomyTest(OnboardCase):
+    """relay-checkpoint-authority R3: one authorization per checkpoint, self-repair in between."""
+
+    def test_every_role_has_it_before_blocking_rules(self):
+        for role in ("dev", "owner", "coordinator"):
+            text = onboard.block(role, "demo", "di-hub")
+            self.assertIn(AUTONOMY, text, role)
+            self.assertLess(text.index(AUTONOMY), text.index("### 被挡住与收工"), role)
+
+    def test_stricter_project_rule_is_flagged(self):
+        self.hub()
+        fe = self.dir("fe")
+        (fe / "AGENTS.md").write_text("# 项目规则\n- 首错即停：任何命令失败先停下报告\n", encoding="utf-8")
+        out = onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                           lines=["前端"], desktop_session=None, project=fe, reviewer=None, nodes=[],
+                           confirm=False, now=NOW, session_cwd=fe)
+        self.assertIn("项目规则比约定块默认值更严格，以项目规则为准（规则文件里有「首错即停」）", out.warnings)
+
+    def test_the_block_itself_never_counts_as_a_stricter_rule(self):
+        self.hub()
+        fe = self.dir("fe")
+        args = dict(role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop", lines=["前端"],
+                    desktop_session=None, project=fe, reviewer=None, nodes=[], now=NOW, session_cwd=fe)
+        onboard.join("demo", confirm=True, **args)
+        self.assertEqual(onboard.join("demo", confirm=False, **args).warnings, [])
+
+
 class CommandLineTest(OnboardCase):
     def run_cli(self, *argv):
         import contextlib

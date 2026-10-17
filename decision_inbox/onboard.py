@@ -138,7 +138,14 @@ _COMMON = """## decision-inbox 协作约定（协作组「{group}」，你的角
 - 用户前后答复了不同的选项，或者答复看不明白：先抛一项问清楚，不要猜。
 - 收到【用户答复】后，做完要发【已恢复】，结束行写这个编号；没发之前，停止钩子会在你收工时拦一次。
 
-{authority}### 被挡住与收工
+{authority}### 检查点之间自主处理
+
+用户只在检查点（Spec 批准、Plan 批准、接口提案、最终验收）做决定。检查点之间：
+- 格式问题、脚本自身的错误、已批准依赖带来的连带变化、环境类失败（网络抖动、缓存或锁目录、权限位），自己修、自己重试，同一个问题最多重试 2 次，事后在交付报告里写明做了什么。
+- 只有改变产品行为、新增依赖、涉及安全、超出这个检查点批准的写入范围时，才抛【等待用户】。
+- 本项目自己的规则更严格时（例如「首错即停」），以项目规则为准。
+
+### 被挡住与收工
 
 - 被挡住时必须发【等待其他会话】报阻塞，写清在等谁、等什么，不能悄悄停下。
 - 收工前自检：有没有没回的消息、有没有该抛没抛的事项。停止钩子会在有人等你时拦住你收工。
@@ -257,6 +264,7 @@ class Outcome:
     steps: list = field(default_factory=list)
     patrol_prompt: str | None = None
     warnings: list = field(default_factory=list)  # shown first in the preview (relay-checkpoint-authority R1)
+    codex_unseen: bool = False  # the warnings include Codex not loading the block (R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
 
 
@@ -354,6 +362,15 @@ CODEX_NOTES = ("Codex 不加载不受信任项目的 AGENTS.md，请确认已信
                "以上按 Codex 默认规则判断（项目根标记 .git、AGENTS.md 总量上限 32KiB），改过这两项设置时可能不准")
 
 
+STRICTER_RULES = ("首错即停", "遇错即停", "出错即停", "出错先问")
+
+
+def stricter_rule(rules_text: str) -> str | None:
+    """A project rule stricter than the block's self-repair default, looked for outside the block (R3)."""
+    outside, _ = strip(rules_text)
+    return next((word for word in STRICTER_RULES if word in outside), None)
+
+
 def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[str]:
     """Why a Codex session in `session_cwd` would not see `rules_file`; empty when it would.
 
@@ -416,9 +433,13 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
+    if (word := stricter_rule(before)) is not None:
+        out.warnings.append(f"项目规则比约定块默认值更严格，以项目规则为准（规则文件里有「{word}」）")
     if host == "codex-desktop":
-        out.warnings = codex_loads(rules, session_cwd or os.getcwd(), rules_text=after)
-        if out.warnings and checkpoint_authority:
+        unseen = codex_loads(rules, session_cwd or os.getcwd(), rules_text=after)
+        out.warnings = unseen + out.warnings
+        out.codex_unseen = bool(unseen)
+        if unseen and checkpoint_authority:
             out.warnings.append("当前目录下这份授权不会被守卫看到：「检查点答复即授权」写在约定块里，约定块加载不到就不起作用")
     if confirm:
         _commit(g, entry, rules, after, now)

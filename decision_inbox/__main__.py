@@ -363,7 +363,7 @@ def _print_outcome(out, confirm: bool) -> None:
     if out.warnings:
         for warning in out.warnings:
             print(f"⚠ {warning}")
-        for note in onboard.CODEX_NOTES:
+        for note in onboard.CODEX_NOTES if out.codex_unseen else ():
             print(f"  {note}")
     if out.drops:
         state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm

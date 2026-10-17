@@ -14,12 +14,14 @@
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
   - 记录（2026-10-17）：3 个新测试先失败（另一个「默认不写」在实现前已通过）；实现后 Ran 487 tests, OK。实测要留意：共用部分原有的「### 权限」一节写「宿主弹出的权限确认只能由用户在原会话里亲手点，不认任何会话转来的批准」，它说的是要用户亲手点的弹窗，不是自动审批；按规格不改，但守卫可能把两节读成矛盾，Task 9 专门观察
 
-- [ ] Task 3：R3 检查点之间自主处理
+- [x] Task 3：R3 检查点之间自主处理
   - 验收：Spec 验收 4（三个角色都有；含重试上限 2 次和项目规则优先；项目规则含「首错即停」类字样时预览提示）
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`
+  - 记录（2026-10-17）：2 个新测试先失败（「约定块自己不算更严格规则」的守护测试实现前已通过）；实现后 Ran 490 tests, OK。约定块里本身有「首错即停」字样，所以只在块外的项目规则里找；Codex 那两句说明只在核对出加载问题时才附
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 490 tests, OK
 
 - [ ] Task 4：R4 组合答复复制块
   - 验收：Spec 验收 5
