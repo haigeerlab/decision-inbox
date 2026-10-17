@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：契约升到 v1.5
+- [x] Task 1：契约升到 v1.5
   - 验收：Spec 验收 5
   - 验证：`python3 -m unittest discover -s tests -p test_contract.py -v`
   - 文件：`tests/fixtures/session-protocol/`、`tests/test_contract.py`
+  - 记录（2026-10-18）：先改测试（v1.5、246e138、解析 55、跳过 18），在 v1.4 副本上 1 失败 7 报错；从契约 246e138 `git archive` 取出样例替换后 `shasum -c` 通过；e33c077→246e138 样例目录只有新增。Ran 568 tests, OK
 
 - [ ] Task 2：命令读完输入文件即删除（F-P0-5）
   - 验收：Spec 验收 4
