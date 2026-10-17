@@ -116,7 +116,7 @@ def _patrol(g: store.Group, now: str) -> Check:
     alarm = hub.patrol_alarm(g, now)
     if alarm:
         return Check("巡视", "bad", "Claude 桌面版", alarm.lstrip("⚠ ").split("：")[0],
-                     f"去定时任务列表找 {task}，看它是否停在权限确认上，批完或立即运行一次")
+                     hub.patrol_fix(task))
     last = store.read_state(g, "patrol").get("lastRunAt")
     return Check("巡视", "ok", "本插件", f"最近一轮 {view._minutes(now, last)} 分钟前" if last else "刚登记，还没到第一轮")
 

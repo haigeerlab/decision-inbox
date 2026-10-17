@@ -261,6 +261,12 @@ PATROL_STALE_MINUTES = 15  # three missed */5 runs
 HOST = "Claude 桌面版"  # the patrol is a desktop scheduled task; a stuck run is the host waiting on a prompt
 
 
+def patrol_fix(task: str) -> str:
+    """Both reasons a patrol goes quiet (patrol-cadence): a run stuck on a prompt, or the host not firing (H24)."""
+    return (f"去定时任务列表看 {task}：最近一次运行停在权限确认上，就批完；"
+            "没有在跑的运行，是宿主没按时触发（宿主差异 H24），立即运行一次")
+
+
 def patrol_alarm(g: store.Group, now: str) -> str | None:
     """A registered patrol that has not finished a run lately (e2e-round1-fixes F4).
 
@@ -272,7 +278,7 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     task = onboarding.get("patrolTask")
     if not task:
         return None
-    fix = f"去定时任务列表找 {task}，看它是否停在权限确认上，批完或立即运行一次"
+    fix = patrol_fix(task)
     last = store.read_state(g, "patrol").get("lastRunAt")
     if last is None:
         since = onboarding.get("patrolTaskAt")

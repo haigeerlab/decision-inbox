@@ -94,6 +94,8 @@ class PatrolTest(DoctorCase):
         c = self.check("巡视")
         self.assertEqual((c.state, c.source), ("bad", "Claude 桌面版"))
         self.assertIn("60 分钟没跑", c.evidence)
+        self.assertIn("宿主没按时触发（宿主差异 H24）", c.fix)  # patrol-cadence: both causes
+        self.assertIn("停在权限确认上，就批完", c.fix)
         with g.transaction() as tx:
             tx.write_state("patrol", {"lastRunAt": "2026-10-17T21:58:00+08:00"})
         self.assertEqual(self.check("巡视").state, "ok")

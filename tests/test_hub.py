@@ -590,7 +590,7 @@ class PatrolAlarmTest(HubCase):
             if last_run:
                 tx.write_state("patrol", {"lastRunAt": last_run})
 
-    FIX = "去定时任务列表找 decision-inbox-patrol-demo，看它是否停在权限确认上，批完或立即运行一次"
+    FIX = "去定时任务列表看 decision-inbox-patrol-demo：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发（宿主差异 H24），立即运行一次"
 
     def test_never_ran_after_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:14:00Z")
