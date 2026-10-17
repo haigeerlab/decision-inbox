@@ -32,8 +32,9 @@
 | hub-loop | 收件枢纽的主循环命令：`inbox receive` 读一条消息原文并分发给待答表、等待单、审查登记、已恢复处理，输出要退回的说明和要做的事；`inbox reply` 解析用户回复并给出要发的答复；`inbox sent` 记下发送编号；`view` 与四种展开视图的命令；收件枢纽会话自己的约定块（用户 2026-10-16 确认新增） | message-protocol, review-registry, decision-queue, wait-tickets, hub-view |
 | onboarding | 一条命令接入与卸载：按角色（开发线、负责人、总协调）写约定块（第 4、5 节规则、负责人模式标签、被挡住必须报阻塞、审查结论写「模块」），用 BEGIN/END 标记包住、重装整块替换；提示在 Claude Code 和 Codex 各信任一次插件自带的钩子；登记名册（含 desktopSession）与审查者；创建巡视定时任务；卸载时删约定块和巡视任务，状态目录保留（第 12 节第 9 项，用户 2026-10-16 确认） | group-store, message-protocol, review-registry, patrol, hub-loop |
 | plugin-packaging | 插件打包：Claude Code 插件清单；插件自带 `hooks/hooks.json` 注册 Stop 钩子（两边共用，stop-hook 返工：`--group` 改为可选，不给时按工作目录在所有协作组里找）；斜杠命令 `/lines`、`/flow`、`/item`、`/map`（先调 MCP 工具存原文、再跑命令行）；README 与安装说明（从 onboarding 拆出，用户 2026-10-16 确认） | query-commands, map-view, stop-hook, onboarding |
+| answer-handoff-gaps | 答复交接的缺口：已答未恢复的会话收工前拦一次（宿主差异 H17）；答复积压在离线负责人时当轮叫醒并通知，转给负责人时抄送其线上开发线、仅告知（需求第 12 节第 17 项，用户 2026-10-17 确认） | stop-hook, patrol, hub-loop, onboarding |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
