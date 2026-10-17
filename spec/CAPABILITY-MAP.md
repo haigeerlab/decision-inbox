@@ -34,8 +34,9 @@
 | plugin-packaging | 插件打包：Claude Code 插件清单；插件自带 `hooks/hooks.json` 注册 Stop 钩子（两边共用，stop-hook 返工：`--group` 改为可选，不给时按工作目录在所有协作组里找）；斜杠命令 `/lines`、`/flow`、`/item`、`/map`（先调 MCP 工具存原文、再跑命令行）；README 与安装说明（从 onboarding 拆出，用户 2026-10-16 确认） | query-commands, map-view, stop-hook, onboarding |
 | answer-handoff-gaps | 答复交接的缺口：已答未恢复的会话收工前拦一次（宿主差异 H17）；答复积压在离线负责人时当轮叫醒并通知，转给负责人时抄送其线上开发线、仅告知（需求第 12 节第 17 项，用户 2026-10-17 确认） | stop-hook, patrol, hub-loop, onboarding |
 | e2e-round1-fixes | 修 di-e2e 实测第一轮发现：答复正文写明原消息号、开发线追问自动退回、会话转来的话不当用户答复、巡视停摆报警、在等谁认身份名、卸载不留空规则文件（2026-10-17 实测，spec-guard-monitor 转来） | hub-loop, onboarding, patrol, wait-tickets, message-protocol, answer-handoff-gaps |
+| relay-checkpoint-authority | 经收件枢纽中转的体验与直接对话一致：接入时核对 Codex 会话能加载约定块；可选打开「检查点答复即授权」并说明对宿主自动审批的覆盖范围；检查点之间开发线自主修正与重试；多项待答给组合答复；结束行指向事项时提示（2026-10-17 实测后提出，用户确认另开模块） | onboarding, hub-loop, hub-view, wait-tickets, e2e-round1-fixes |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
