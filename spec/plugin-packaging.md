@@ -34,6 +34,7 @@
    - `ROOT` 取 `PLUGIN_ROOT`，没有就取 `CLAUDE_PLUGIN_ROOT`。取不到，或脚本出错，一律放行、退出码 0，不卡住会话（stop-hook 关键决策 6）。
 3. **stop-hook 返工：不给 `--group` 时按工作目录找**：
    - 遍历 `~/.decision-inbox` 下每个协作组，找名册里和钩子输入的 `cwd` 对得上的会话。对得上指两种情况：开发线的 `repo` 等于 `cwd`，或者 `cwd` 在 `repo` 里面；onboarding 记下的规则文件就在 `cwd` 这个目录。
+   - 已经 `onboard leave`／`teardown` 退出的会话不算：退出时在领域 `onboarding` 记下「已退出」，名册条目照旧保留；重新接入时清掉这个记号（Task 6 实测发现：不这样做，退出后钩子还会继续拦）。
    - 恰好一个：按这个协作组和会话判断。一个都没有：静默放行，这个项目没有接入。多于一个：放行，并在 stderr 说明对上了哪几个，请用户检查名册。
    - 新增子命令 `decision-inbox whoami [--cwd <目录>]`，用同一套查法，打印协作组名、身份名、角色（JSON）。斜杠命令和技能都用它确定协作组，不让用户每次输入。
 4. **清单**：
@@ -139,7 +140,7 @@ decision-inbox hook stop [--group <协作组>] [--session <身份名>]   # 不�
 ## 验收标准
 
 1. `shim`：写出可执行的转发脚本，执行它等于执行插件的 `bin/decision-inbox`；内容不变不重写（修改时间不变）；`--if-installed` 时 `~/.decision-inbox` 不存在就什么都不建。
-2. `whoami`：开发线的仓库目录和它的子目录、onboarding 记下的规则文件目录都能认出；对不上退出码 4；对上多个退出码 5，并列出是哪几个。
+2. `whoami`：开发线的仓库目录和它的子目录、onboarding 记下的规则文件目录都能认出；已退出的会话认不出，重新接入后又能认出；对不上退出码 4；对上多个退出码 5，并列出是哪几个。
 3. `hook stop` 不带 `--group`：有人在等时拦下；目录没接入时静默放行；对上多个时放行，并在 stderr 说明；带 `--group` 的原有行为不变。
 4. 默认命令路径：收件枢纽约定块、巡视提示词、onboarding 的步骤里，命令都是 `~/.decision-inbox/bin/decision-inbox` 展开后的绝对路径；`onboard hub`、`onboard join` 确认时写出转发脚本。
 5. 清单与 `marketplace.json`：名字、版本一致；Codex 清单含 `skills`、`hooks`。

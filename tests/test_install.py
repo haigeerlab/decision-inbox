@@ -154,6 +154,33 @@ class LocateTest(LocateCase):
         self.assertIn("other", err)
 
 
+class LeftSessionsTest(LocateCase):
+    """Task 6 实测发现：退出后名册还在，钩子不能再拦这个目录。"""
+
+    def test_left_session_is_not_found_until_it_rejoins(self):
+        import json
+        from decision_inbox import store, tickets
+        tickets.receive(store.open_group("demo"), "【等待其他会话】\n结束：无\n在等谁：前端\n等什么：Mock 数据\n",
+                        sender="api-codex", relay_id=1, sent_at=NOW)
+        onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
+        self.assertEqual(install.locate(str(self.fe_dir)), [])
+        self.assertEqual(self.run_cli("whoami", "--cwd", str(self.fe_dir))[0], 4)
+        payload = json.dumps({"cwd": str(self.fe_dir), "stop_hook_active": False})
+        self.assertEqual(self.run_cli("hook", "stop", stdin=payload), (0, "", ""))
+        self.assertIsNotNone(store.find_session(store.open_group("demo"), relay_name="fe-codex"))
+        onboard.join("demo", "dev", "fe-codex", "前端", "codex-desktop", ["前端"], None, self.fe_dir, None, [], True, NOW)
+        self.assertEqual([e["relayName"] for _, e in install.locate(str(self.fe_dir))], ["fe-codex"])
+        self.assertEqual(json.loads(self.run_cli("hook", "stop", stdin=payload)[1])["decision"], "block")
+
+    def test_leave_preview_marks_nothing(self):
+        onboard.leave("demo", relay_name="fe-codex", project=None, confirm=False, now=NOW)
+        self.assertEqual([e["relayName"] for _, e in install.locate(str(self.fe_dir))], ["fe-codex"])
+
+    def test_teardown_marks_hub_left(self):
+        onboard.teardown("demo", project=None, confirm=True, now=NOW)
+        self.assertEqual(install.locate(str(self.hub_dir)), [])
+
+
 class HookWithoutGroupTest(LocateCase):
     def payload(self, cwd):
         import json

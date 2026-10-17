@@ -54,7 +54,10 @@ def _inside(path: str, root: str) -> bool:
 
 
 def locate(cwd: str) -> list[tuple[str, dict]]:
-    """Every (group, roster entry) this directory belongs to: a dev line's repo, or a recorded rules file's folder."""
+    """Every (group, roster entry) this directory belongs to: a dev line's repo, or a recorded rules file's folder.
+
+    Sessions that left (onboard leave/teardown) are skipped; their roster entries stay.
+    """
     found = []
     home = store.root_dir()
     if not home.is_dir():
@@ -62,8 +65,11 @@ def locate(cwd: str) -> list[tuple[str, dict]]:
     for folder in sorted(p for p in home.iterdir() if (p / "group.json").is_file()):
         try:
             g = store.open_group(folder.name)
-            files = store.read_state(g, "onboarding").get("files", {})
+            state = store.read_state(g, "onboarding")
+            files, left = state.get("files", {}), state.get("left", {})
             for entry in store.roster(g):
+                if entry["relayName"] in left:
+                    continue
                 repo = entry.get("repo")
                 rules = files.get(entry["relayName"])
                 if (repo and _inside(cwd, repo)) or (

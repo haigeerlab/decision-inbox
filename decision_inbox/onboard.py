@@ -260,6 +260,7 @@ def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> N
             tx.replace_session(entry)
         doc = tx.read_state(DOMAIN)
         doc.setdefault("files", {})[entry["relayName"]] = str(rules)
+        doc.get("left", {}).pop(entry["relayName"], None)
         tx.write_state(DOMAIN, doc)
         tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"],
                         data={"role": entry["role"], "file": str(rules), "at": now})
@@ -378,10 +379,14 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
     before = _read(rules)
     after, changed = strip(before)
     out = Outcome(rules, before, after, changed, entry)
-    if confirm and changed:
-        store._atomic_write_bytes(rules, after.encode("utf-8"))
+    if confirm:
+        if changed:
+            store._atomic_write_bytes(rules, after.encode("utf-8"))
         with g.transaction() as tx:
-            tx.write_state(DOMAIN, tx.read_state(DOMAIN))  # the snapshot must cover its own event
+            doc = tx.read_state(DOMAIN)
+            # The roster entry stays; the mark keeps the stop hook and whoami off this directory.
+            doc.setdefault("left", {})[entry["relayName"]] = now
+            tx.write_state(DOMAIN, doc)
             tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
     return out
 
