@@ -239,6 +239,7 @@ class Outcome:
     entry: dict
     steps: list = field(default_factory=list)
     patrol_prompt: str | None = None
+    drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
 
 
 def _read(path: Path) -> str:
@@ -263,6 +264,8 @@ def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> N
             tx.replace_session(entry)
         doc = tx.read_state(DOMAIN)
         doc.setdefault("files", {})[entry["relayName"]] = str(rules)
+        if not rules.is_file():
+            doc.setdefault("created", {})[str(rules)] = now
         doc.get("left", {}).pop(entry["relayName"], None)
         tx.write_state(DOMAIN, doc)
         tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"],
@@ -382,17 +385,30 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
         raise JoinError(f"没有记下 {entry['relayName']} 的规则文件，请用 --project 指出项目目录")
     before = _read(rules)
     after, changed = strip(before)
-    out = Outcome(rules, before, after, changed, entry)
+    created = str(rules) in store.read_state(g, DOMAIN).get("created", {})
+    out = Outcome(rules, before, after, changed, entry, drops=changed and created and not after.strip())
     if confirm:
-        if changed:
+        if out.drops:
+            _drop_created_rules(rules)
+        elif changed:
             store._atomic_write_bytes(rules, after.encode("utf-8"))
         with g.transaction() as tx:
             doc = tx.read_state(DOMAIN)
+            if out.drops:
+                doc["created"].pop(str(rules))
             # The roster entry stays; the mark keeps the stop hook and whoami off this directory.
             doc.setdefault("left", {})[entry["relayName"]] = now
             tx.write_state(DOMAIN, doc)
             tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
     return out
+
+
+def _drop_created_rules(rules: Path) -> None:
+    """The one deletion in the plugin: a rules file this plugin created and the leave emptied.
+
+    Group state is never deleted; files the user had before joining are never deleted.
+    """
+    rules.unlink()
 
 
 def leave(group: str, relay_name: str, project, confirm: bool, now: str) -> Outcome:

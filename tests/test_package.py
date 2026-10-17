@@ -41,14 +41,28 @@ class StaticScanTest(unittest.TestCase):
                     self.assertIn(name.split(".")[0], allowed, f"{path.name} imports {name}")
 
     def test_no_deletion_calls(self):
+        """Nothing is ever deleted, except one narrow case (e2e-round1-fixes F6): onboard's
+        _drop_created_rules may unlink a rules file the join itself created."""
         banned = {"unlink", "rmtree", "truncate", "remove", "rmdir"}
+        allowed = {("onboard.py", "_drop_created_rules", "unlink")}
+        seen = set()
         for path in _sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))
+            owners = {}  # node -> innermost enclosing function (walk is breadth-first: outer ones come first)
+            for fn in ast.walk(tree):
+                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for node in ast.walk(fn):
+                        owners[id(node)] = fn.name
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call):
                     fn = node.func
                     name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
-                    self.assertNotIn(name, banned, f"{path.name}:{node.lineno} calls {name}")
+                    if name not in banned:
+                        continue
+                    key = (path.name, owners.get(id(node)), name)
+                    self.assertIn(key, allowed, f"{path.name}:{node.lineno} calls {name}")
+                    seen.add(key)
+        self.assertEqual(seen, allowed)
 
 
 if __name__ == "__main__":

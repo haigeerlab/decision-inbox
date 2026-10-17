@@ -35,10 +35,11 @@
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
   - 记录（2026-10-17）：新测试先失败；实现后 Ran 466 tests, OK
 
-- [ ] Task 6：卸载删掉空的新建规则文件
+- [x] Task 6：卸载删掉空的新建规则文件
   - 验收：Spec 验收 10（新建且删块后为空才删；原有文件、另加了内容的新建文件都保留；预览写明会删；静态扫描只放行 `_drop_created_rules`）
   - 验证：`python3 -m unittest discover -s tests -p "test_onboard.py" -v`、`-p test_package.py`
   - 文件：`decision_inbox/onboard.py`、`tests/test_onboard.py`、`tests/test_package.py`
+  - 记录（2026-10-17）：5 个新测试先失败；实现后 Ran 470 tests, OK。变异检查：在 hub.py 另加一处 `unlink`，被 `test_no_deletion_calls` 拦下。静态扫描同时要求放行的那一处确实存在，例外不会悄悄失效
 
 - [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组上命令行跑一遍 S0 和各项新行为，记下输出后继续
 

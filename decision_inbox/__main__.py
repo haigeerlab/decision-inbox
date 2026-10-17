@@ -360,13 +360,16 @@ def _view(argv: list[str]) -> int:
 
 
 def _print_outcome(out, confirm: bool) -> None:
-    if not out.changed:
+    if out.drops:
+        state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
+                 else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
+    elif not out.changed:
         state = "没有变化"
     else:
         state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
     print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
-    if out.changed:
+    if out.changed and not out.drops:
         print("改动后的规则文件全文：")
         print(out.after, end="" if out.after.endswith("\n") else "\n")
     if out.steps:
