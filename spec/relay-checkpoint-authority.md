@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 88a65f9ccd49 -->
+<!-- spec-guard: review approved 0e0910409215 -->
 # Spec: relay-checkpoint-authority
 
 > 能力图模块 `relay-checkpoint-authority`（2026-10-17 用 add-module 插入）。来源：spec-guard-monitor 会话在一个真实项目的前端线（Codex 桌面版）实测后转来的需求 R1–R4（经用户同意），加上 e2e-round1-fixes 实测记下的后续事项（F13、问「卡住了吗」、老协作组补 `patrolTaskAt`）。用户在本会话确认另开模块，五项取舍都按推荐。
