@@ -35,7 +35,12 @@
   - 文件：`decision_inbox/stophook.py`、`docs/requirements-record.md`、`README.md`、两份 `plugin.json`、对应测试
   - 记录（2026-10-18）：先改停止钩子两处整段期望、版本和 README 断言，4 个失败；实现后 Ran 568 tests, OK。需求记录 13.5 末尾补了转给 agent-relay 的用例（只读的发件查询）；README 使用注意事项改一行、排查表加一行
 
-- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑主视图与 `/item`，记下输出；推送本分支
+- [x] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑主视图与 `/item`，记下输出；推送本分支
+  - 记录（2026-10-18）：Ran 568 tests, OK（含契约一致性测试）。scratchpad 临时协作组 cp5（收件枢纽、负责人、一条 Codex 开发线），手写 agent-relay 输出：
+    1. 开发连发两条【等待用户】#6001、#6002：回执「#1 已被新事项自动取代」；用户答「2 A」后 `sends` 为 `{to: cp5-dev, replyTo: 6002, alsoAnswers: [6001]}`；
+    2. 主视图（带 0.8.2 状态）：「负责人 阻塞：等开发」（短名）；异常区「负责人 空闲，有 2 条消息没读。建议：巡视会叫醒 负责人；叫不醒就打开它」「开发 有 1 条消息送达存疑（#6012）（来源：agent-relay）。建议：完全退出 ChatGPT 再打开 开发 的任务」；
+    3. 不带状态：顶部「本次没带 agent-relay 状态」，没有「全线停住」；
+    4. `/item 2` 带存疑状态：「agent-relay #6002：已接受但没读到（送达存疑，来源：agent-relay），唤醒 accepted」
 
 - [ ] Task 6：实测 owesReplies 回落
   - 验收：Spec 验收 8
