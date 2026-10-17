@@ -111,13 +111,16 @@ _ADVICE = {
     9: "确认旧等待是否还需要，不需要就说「关掉 #{ticket}」",
     10: "在 Codex 里点开 {who} 让它加载",
 }
+# A signal number shared by two cases picks its advice by code (relay-presence-and-doubt).
+_ADVICE_BY_CODE = {"idle-backlog": "巡视会叫醒 {who}；叫不醒就打开它"}
 
 
 def advice(g: store.Group, signal) -> str:
     """The fixed advice sentence for signals 3～10 (shared with patrol's owner alerts)."""
     who = _short(g, signal.sessions[0]) if signal.sessions else "?"
     found = re.search(r"等待单 #(\d+)", signal.text)
-    return _ADVICE[signal.no].format(who=who, ticket=found.group(1) if found else "编号")
+    text = _ADVICE_BY_CODE.get(signal.code, _ADVICE.get(signal.no, ""))
+    return text.format(who=who, ticket=found.group(1) if found else "编号")
 
 
 def _anomaly_row(g: store.Group, signal) -> str:

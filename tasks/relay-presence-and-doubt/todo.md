@@ -8,12 +8,14 @@
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`
   - 记录（2026-10-18）：2 个新测试先报错；实现后 Ran 555 tests, OK。`activity` 只认 busy／idle，其他值读成 None；三个新字段都有默认值，旧输出不受影响
 
-- [ ] Task 2：干活中、信号 5 拆分、没带状态不报全线停住、各线一行说实话
+- [x] Task 2：干活中、信号 5 拆分、没带状态不报全线停住、各线一行说实话
   - 验收：Spec 验收 1、4、5
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`view.py`、对应测试
+  - 记录（2026-10-18）：5 个新测试先失败；实现后 1 个原有测试（wait-honesty-and-briefs 的「新等待单照常算信号 1」）按规格第 4 条失败，它没带 agent-relay 状态；改为带一份空状态断言会报、并加一句没带时不报。Ran 560 tests, OK。建议文字改为可按信号代码区分（`idle-backlog` 与 `busy-backlog` 同属信号 5）
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-18）：`python3 -m unittest discover -s tests` → Ran 560 tests, OK
 
 - [ ] Task 3：送达存疑的异常行、巡视通知、`/item` 措辞
   - 验收：Spec 验收 2

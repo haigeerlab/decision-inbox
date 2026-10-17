@@ -670,7 +670,10 @@ class StaleTicketTest(HubCase):
     def test_fresh_wait_still_counts(self):
         self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
         self.assertIsNone(tickets.open_tickets(self.g, NOW)[0].maybe_stale)
-        self.assertIn(1, [s.no for s in health.assess(self.g, now=NOW).signals])
+        empty = relay.parse_agents('{"agents": []}', relay_version="0.8.2")
+        self.assertIn(1, [s.no for s in health.assess(self.g, now=NOW, relay=empty).signals])
+        # without agent-relay this time there is no verdict (relay-presence-and-doubt)
+        self.assertNotIn(1, [s.no for s in health.assess(self.g, now=NOW).signals])
 
     def test_old_receipts_without_sender_use_the_event_log(self):
         no = self.stale_setup()
