@@ -55,12 +55,14 @@
     4. 三项都有推荐：主视图末尾「一次答完（全按推荐）：」+ 代码块「1 A，2 A，3 A」；
     5. 三项答完后问「卡住了吗」：回复先一句提示，再附主视图
 
-- [ ] Task 8：接入技能、`/join` 命令、README、版本 0.0.5
+- [x] Task 8：接入技能、`/join` 命令、README、版本 0.0.5
   - 验收：Spec 验收 9
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`skills/decision-inbox-join/SKILL.md`、`commands/join.md`、`README.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-17）：4 个打包测试先失败；改完后 Ran 497 tests, OK
 
-- [ ] Checkpoint 3（report）：全部测试全绿；推送本分支
+- [x] Checkpoint 3（report）：全部测试全绿；推送本分支
+  - 记录（2026-10-17）：Ran 497 tests, OK；推送 `claude/decision-inbox-relay-checkpoint-authority`（PR #2 合并后再开 PR）
 
 - [ ] Task 9：di-e2e 守卫对照实测
   - 验收：Spec 验收 10（对照组、实验组各至少 2 次，守卫评估结果写进规格）
