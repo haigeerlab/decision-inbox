@@ -1,0 +1,93 @@
+{
+  "agent": "agent-3",
+  "totalUnacknowledged": 6,
+  "hasMore": true,
+  "entries": [
+    {
+      "id": 2927,
+      "toAgent": "agent-4",
+      "threadId": null,
+      "createdAt": "2026-10-16T06:21:06.693Z",
+      "bodyLength": 370,
+      "acknowledgedAt": null,
+      "wake": {
+        "state": "pending",
+        "detail": "Codex local connection unavailable A desktop notification was attempted on this Mac; macOS may not show it (notifications not allowed for the app that shows them, or Focus). The user can list waiting messages with doctor or by asking any session.",
+        "pendingReason": "offline"
+      },
+      "recipient": "active",
+      "deliveryState": "queued",
+      "expiresAt": "2026-10-17T06:21:06.693Z",
+      "replyTo": 2916,
+      "replies": []
+    },
+    {
+      "id": 2649,
+      "toAgent": "agent-6",
+      "threadId": null,
+      "createdAt": "2026-10-16T03:47:06.478Z",
+      "bodyLength": 415,
+      "acknowledgedAt": null,
+      "wake": {
+        "state": "read",
+        "detail": "Recipient fetched the message before its ping; no ping sent"
+      },
+      "recipient": "active",
+      "deliveryState": "accepted",
+      "expiresAt": "2026-10-17T03:47:06.478Z",
+      "replyTo": 2645,
+      "replies": []
+    },
+    {
+      "id": 2175,
+      "toAgent": "agent-6",
+      "threadId": null,
+      "createdAt": "2026-10-15T18:28:46.132Z",
+      "bodyLength": 179,
+      "acknowledgedAt": null,
+      "wake": {
+        "state": "read",
+        "detail": "Recipient fetched the message before its ping; no ping sent"
+      },
+      "recipient": "active",
+      "deliveryState": "accepted",
+      "expiresAt": "2026-10-16T18:28:46.132Z",
+      "replyTo": 2172,
+      "replies": []
+    },
+    {
+      "id": 2170,
+      "toAgent": "agent-6",
+      "threadId": null,
+      "createdAt": "2026-10-15T18:24:49.990Z",
+      "bodyLength": 481,
+      "acknowledgedAt": null,
+      "wake": {
+        "state": "read",
+        "detail": "Recipient fetched the message before its ping; no ping sent"
+      },
+      "recipient": "active",
+      "deliveryState": "accepted",
+      "expiresAt": "2026-10-16T18:24:49.990Z",
+      "replyTo": 2164,
+      "replies": []
+    },
+    {
+      "id": 2166,
+      "toAgent": "agent-6",
+      "threadId": null,
+      "createdAt": "2026-10-15T18:15:13.416Z",
+      "bodyLength": 392,
+      "acknowledgedAt": null,
+      "wake": {
+        "state": "read",
+        "detail": "Recipient fetched the message before its ping; no ping sent"
+      },
+      "recipient": "active",
+      "deliveryState": "accepted",
+      "expiresAt": "2026-10-16T18:15:13.416Z",
+      "replyTo": 2164,
+      "replies": []
+    }
+  ]
+}

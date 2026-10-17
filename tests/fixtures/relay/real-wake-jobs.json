@@ -1,0 +1,120 @@
+{
+  "summary": {
+    "unknown": 1,
+    "pending": 1,
+    "acknowledged": 2,
+    "read": 1
+  },
+  "jobs": [
+    {
+      "fromAgent": "agent-1",
+      "threadId": null,
+      "acknowledgedAt": null,
+      "id": 2532,
+      "mailboxPath": "/sanitized/mailbox.sqlite",
+      "messageId": 3499,
+      "agent": "agent-3",
+      "target": {
+        "app": "claude",
+        "sessionId": "session-1"
+      },
+      "state": "unknown",
+      "attemptId": "attempt-1",
+      "attempts": 1,
+      "retryAt": 1792146362830,
+      "createdAt": 1792146357010,
+      "detail": "Ping submitted; awaiting Claude receipt. No automatic replay.",
+      "pendingReason": null,
+      "deliveryState": "unknown",
+      "sentAt": "2026-10-16T10:25:57.010Z"
+    },
+    {
+      "fromAgent": "agent-1",
+      "threadId": null,
+      "acknowledgedAt": null,
+      "id": 2531,
+      "mailboxPath": "/sanitized/mailbox.sqlite",
+      "messageId": 3498,
+      "agent": "agent-2",
+      "target": {
+        "app": "codex",
+        "sessionId": "session-2"
+      },
+      "state": "pending",
+      "attemptId": null,
+      "attempts": 0,
+      "retryAt": 1792146356963,
+      "createdAt": 1792146356963,
+      "detail": "",
+      "pendingReason": null,
+      "deliveryState": "queued",
+      "sentAt": "2026-10-16T10:25:56.963Z"
+    },
+    {
+      "fromAgent": "agent-3",
+      "threadId": null,
+      "acknowledgedAt": "2026-10-16T10:25:58.845Z",
+      "id": 2530,
+      "mailboxPath": "/sanitized/mailbox.sqlite",
+      "messageId": 3497,
+      "agent": "agent-1",
+      "target": {
+        "app": "codex",
+        "sessionId": "session-3"
+      },
+      "state": "acknowledged",
+      "attemptId": "attempt-3",
+      "attempts": 1,
+      "retryAt": 1792146340970,
+      "createdAt": 1792146336683,
+      "detail": "Recipient acknowledged the message",
+      "pendingReason": null,
+      "deliveryState": "accepted",
+      "sentAt": "2026-10-16T10:25:36.683Z"
+    },
+    {
+      "fromAgent": "agent-2",
+      "threadId": null,
+      "acknowledgedAt": "2026-10-16T10:25:37.096Z",
+      "id": 2528,
+      "mailboxPath": "/sanitized/mailbox.sqlite",
+      "messageId": 3495,
+      "agent": "agent-3",
+      "target": {
+        "app": "claude",
+        "sessionId": "session-4"
+      },
+      "state": "acknowledged",
+      "attemptId": "attempt-4",
+      "attempts": 1,
+      "retryAt": 1792146314242,
+      "createdAt": 1792146308398,
+      "detail": "Recipient acknowledged the message",
+      "pendingReason": null,
+      "deliveryState": "accepted",
+      "sentAt": "2026-10-16T10:25:08.398Z"
+    },
+    {
+      "fromAgent": "agent-1",
+      "threadId": null,
+      "acknowledgedAt": null,
+      "id": 2526,
+      "mailboxPath": "/sanitized/mailbox.sqlite",
+      "messageId": 3493,
+      "agent": "agent-2",
+      "target": {
+        "app": "codex",
+        "sessionId": "session-5"
+      },
+      "state": "read",
+      "attemptId": null,
+      "attempts": 0,
+      "retryAt": 1792146251386,
+      "createdAt": 1792146251386,
+      "detail": "Recipient fetched the message before its ping; no ping sent",
+      "pendingReason": null,
+      "deliveryState": "accepted",
+      "sentAt": "2026-10-16T10:24:11.386Z"
+    }
+  ]
+}

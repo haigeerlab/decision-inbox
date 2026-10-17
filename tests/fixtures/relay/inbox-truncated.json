@@ -1,0 +1,10 @@
+{
+ "agent": "di-hub",
+ "messages": [
+  {"id": 4010, "fromAgent": "api-codex", "toAgent": "di-hub", "body": "【等待用户】\n来自：API\n要你决", "threadId": null, "idempotencyKey": null, "createdAt": "2026-10-16T09:00:00.000Z", "deliveryState": "accepted", "expiresAt": null, "replyTo": null, "expectsReply": true, "bodyTruncated": true, "bodyLength": 52000, "nextOffset": 20}
+ ],
+ "hasMore": true,
+ "nextAfterId": 4010,
+ "readRecorded": true,
+ "continue": ["{agent: \"di-hub\", messageId: 4010, bodyOffset: 20}"]
+}

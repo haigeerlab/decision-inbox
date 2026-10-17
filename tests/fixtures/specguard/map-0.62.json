@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-16T16:12:47+08:00",
+  "generator": {
+    "name": "spec-guard",
+    "version": "0.62.0"
+  },
+  "project": {
+    "root": "/repo/demo",
+    "title": "Capability Map: decision-inbox 第一版"
+  },
+  "head": {
+    "sha": "0000000000000000000000000000000000000000",
+    "branch": "feature-x",
+    "unmerged": null,
+    "unpushed": null
+  },
+  "stage": "BUILDING",
+  "activeModule": "spec-guard-reader",
+  "nextGate": "Checkpoint 2（gate）：模块最终验收——全部测试全绿、11 条验收标准逐条对应测试、列出实际改动文件；停下等用户确认",
+  "totals": {
+    "done": 6,
+    "in_progress": 1,
+    "suspended": 0,
+    "blocked": 0,
+    "ready": 1,
+    "not_ready": 6
+  },
+  "bottlenecks": [],
+  "awaitingReview": [
+    {
+      "id": "line-health",
+      "kind": "spec",
+      "review": "pending"
+    }
+  ],
+  "modules": [
+    {
+      "id": "line-health",
+      "position": 8,
+      "responsibility": "把 agent-relay、spec-guard 与本插件自己的事实组合成各线状态（统一状态词）与需求 8.1 的卡住信号，纯只读；有没有进展看本次已勾数与上次快照（由调用方传入）的对比，加上 agent-relay 的会话活动，不只凭 lastTickAt；history 为 unavailable／shallow 时不做时间类判断；信号 7「反复返工」由本插件的审查结论统计",
+      "dependsOn": [
+        "relay-reader",
+        "spec-guard-reader",
+        "review-registry",
+        "decision-queue",
+        "wait-tickets"
+      ],
+      "status": "not_ready",
+      "step": null,
+      "progress": {
+        "done": 0,
+        "total": 0
+      },
+      "suspendedReason": null,
+      "blockedOn": [],
+      "missingDeps": [
+        "spec-guard-reader"
+      ],
+      "blocks": {
+        "count": 4,
+        "ids": [
+          "hub-view",
+          "query-commands",
+          "map-view",
+          "patrol"
+        ]
+      },
+      "review": {
+        "spec": "none",
+        "plan": "none"
+      }
+    },
+    {
+      "id": "spec-guard-reader",
+      "position": 7,
+      "responsibility": "只读调用各线仓库的 `map_view.py --project <路径> --json`：模块表与停滞数据，核对 schemaVersion；脚本从 `~/.claude/plugins/installed_plugins.json` 里 spec-guard 的 installPath 找，不写死版本路径；没装或找不到时降级为「无能力图」并说明原因，退出码 2／3／4 如实区分；不自己解析能力图和 todo",
+      "dependsOn": [],
+      "status": "in_progress",
+      "step": "build",
+      "progress": {
+        "done": 1,
+        "total": 6
+      },
+      "suspendedReason": null,
+      "blockedOn": [],
+      "missingDeps": [],
+      "blocks": {
+        "count": 5,
+        "ids": [
+          "line-health",
+          "hub-view",
+          "query-commands",
+          "map-view",
+          "patrol"
+        ]
+      },
+      "review": {
+        "spec": "approved",
+        "plan": "approved"
+      }
+    },
+    {
+      "id": "group-store",
+      "position": 1,
+      "responsibility": "插件骨架与协作组状态目录 `~/.decision-inbox/<协作组>/`：状态文件读写、编号分配、会话名册（短名、角色、所属线）",
+      "dependsOn": [],
+      "status": "done",
+      "step": null,
+      "progress": {
+        "done": 9,
+        "total": 9
+      },
+      "suspendedReason": null,
+      "blockedOn": [],
+      "missingDeps": [],
+      "blocks": {
+        "count": 7,
+        "ids": [
+          "line-health",
+          "hub-view",
+          "query-commands",
+          "map-view",
+          "stop-hook",
+          "patrol",
+          "onboarding"
+        ]
+      },
+      "review": {
+        "spec": "approved",
+        "plan": "approved"
+      }
+    }
+  ]
+}

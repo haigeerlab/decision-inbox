@@ -1,0 +1,23 @@
+{
+  "agent": "di-hub-probe",
+  "count": 1,
+  "totalUnread": 1,
+  "hasMore": false,
+  "nextAfterId": null,
+  "messages": [
+    {
+      "id": 3982,
+      "fromAgent": "di-dev-probe",
+      "toAgent": "di-hub-probe",
+      "body": "【等待用户】\n结束：无\n来自：前端\n项目：商城改版\n要你决定：支付页先接哪种支付方式\n要点：Mock 已就绪，两种方式工作量差一倍。\n来自：这一行是要点正文的一部分，不是新字段\n选项与我的建议：\n推荐 A：先接微信支付\n  选了会怎样：本周能上线支付页，支付宝下周补\nB. 先接支付宝\n  选了会怎样：要多等三天 API 补签名接口\nC、两种一起接\n你该回：12 A 先接微信支付\n是否完全停住：是\n",
+      "threadId": null,
+      "idempotencyKey": null,
+      "createdAt": "2026-10-16T16:04:44.141Z",
+      "deliveryState": "accepted",
+      "expiresAt": "2026-10-17T16:04:44.141Z",
+      "replyTo": null,
+      "expectsReply": true
+    }
+  ],
+  "readRecorded": true
+}

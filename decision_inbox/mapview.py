@@ -1,0 +1,200 @@
+"""Read-only /map views over spec-guard's module table (see spec/map-view.md).
+
+Module state comes only from spec-guard (via spec-guard-reader); this module
+adds the architecture-review column, items waiting for the user and external
+waits, and never changes a state spec-guard gave.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from decision_inbox import items, protocol, reviews, store, tickets
+from decision_inbox.view import clip, waited
+
+_NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
+_REVIEW_MARKS = {"approved": "✔", "pending": "待审", "revised": "已改待复审", "invalid": "标记无效", "none": "—"}
+_STEPS = {"spec": "写 Spec", "plan": "写 Plan"}
+
+
+def status_cell(m) -> str:
+    """Icon plus reason, all from spec-guard's fields (spec 关键决策 3)."""
+    if m.status == "done":
+        return "✅ 已完成"
+    if m.status == "in_progress":
+        return f"🔨 {_STEPS.get(m.step, f'进行中 {m.progress_done}/{m.progress_total}')}"
+    if m.status == "suspended":
+        return f"⏸ 挂起：{m.suspended_reason or '未记原因'} · 挡住 {len(m.blocks)} 个"
+    if m.status == "blocked":
+        return f"⛔ 阻塞：等 {'、'.join(m.blocked_on)}"
+    if m.status == "ready":
+        return "🟢 可以开始"
+    if m.status == "not_ready":
+        return f"○ 未就绪：缺 {'、'.join(m.missing_deps)}"
+    return m.status
+
+
+def review_cell(m) -> str:
+    return f"Spec {_REVIEW_MARKS.get(m.review_spec, m.review_spec)} Plan {_REVIEW_MARKS.get(m.review_plan, m.review_plan)}"
+
+
+def _verdict(r) -> str:
+    if r.verdict == "passed":
+        return "通过"
+    if r.verdict == "passed-with-advice":
+        return f"通过，附建议{r.advice_count}条"
+    return f"有须修改项（第 {r.rounds} 轮）"
+
+
+def arch_cell(cells) -> str:
+    """Latest verdict of each review of this module, by node (spec 关键决策 5)."""
+    return " · ".join(f"{_NODE_NAMES.get(r.node, r.node)} {_verdict(r)}" for r in cells) or "—"
+
+
+_TOTAL_ICONS = (("done", "✅"), ("in_progress", "🔨"), ("suspended", "⏸"), ("blocked", "⛔"),
+                ("ready", "🟢"), ("not_ready", "○"))
+
+
+def _clock(value: str) -> str:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
+
+
+def external_waits(g: store.Group, now: str, session: str) -> list[str]:
+    """Open tickets of this line that wait on someone other than the user (spec 已定事项 3)."""
+    return [f"外部等待：等 {t.target} 交付「{''.join(x.strip() for x in t.what.splitlines())}」（已等 {waited(t.minutes)}）"
+            for t in tickets.open_tickets(g, now) if t.waiter == session and t.target not in tickets.USER_TARGETS]
+
+
+def _asks(g: store.Group, entry: dict) -> list[int]:
+    return sorted(it["no"] for it in items.pending(g)
+                  if it["sender"] == entry["relayName"] or (it["multi"] and entry["shortName"] in it["lines"]))
+
+
+def header_lines(g: store.Group, now: str, entry: dict, line_map) -> list[str]:
+    """Total line, bottlenecks and asks, unmerged/unpushed, and the optional fourth line (spec 关键决策 6)."""
+    totals = line_map.totals
+    counts = " ".join(f"{icon} {totals.get(key, 0)}" for key, icon in _TOTAL_ICONS)
+    out = [f"{entry['shortName']} · {sum(totals.values())} 个模块 · {counts} · 更新于 {_clock(line_map.generated_at)}"]
+    second = "关键卡点：" + ("；".join(f"{b.id} 挂起 → 挡住 {len(b.blocks)} 个模块" for b in line_map.bottlenecks) or "无")
+    asks = _asks(g, entry)
+    if asks:
+        second += " · 等你决定：" + "、".join(f"#{no}" for no in asks)
+    out.append(second)
+    unmerged = (f"{line_map.unmerged_count} 个提交（相对 {line_map.unmerged_base}）"
+                if line_map.unmerged_count is not None else "判断不了")
+    unpushed = (f"{line_map.unpushed_count} 个提交（相对 {line_map.unpushed_upstream}）"
+                if line_map.unpushed_count is not None else "判断不了")
+    out.append(f"未合入主线：{unmerged}；未推送：{unpushed}")
+    fourth = []
+    if not any(m.id == line_map.active_module for m in line_map.modules):
+        fourth += external_waits(g, now, entry["relayName"])
+    if reviews.registration_at(g, entry["relayName"], now) is None:
+        fourth.append("架构审查：本线无审查者")
+    else:
+        _, unmarked = reviews.module_reviews(g, entry["relayName"])
+        if unmarked:
+            fourth.append(f"架构审查：未标模块的审查 {len(unmarked)} 个")
+    if fourth:
+        out.append(" · ".join(fourth))
+    return out
+
+
+def note_cell(g: store.Group, now: str, entry: dict, line_map, m) -> str:
+    """External waits go into the current module's note only (spec 已定事项 3)."""
+    return "；".join(external_waits(g, now, entry["relayName"])) if m.id == line_map.active_module else ""
+
+
+RESPONSIBILITY_CHARS = 40
+_EXPANDED = ("in_progress", "suspended", "blocked", "ready")
+_COLUMNS = "| 位 | 编号 | 作用 | 状态 | Spec/Plan 评审 | 架构审查 | 备注 |\n|---|---|---|---|---|---|---|"
+
+
+def _cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _positions(modules) -> str:
+    low, high = min(m.position for m in modules), max(m.position for m in modules)
+    return str(low) if low == high else f"{low}–{high}"
+
+
+def _latest_done(done: list):
+    """The most recently finished module: latest lastTickAt, else the highest position (spec 关键决策 7)."""
+    ticked = [m for m in done if m.last_tick_at]
+    if ticked:
+        return max(ticked, key=lambda m: datetime.fromisoformat(m.last_tick_at.replace("Z", "+00:00")))
+    return max(done, key=lambda m: m.position) if done else None
+
+
+def table_rows(g: store.Group, now: str, entry: dict, line_map, full: bool = False) -> list[str]:
+    cells, _ = reviews.module_reviews(g, entry["relayName"])
+    if reviews.registration_at(g, entry["relayName"], now) is None:
+        cells = {}
+    rows: list[tuple[int, str]] = []
+
+    def module_row(m):
+        values = [str(m.position), m.id, clip(m.responsibility, RESPONSIBILITY_CHARS), status_cell(m),
+                  review_cell(m), arch_cell(cells.get(m.id, ())), note_cell(g, now, entry, line_map, m)]
+        rows.append((m.position, "| " + " | ".join(_cell(v) for v in values) + " |"))
+
+    modules = list(line_map.modules)
+    if full:
+        for m in modules:
+            module_row(m)
+    else:
+        done = [m for m in modules if m.status == "done"]
+        latest = _latest_done(done)
+        folded_done = [m for m in done if m is not latest]
+        not_ready = [m for m in modules if m.status == "not_ready"]
+        for m in modules:
+            if m.status in _EXPANDED or m is latest or m.status not in ("done", "not_ready"):
+                module_row(m)
+        if folded_done:
+            rows.append((min(m.position for m in folded_done),
+                         f"| {_positions(folded_done)} | 其余 {len(folded_done)} 个已完成 | | ✅ | | | |"))
+        if not_ready:
+            rows.append((min(m.position for m in not_ready),
+                         f"| {_positions(not_ready)} | {len(not_ready)} 个未就绪 | | ○ | | | |"))
+    return [_COLUMNS] + [row for _, row in sorted(rows, key=lambda r: r[0])]
+
+
+def render_table(g: store.Group, now: str, entry: dict, line_map, full: bool = False) -> str:
+    return "\n".join(header_lines(g, now, entry, line_map)) + "\n\n" + "\n".join(
+        table_rows(g, now, entry, line_map, full))
+
+
+def _dev_lines(g: store.Group) -> list[dict]:
+    return [e for e in store.roster(g) if e["role"] == "dev"]
+
+
+def _reason(read) -> str:
+    if read is None:
+        return "未读取能力图"
+    return read.reason or read.status
+
+
+def render_line(g: store.Group, now: str, line: str, read, full: bool = False) -> str:
+    """/map <线> and /map <线> 全部; `line` is a short name or relay name of a development line."""
+    lines = _dev_lines(g)
+    entry = next((e for e in lines if line in (e["shortName"], e["relayName"])), None)
+    if entry is None:
+        return f"没有叫「{line}」的线，现有：{'、'.join(e['shortName'] for e in lines)}"
+    if read is None or read.status != "ok":
+        out = [f"{entry['shortName']} · {_reason(read)}"]
+        asks = _asks(g, entry)
+        if asks:
+            out.append("等你决定：" + "、".join(f"#{no}" for no in asks))
+        return "\n".join(out + external_waits(g, now, entry["relayName"]))
+    return render_table(g, now, entry, read.map, full)
+
+
+def render_all(g: store.Group, now: str, reads: dict) -> str:
+    """/map all: the total line of every development line, roster order."""
+    rows = []
+    for entry in _dev_lines(g):
+        read = reads.get(entry["relayName"])
+        if read is not None and read.status == "ok":
+            rows.append(header_lines(g, now, entry, read.map)[0])
+        else:
+            rows.append(f"{entry['shortName']} · {_reason(read)}")
+    return "\n".join(rows)

@@ -1,0 +1,43 @@
+{
+  "message": {
+    "id": 2842,
+    "fromAgent": "fe-codex",
+    "toAgent": "hub",
+    "threadId": null,
+    "createdAt": "2026-10-16T03:10:00.000Z",
+    "preview": "【等待用户】正文预览",
+    "bodyLength": 120,
+    "replyTo": null
+  },
+  "deliveryState": "accepted",
+  "expiresAt": null,
+  "acknowledgedAt": "2026-10-16T03:12:00.000Z",
+  "replies": [
+    2850,
+    2851
+  ],
+  "wake": {
+    "id": 77,
+    "mailboxPath": "/sanitized/mailbox.sqlite",
+    "fromAgent": "fe-codex",
+    "preview": "正文预览",
+    "threadId": null,
+    "acknowledgedAt": "2026-10-16T03:12:00.000Z",
+    "messageId": 2842,
+    "agent": "hub",
+    "target": {
+      "app": "claude",
+      "sessionId": "session-1"
+    },
+    "state": "acknowledged",
+    "attemptId": "a-1",
+    "attempts": 1,
+    "retryAt": 0,
+    "createdAt": 1792146357010,
+    "detail": "Recipient acknowledged the message",
+    "pendingReason": null,
+    "deliveryState": "accepted",
+    "sentAt": "2026-10-16T03:10:01.000Z"
+  },
+  "outcome": "replied"
+}
