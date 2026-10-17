@@ -41,7 +41,13 @@
   - 文件：`decision_inbox/health.py`、`patrol.py`、`view.py`、对应测试
   - 记录（2026-10-17）：先把 7 处测试期望改成带来源（含 3 处新断言），7 个失败；实现后 Ran 547 tests, OK。标注的提示：巡视没跑与没跑完一轮、叫不醒（Claude 桌面版）、读不到 agent-relay 与巡视读不到（agent-relay）、Codex 没被加载（Codex 桌面版）、spec-guard 接口不兼容（spec-guard）。格式函数 `deps.sourced`；实际改的是 `hub.py` 而不是 `view.py`
 
-- [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑 doctor、stats、权限预览，记下输出；推送本分支
+- [x] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑 doctor、stats、权限预览，记下输出；推送本分支
+  - 记录（2026-10-17）：Ran 547 tests, OK。scratchpad 临时协作组 cp2（收件枢纽 + 一条 Codex 开发线），人为改旧开发线约定块、把转发脚本指向别处、巡视最后一轮设在 162 分钟前：
+    1. `doctor --group cp2` 退出码 3，「共 9 项：异常 3，未知 1」：✘ 转发脚本（写明指向的目录和本次代码目录、改法）、✘ 约定块：开发「不是当前版本」并给出重跑接入命令、✘ 巡视「162 分钟没跑」（来源：Claude 桌面版）、？ Codex 钩子信任（本机 Codex 配置里没有 decision-inbox 钩子的信任记录）；收件枢纽约定块、Codex 能加载、三个依赖插件均 ✔；
+    2. `doctor --report`：版本 4 行，只列 4 项异常与未知，没有消息正文；
+    3. `query stats cp2`：空组各项为 0、两段耗时写「没有数据」；
+    4. `onboard allow cp2 --project <hub>`：列出 9 条要加的放行，没有建出 `.claude/` 目录（只预览）。
+    观察：本机 Codex 没有 decision-inbox 钩子的信任记录，S3（Codex 停止钩子）实测前要先处理
 
 - [ ] Task 7：宿主差异文档、README 使用注意事项、版本 0.0.7
   - 验收：Spec 验收 8、9
