@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved b1dccb32686f -->
+<!-- spec-guard: review approved 76d536a68049 -->
 # Spec: answer-handoff-gaps
 
 > 能力图模块 `answer-handoff-gaps`（2026-10-17 用 add-module 插入）。需求来源：`docs/requirements-record.md` 第 12 节第 17 项「答复卡在离线的负责人那里」；`docs/host-differences.md` H17「自动压缩后容易抓最近一条人工输入当任务」。
