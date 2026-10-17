@@ -1,7 +1,7 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: protocol-contract-v1-4
 
-> 依据：`spec/protocol-contract-v1-4.md`（与本计划一起交审）。任务清单：`tasks/protocol-contract-v1-4/todo.md`。
+> 依据：`spec/protocol-contract-v1-4.md`（已批准）。任务清单：`tasks/protocol-contract-v1-4/todo.md`。用户 2026-10-18 与规格一起批准本计划。
 
 ## Overview
 

@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved ee346ada6b60 -->
 # Spec: protocol-contract-v1-4
 
 > 能力图模块 `protocol-contract-v1-4`（2026-10-18 用 add-module 插入，排在 protocol-contract-v1-3 之后）。来源：session-protocol 契约负责人 2026-10-18 通知 v1.4 已提交（e33c077，用户批准）；用户 2026-10-18 同意升级，规格与计划一起交审。

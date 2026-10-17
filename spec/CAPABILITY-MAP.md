@@ -40,8 +40,9 @@
 | protocol-contract-v1 | 钉住共用契约 session-protocol v1.0：把契约的样例与期望结果按版本复制进测试、核对指纹，用本插件的解析与生成代码逐份跑通；能力图外部依赖表与 README 写明以契约为准；行为不变（2026-10-18 用户批准契约迁移计划） | message-protocol, hub-loop, decision-queue, doctor-and-observer |
 | relay-presence-and-doubt | 接上 agent-relay 0.8 的新事实并修实测观察：按 presence.activity 区分空闲与忙碌、显示送达存疑、合并答复用 alsoAnswers 一次关多条请求、事项被取代时撤回旧请求；没带 agent-relay 状态时不报「全线停住」；各线一行不按可能已失效的单写阻塞、写短名；停止钩子不把已发出的【已恢复】误判为没发（2026-10-17 依赖升级核对与实测，用户确认另开模块） | relay-reader, line-health, hub-view, hub-loop, stop-hook, decision-queue, wait-honesty-and-briefs |
 | protocol-contract-v1-3 | 契约升到 session-protocol v1.3：复制 v1.3 样例替换 v1.0 副本，一致性测试跳过本插件不解析的三种新消息（交审、公共变更请求、协调通知），三个过简词各有一份样例能被变异检查抓到；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1 |
+| protocol-contract-v1-4 | 契约升到 session-protocol v1.4：复制 v1.4 样例替换 v1.3 副本，审查行取值与用户原话首行空白读法有样例保护，计数调为解析 52、生成 6；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1-3 |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
