@@ -35,10 +35,11 @@
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
   - 记录（2026-10-17）：新测试先失败；实现后 Ran 493 tests, OK。【已恢复】按关单理由 1 判断，原有「【已恢复】写事项不提示」的测试保持通过
 
-- [ ] Task 6：没有待答事项时，认不出编号的话附主视图
+- [x] Task 6：没有待答事项时，认不出编号的话附主视图
   - 验收：Spec 验收 7
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
+  - 记录（2026-10-17）：2 个新测试先报错（常量 `items.NO_ITEM_QUESTION` 还不存在）；实现后 Ran 495 tests, OK
 
 - [ ] Task 7：重新接入收件枢纽时补 `patrolTaskAt`
   - 验收：Spec 验收 8

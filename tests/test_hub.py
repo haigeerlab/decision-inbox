@@ -619,3 +619,18 @@ class EndLineRelayIdTest(HubCase):
         self.assertEqual([t["status"] for t in self.tickets().values()], ["open"])
         self.receive(message(4610, "fe-codex", WAIT_USER.replace("结束：无", "结束：#4544")))
         self.assertEqual([t["status"] for t in self.tickets().values() if t["relayId"] == 4544], ["closed"])
+
+
+class StatusQuestionTest(HubCase):
+    """relay-checkpoint-authority: 「卡住了吗」 with nothing to answer gets the main view, not just a nudge."""
+
+    def test_nothing_pending_shows_the_view(self):
+        r = hub.reply(self.g, "卡住了吗", now=NOW)
+        self.assertEqual(r.sends, [])
+        self.assertTrue(r.show.startswith(items.NO_ITEM_QUESTION + "\n\n"))
+        self.assertIn("等你决定 0 项", r.show)
+
+    def test_with_pending_items_only_asks_for_the_number(self):
+        self.receive(message(1401, "fe-codex", WAIT_USER), message(1402, "api-codex", WAIT_USER))
+        r = hub.reply(self.g, "卡住了吗", now=NOW)
+        self.assertEqual(r.show, items.NO_ITEM_QUESTION)

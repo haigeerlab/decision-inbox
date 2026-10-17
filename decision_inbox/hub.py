@@ -337,6 +337,9 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
     parsed = items.interpret_reply(g, text)
+    if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
+        # Nothing to answer: the user is most likely asking how things stand (「卡住了吗」).
+        return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps)}")
     if parsed.question:
         return Reply(parsed.question)
     sends = _queue_answers(g, items.answer(g, parsed.answers, answered_at=now), now)

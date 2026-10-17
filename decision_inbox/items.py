@@ -211,6 +211,9 @@ def _segments(text: str, known: dict) -> list[str]:
     return [text]
 
 
+NO_ITEM_QUESTION = "没看出这句是答哪一项的，请在开头写上编号，例如「12 B」。"
+
+
 def interpret_reply(g: store.Group, text: str) -> ReplyParse:
     """The user's reply as answers, or a question when anything does not match (requirement 6.4)."""
     text = text.strip()
@@ -224,7 +227,7 @@ def interpret_reply(g: store.Group, text: str) -> ReplyParse:
         elif len(waiting) == 1:
             key, rest = waiting[0], segment
         else:
-            return ReplyParse(question="没看出这句是答哪一项的，请在开头写上编号，例如「12 B」。")
+            return ReplyParse(question=NO_ITEM_QUESTION)
         it = known.get(key)
         if it is None:
             return ReplyParse(question=f"#{key} 不在待答表里，请确认编号。")
