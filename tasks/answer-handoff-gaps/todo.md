@@ -2,7 +2,7 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：停止钩子拦「已答未恢复」
+- [x] Task 1：停止钩子拦「已答未恢复」
   - 验收：Spec 验收 1（第一次收工被拦，说明含编号和原话，原话超过 40 字截断；第二次放行）、验收 2（恢复后不拦；自己开着等待单时放行）、验收 3（和「有人在等你」合成一条，前者在前）；H17 场景写成回归测试
   - 验证：`python3 -m unittest discover -s tests -p test_stophook.py -v`
   - 文件：`decision_inbox/stophook.py`、`tests/test_stophook.py`

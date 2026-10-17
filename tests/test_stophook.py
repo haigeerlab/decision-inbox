@@ -170,3 +170,68 @@ class CommandLineTest(HookCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnsweredNotResumedTest(HookCase):
+    """answer-handoff-gaps 已定事项 1：已答未恢复也拦一次（宿主差异 H17）。"""
+
+    def answered(self, reply="1 A", sender="api-codex", minutes_ago=3):
+        no = items.receive(self.g, WAIT_USER, sender=sender, relay_id=7, received_at=at(30)).item
+        items.answer(self.g, items.interpret_reply(self.g, reply.replace("1", str(no), 1)).answers,
+                     answered_at=at(minutes_ago))
+        return no
+
+    def test_h17_scenario_blocks_once(self):
+        no = self.answered()
+        d = self.decide()
+        self.assertTrue(d.block)
+        self.assertEqual(d.reason, "\n".join([
+            "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。",
+            f"- #{no} 用户已答复：「{no} A」（3 分钟前）",
+            "做完了：发【已恢复】，结束行写这个编号。",
+            "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
+        ]))
+        self.assertFalse(self.decide(active=True).block)
+
+    def test_resumed_item_passes(self):
+        from decision_inbox import protocol
+        no = self.answered()
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{no}\n"), sender="api-codex", at=at(1))
+        self.assertFalse(self.decide().block)
+
+    def test_picked_and_acknowledged_still_block(self):
+        no = self.answered()
+        relay_id = 4001
+        items.record_sent(self.g, no, to="api-codex", relay_id=relay_id, at=at(2))
+        items.update_delivery(self.g, {relay_id: ("accepted", "2026-10-16T03:59:00Z")}, at=at(1))
+        self.assertEqual(items.get(self.g, no)["status"], "acknowledged")
+        self.assertTrue(self.decide().block)
+
+    def test_own_ticket_still_passes(self):
+        self.answered()
+        self.wait("api-codex", "后台", 10)
+        self.assertFalse(self.decide().block)
+
+    def test_other_sessions_item_does_not_block(self):
+        self.answered(sender="fe-codex")
+        self.assertFalse(self.decide().block)
+
+    def test_long_original_clipped(self):
+        no = self.answered(reply="1 A，" + "字" * 60)
+        line = self.decide().reason.split("\n")[1]
+        self.assertIn("…」", line)
+        self.assertEqual(len(line.split("「")[1].split("」")[0]), 41)
+
+    def test_combined_with_someone_waiting(self):
+        t = self.wait("fe-codex", "API", 40, what="字段说明")
+        no = self.answered()
+        self.assertEqual(self.decide().reason, "\n".join([
+            "【decision-inbox】收工前请先处理：有会话在等你。",
+            f"- #{t} 前端 在等你：字段说明（已等 40 分钟）",
+            "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
+            "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。",
+            "另外，用户已答复你抛的事项，你还没发【已恢复】：",
+            f"- #{no} 用户已答复：「{no} A」（3 分钟前）",
+            "做完了：发【已恢复】，结束行写这个编号。",
+            "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
+        ]))

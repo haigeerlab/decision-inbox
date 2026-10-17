@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime
 
 from decision_inbox import items, store, tickets
 from decision_inbox.view import waited
@@ -60,11 +61,42 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
     if any(it["sender"] == me and it["fullyStopped"] for it in items.pending(g)):
         return _pass("本会话有完全停住的待答事项，已报阻塞")
     waiting = sorted((t for t in open_ if t.target == short), key=lambda t: t.no)
-    if not waiting:
-        return _pass("没有会话在等本会话")
-    rows = [f"- #{t.no} {(store.find_session(g, relay_name=t.waiter) or {}).get('shortName', t.waiter)} 在等你："
-            f"{''.join(x.strip() for x in t.what.splitlines())}（已等 {waited(t.minutes)}）" for t in waiting]
-    reason = "\n".join(["【decision-inbox】收工前请先处理：有会话在等你。", *rows,
-                        "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
-                        "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。"])
-    return Decision(True, reason, None)
+    answered = _answered(g, me, now)
+    if not waiting and not answered:
+        return _pass("没有会话在等本会话，也没有已答未恢复的事项")
+    out = []
+    if waiting:
+        rows = [f"- #{t.no} {(store.find_session(g, relay_name=t.waiter) or {}).get('shortName', t.waiter)} 在等你："
+                f"{''.join(x.strip() for x in t.what.splitlines())}（已等 {waited(t.minutes)}）" for t in waiting]
+        out += ["【decision-inbox】收工前请先处理：有会话在等你。", *rows,
+                "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
+                "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。"]
+    if answered:
+        out.append("另外，用户已答复你抛的事项，你还没发【已恢复】：" if waiting
+                   else "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。")
+        out += [*answered, "做完了：发【已恢复】，结束行写这个编号。",
+                "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。"]
+    return Decision(True, "\n".join(out), None)
+
+
+ANSWERED = ("forwarded", "picked", "acknowledged")
+ORIGINAL_CHARS = 40
+
+
+def _answered(g: store.Group, me: str, now: str) -> list[str]:
+    """Items this session raised that the user answered and it has not ended with 【已恢复】 (H17)."""
+    rows = []
+    for it in items.by_status(g, *ANSWERED):
+        if it["sender"] != me or not it["answers"]:
+            continue
+        last = it["answers"][-1]
+        original = "".join(x.strip() for x in last["original"].splitlines())
+        if len(original) > ORIGINAL_CHARS:
+            original = original[:ORIGINAL_CHARS] + "…"
+        minutes = max(0, int((_instant(now) - _instant(last["at"])).total_seconds() // 60))
+        rows.append(f"- #{it['no']} 用户已答复：「{original}」（{waited(minutes)}前）")
+    return rows
+
+
+def _instant(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
