@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: relay-presence-and-doubt
 
 > 依据：`spec/relay-presence-and-doubt.md`（已批准）。任务清单：`tasks/relay-presence-and-doubt/todo.md`。
