@@ -330,6 +330,15 @@ class LifecycleTest(ItemsCase):
         self.assertEqual(self.item(no)["status"], "closed")
         self.assertEqual(self.item(waiting)["status"], "pending")  # not answered yet: untouched
 
+    def test_resumed_with_own_relay_id(self):
+        """e2e-round1-fixes F10: the proposer may end with its own message id."""
+        no, _ = self.answered()
+        relay_id = self.item(no)["relayId"]
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{relay_id}\n"), sender="api-codex", at=T3)
+        self.assertEqual(self.item(no)["status"], "forwarded")
+        closed = items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{relay_id}\n"), sender="fe-codex", at=T3)
+        self.assertEqual((closed, self.item(no)["status"]), ((no,), "closed"))
+
     def test_invalidated_items_do_not_move(self):
         no = self.receive(SINGLE).item
         self.receive(f"【撤回】\n事项：#{no}\n")

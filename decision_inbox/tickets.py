@@ -44,13 +44,34 @@ def _close(tx, doc: dict, no, reason: int, basis: str, at: str, actor: str) -> N
     tx.append_event("tickets.closed", ref=int(no), actor=actor, data={"reason": reason, "basis": basis})
 
 
+def _resolve_end(tx, doc, no: int, sender: str, hints) -> int | None:
+    """A 结束 number as a ticket number, or None when it is not one.
+
+    The hub's own number wins; failing that, a line may write the agent-relay id of
+    its own message, the only number it ever knew (e2e-round1-fixes F10). Item numbers
+    and the sender's own item message ids are decision-queue's business; anything else
+    is reported instead of silently skipped.
+    """
+    if str(no) in doc["tickets"]:
+        return no
+    own = [k for k, t in doc["tickets"].items() if t["relayId"] == no and t["waiter"] == sender]
+    if own:
+        return int(own[0])
+    known = tx.read_state("items").get("items", {})
+    if str(no) in known or any(it["relayId"] == no and it["sender"] == sender for it in known.values()):
+        return None
+    hints.append(Issue("end-unknown", f"#{no} 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西"))
+    return None
+
+
 def _close_by_end_line(tx, doc, ids, sender, reason, basis, at, hints) -> list[int]:
     """Explicit 结束 lines only close the sender's own open tickets (spec 关键决策 2)."""
     closed = []
-    for no in ids:
-        t = doc["tickets"].get(str(no))
-        if t is None:
-            continue  # an item number: decision-queue's business
+    for written in ids:
+        no = _resolve_end(tx, doc, written, sender, hints)
+        if no is None:
+            continue
+        t = doc["tickets"][str(no)]
         if t["waiter"] != sender:
             hints.append(Issue("not-own-ticket", f"#{no} 不是你的等待单，没有关闭"))
         elif t["status"] == "open":

@@ -106,6 +106,28 @@ class OpenAndCloseTest(TicketsCase):
         r = self.receive(f"【已恢复】\n结束：#{item}\n")
         self.assertEqual((r.closed, r.hints), ((), ()))
 
+    def test_end_line_with_own_relay_id(self):
+        """e2e-round1-fixes F10: dev-a only knows its own message id #4544, never the ticket number."""
+        no = self.receive(wait_session(), relay_id=4544).opened
+        other = self.receive(f"【已恢复】\n结束：#4544\n", sender="api-codex", relay_id=4545)
+        self.assertEqual(other.closed, ())
+        self.assertIn("end-unknown", {h.code for h in other.hints})
+        r = self.receive(SINGLE.replace("结束：无", "结束：#4544"), relay_id=4610)
+        self.assertEqual(r.closed, (no,))
+        self.assertEqual(self.ticket(no)["close"]["basis"], "新消息 #4610")
+        self.assertNotIn("end-unknown", {h.code for h in r.hints})
+
+    def test_end_line_matching_nothing_is_reported(self):
+        r = self.receive(f"【已恢复】\n结束：#9999\n")
+        self.assertEqual(r.closed, ())
+        hint = next(h for h in r.hints if h.code == "end-unknown")
+        self.assertEqual(hint.text, "#9999 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西")
+
+    def test_end_line_with_own_item_relay_id_is_not_unknown(self):
+        items.receive(self.g, SINGLE, sender="fe-codex", relay_id=4540, received_at=SENT)
+        r = self.receive(f"【已恢复】\n结束：#4540\n")
+        self.assertEqual((r.closed, r.hints), ((), ()))
+
     def test_unknown_target(self):
         r = self.receive(wait_session(target="后台老王"))
         self.assertIsNotNone(r.opened)

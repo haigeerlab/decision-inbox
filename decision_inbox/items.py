@@ -328,7 +328,11 @@ def on_resumed(g: store.Group, message, sender: str, at: str) -> tuple[int, ...]
     closed = []
     with g.transaction() as tx:
         doc = _doc(tx)
-        for no in message.ends.ids:
+        for written in message.ends.ids:
+            no = written
+            if str(no) not in doc["items"]:  # the proposer's own message id (e2e-round1-fixes F10)
+                no = next((int(k) for k, it in doc["items"].items()
+                           if it["relayId"] == written and it["sender"] == sender), written)
             it = doc["items"].get(str(no))
             if it is not None and it["sender"] == sender and it["status"] in PROGRESS:
                 _set_status(doc, no, "closed", at)

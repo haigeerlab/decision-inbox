@@ -180,7 +180,7 @@ class ReadmeTest(unittest.TestCase):
                        "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视",
                        "【答复告知】",
                        # e2e-round1-fixes F7, F3, F4
-                       "先删掉手贴的旧收件枢纽规则", "亲手输入", "靠收件枢纽遵守约定", "巡视还没跑完过"):
+                       "先删掉手贴的旧收件枢纽规则", "亲手输入", "靠收件枢纽遵守约定", "巡视还没跑完过", "被自动模式拦下"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

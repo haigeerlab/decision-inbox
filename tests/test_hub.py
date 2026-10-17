@@ -607,3 +607,13 @@ class PatrolAlarmTest(HubCase):
         self.assertIsNone(hub.patrol_alarm(self.g, NOW))
         self.patrol(last_run="2026-10-16T05:00:00Z")
         self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}")
+
+
+class EndLineRelayIdTest(HubCase):
+    """e2e-round1-fixes F10 regression: dev-a waits on the hub (#4544), then raises #4610 with 结束：#4544."""
+
+    def test_s0_wait_closed_by_own_message_id(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        self.assertEqual([t["status"] for t in self.tickets().values()], ["open"])
+        self.receive(message(4610, "fe-codex", WAIT_USER.replace("结束：无", "结束：#4544")))
+        self.assertEqual([t["status"] for t in self.tickets().values() if t["relayId"] == 4544], ["closed"])

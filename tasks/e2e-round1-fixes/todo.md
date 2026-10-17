@@ -60,10 +60,11 @@
 - [x] Checkpoint 3（report）：全部测试全绿；推送本分支、开 PR（不合并）；给 spec-guard-monitor 发会话消息说明可以重跑，附分支、版本和改动要点
   - 记录（2026-10-17）：Ran 470 tests, OK；推送 `claude/decision-inbox-e2e-round1-fixes`，开 PR haigeerlab/decision-inbox#2（不合并，仓库没有 CI 检查）；已给 spec-guard-monitor 发会话消息
 
-- [ ] Task 9：结束行认发送方自己的邮箱号（F10），README 记 F9
+- [x] Task 9：结束行认发送方自己的邮箱号（F10），README 记 F9
   - 验收：Spec 验收 13（自己的等待单和事项按邮箱号能关；别人的不关；对不上有 `end-unknown` 提示；约定块有这一句）、验收 14
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/tickets.py`、`items.py`、`onboard.py`、`README.md`、对应测试
+  - 记录（2026-10-17）：6 个新测试先失败；实现后 Ran 475 tests, OK。另有一个守护测试（自己的事项邮箱号不报 `end-unknown`）在实现前就通过，用来防止误报
 
 - [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0
   - 验收：Spec 验收 12；结果写进规格的实测记录
