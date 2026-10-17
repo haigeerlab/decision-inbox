@@ -42,8 +42,9 @@
     3. 不带状态：顶部「本次没带 agent-relay 状态」，没有「全线停住」；
     4. `/item 2` 带存疑状态：「agent-relay #6002：已接受但没读到（送达存疑，来源：agent-relay），唤醒 accepted」
 
-- [ ] Task 6：实测 owesReplies 回落
+- [x] Task 6：实测 owesReplies 回落
   - 验收：Spec 验收 8
   - 说明：先问用户
+  - 记录（2026-10-18）：用户决定跳过，未实测。实测前要先用新代码重接 di-e2e 四个会话（约定块已改），并给开发B 开新任务
 
 - [ ] Checkpoint 3（gate）：模块最终验收，等用户确认

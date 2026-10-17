@@ -92,3 +92,7 @@ hub Reply.sends[i]["alsoAnswers"]: list[int]   # 收件枢纽照填进 bridge_se
 ## 文档建议
 
 README「使用注意事项」表里「消息一直显示已送达却没人读」一行改为指向主视图的「送达存疑」；排查表加「收件枢纽欠回复越来越多」一行。
+
+## 实测记录
+
+2026-10-18：用户决定跳过实测，验收标准 8 未实测。命令行实跑结果见 `tasks/relay-presence-and-doubt/todo.md` 检查点 2：`alsoAnswers` 带上了被默认取代的旧请求，空闲积压、送达存疑、短名、没带状态不报全线停住都按规格显示。
