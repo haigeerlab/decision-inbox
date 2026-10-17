@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 86c6eef67e61 -->
 # Spec: patrol-cadence
 
 > 能力图模块 `patrol-cadence`（2026-10-18 用 add-module 插入，排在 p0-field-fixes 之后）。来源：P0 实测发现 F-P0-6——Claude 桌面版的周期定时任务触发不规律（`*/5` 的巡视在 02:37～03:05 一次也没自动触发）。用户 2026-10-18 批准对策 A＋C＋E、B 作后备；本模块是 E：让巡视的停摆提示和 P3 指标如实反映这种情况。C（向 agent-relay 提「积压重试唤醒」需求）已发出；A（观察 1 小时查原因）在进行，结论写进宿主差异 H24，不属于本模块。
