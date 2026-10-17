@@ -362,6 +362,19 @@ class CommandLineTest(QueryCase):
         self.assertNotIn("正文预览", out)
         self.assertEqual(self.digest(), before)
 
+    def test_flow_heads_with_patrol_alarm(self):
+        """e2e-round1-fixes F4: /flow shows the same alarm as the main view."""
+        import json
+        with self.g.transaction() as tx:
+            tx.write_state("onboarding", {"patrolTask": "decision-inbox-patrol-demo"})
+            tx.write_state("patrol", {"lastRunAt": "2020-01-01T00:00:00Z"})
+        agents = self.file("agents.json", json.dumps({"count": 0, "agents": []}))
+        wakes = self.file("wakes.json", (Path(__file__).resolve().parent / "fixtures" / "relay" /
+                                         "real-wake-jobs.json").read_text(encoding="utf-8"))
+        code, out, _ = self.run_cli("query", "flow", "demo", "--agents", agents, "--wakes", wakes)
+        self.assertEqual(code, 0)
+        self.assertRegex(out.split("\n")[0], r"^⚠ 巡视 \d+ 分钟没跑：去定时任务列表找 decision-inbox-patrol-demo")
+
     def test_errors(self):
         agents = self.file("bad.json", "not json")
         self.assertEqual(self.run_cli("query", "lines", "nope", "--agents", agents)[0], 2)

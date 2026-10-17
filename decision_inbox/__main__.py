@@ -104,6 +104,8 @@ def _query(argv: list[str]) -> int:
         elif args.command == "flow":
             wakes = _parse(relay.parse_wake_jobs, _read(args.wakes))
             now, a, agents, _ = _assess(g, args)
+            if alarm := hub.patrol_alarm(g, now):
+                print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
         elif args.command == "item-ids":
             for relay_id in query.item_message_ids(g, args.number):

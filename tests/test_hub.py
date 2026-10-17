@@ -562,3 +562,45 @@ class RelayedInputTest(HubCase):
         r = hub.reply(self.g, "以后接口都用 snake_case", now=NOW, relayed_from="某会话")
         self.assertEqual(r.sends, [])
         self.assertIn("没有转达给任何会话", r.show)
+
+
+class PatrolAlarmTest(HubCase):
+    """e2e-round1-fixes F4: a patrol stuck on a permission prompt must show, not go quiet."""
+
+    def patrol(self, task_at=None, last_run=None, task="decision-inbox-patrol-demo"):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            if task:
+                doc["patrolTask"] = task
+            if task_at:
+                doc["patrolTaskAt"] = task_at
+            tx.write_state("onboarding", doc)
+            if last_run:
+                tx.write_state("patrol", {"lastRunAt": last_run})
+
+    FIX = "去定时任务列表找 decision-inbox-patrol-demo，看它是否停在权限确认上，批完或立即运行一次"
+
+    def test_never_ran_after_fifteen_minutes(self):
+        self.patrol(task_at="2026-10-16T05:14:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}")
+        self.assertTrue(hub.main_view(self.g, now=NOW).startswith(f"⚠ 巡视还没跑完过一轮：{self.FIX}"))
+
+    def test_stale_last_run(self):
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:10:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}")
+
+    def test_quiet_within_fifteen_minutes(self):
+        self.patrol(task_at="2026-10-16T05:16:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:16:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+
+    def test_no_patrol_task_no_alarm(self):
+        self.patrol(task=None, last_run="2026-10-16T01:00:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+
+    def test_old_group_without_task_time_only_checks_last_run(self):
+        self.patrol()
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+        self.patrol(last_run="2026-10-16T05:00:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}")

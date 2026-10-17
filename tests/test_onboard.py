@@ -318,6 +318,7 @@ class LeaveTest(OnboardCase):
     def test_task_recorded_and_printed_on_teardown(self):
         onboard.record_task("demo", "decision-inbox-patrol-demo-2", now=NOW)
         self.assertEqual(store.read_state(self.g, "onboarding")["patrolTask"], "decision-inbox-patrol-demo-2")
+        self.assertEqual(store.read_state(self.g, "onboarding")["patrolTaskAt"], NOW)  # e2e-round1-fixes F4
         steps = "\n".join(onboard.teardown("demo", project=None, confirm=False, now=NOW).steps)
         self.assertIn("delete_scheduled_task", steps)
         self.assertIn("decision-inbox-patrol-demo-2", steps)

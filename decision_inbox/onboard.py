@@ -366,6 +366,7 @@ def record_task(group: str, task_id: str, now: str) -> None:
     with g.transaction() as tx:
         doc = tx.read_state(DOMAIN)
         doc["patrolTask"] = task_id
+        doc["patrolTaskAt"] = now
         tx.write_state(DOMAIN, doc)
         tx.append_event("onboarding.task", ref=None, actor="hub", data={"taskId": task_id, "at": now})
 

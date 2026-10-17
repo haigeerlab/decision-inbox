@@ -238,9 +238,34 @@ class Reply:
     sends: list = field(default_factory=list)
 
 
+PATROL_STALE_MINUTES = 15  # three missed */5 runs
+
+
+def patrol_alarm(g: store.Group, now: str) -> str | None:
+    """A registered patrol that has not finished a run lately (e2e-round1-fixes F4).
+
+    A run stuck on a permission prompt never writes lastRunAt and blocks every later run,
+    so silence is the only symptom. Groups registered before patrolTaskAt existed are
+    judged by lastRunAt alone.
+    """
+    onboarding = store.read_state(g, "onboarding")
+    task = onboarding.get("patrolTask")
+    if not task:
+        return None
+    fix = f"去定时任务列表找 {task}，看它是否停在权限确认上，批完或立即运行一次"
+    last = store.read_state(g, "patrol").get("lastRunAt")
+    if last is None:
+        since = onboarding.get("patrolTaskAt")
+        if since is not None and view._minutes(now, since) > PATROL_STALE_MINUTES:
+            return f"⚠ 巡视还没跑完过一轮：{fix}"
+        return None
+    idle = view._minutes(now, last)
+    return f"⚠ 巡视 {idle} 分钟没跑：{fix}" if idle > PATROL_STALE_MINUTES else None
+
+
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=()) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
-    head = []
+    head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
         head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
