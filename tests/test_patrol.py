@@ -372,8 +372,10 @@ class HandoffTest(PatrolCase):
         self.assertFalse(any(i.startswith("notify:handoff") for i in self.ids(p)))
 
     def test_kept_when_notices_are_capped(self):
-        for _ in range(3):
-            items.receive(self.g, WAIT_USER, sender="api", relay_id=70, received_at=later(-40))
+        prev = None
+        for _ in range(3):  # parallel on purpose: a new item replaces the old one by default
+            text = WAIT_USER if prev is None else WAIT_USER.replace("【等待用户】", f"【等待用户】【与 #{prev} 并行】")
+            prev = items.receive(self.g, text, sender="api", relay_id=70, received_at=later(-40)).item
         no = self.answered_item(stopped=False)
         p = self.run_round(0, [self.offline("fe-owner")])
         notices = [a.id for a in p.actions if a.kind == "notify"]

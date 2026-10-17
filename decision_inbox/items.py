@@ -111,6 +111,14 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
                             data={"relayId": relay_id, "codes": [p.code for p in problems]})
             tx.write_state(DOMAIN, doc)
             return ReceiveResult(True, False, None, tuple(problems), tuple(hints), _return_text(problems))
+        auto = []
+        if not msg.markers:
+            # No 【取代】 or 【并行】: this session's unanswered item of the same kind is
+            # replaced by default (wait-honesty-and-briefs A7).
+            auto = sorted(int(k) for k, it in doc["items"].items()
+                          if it["sender"] == sender and it["status"] == "pending" and it["multi"] == multi)
+            hints += [Issue("auto-superseded", f"#{old} 已被新事项自动取代；确实要两项都答，请写【与 #{old} 并行】重发")
+                      for old in auto]
         no = tx.allocate_number()
         label = reviews.display_label(g, session=sender, message=msg, received_at=received_at)
         record = _record(msg, sender, relay_id, received_at, multi, label)
@@ -121,6 +129,9 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
         for old in superseded:
             _set_status(doc, old, "superseded", received_at)
             tx.append_event("items.superseded", ref=old, actor=sender, data={"by": no})
+        for old in auto:
+            _set_status(doc, old, "superseded", received_at)
+            tx.append_event("items.superseded", ref=old, actor=sender, data={"by": no, "auto": True})
         tx.write_state(DOMAIN, doc)
     return ReceiveResult(True, True, no, (), tuple(hints))
 

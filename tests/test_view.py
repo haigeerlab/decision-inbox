@@ -270,7 +270,8 @@ class ItemCardTest(ViewCase):
         """relay-checkpoint-authority R4: one copy block answers every recommended card at once."""
         stopped = self.ask(SINGLE, minutes_ago=3)
         loose = self.ask(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), sender="api-codex", minutes_ago=50)
-        plain = self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", ""), minutes_ago=10)
+        plain = self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", "")
+                         .replace("【等待用户】", f"【等待用户】【与 #{stopped} 并行】"), minutes_ago=10)
         text = self.render()
         order = sorted((stopped, loose, plain), key=lambda no: text.index(f"━━ {no} ·"))
         recommended = [no for no in order if no != plain]

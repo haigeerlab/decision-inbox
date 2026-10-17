@@ -142,6 +142,37 @@ class ValidityAndOrderTest(ItemsCase):
         self.assertIn("not-owner", codes(r.problems))
         self.assertEqual(self.item(old)["status"], "pending")
 
+    def test_new_item_supersedes_own_pending_by_default(self):
+        """wait-honesty-and-briefs A7: no marker means the new item replaces this session's unanswered one."""
+        old = self.receive(SINGLE).item
+        other = self.receive(SINGLE, sender="api-codex", relay_id=101).item
+        r = self.receive(SINGLE, relay_id=102, at=T2)
+        self.assertTrue(r.accepted)
+        self.assertEqual(self.item(old)["status"], "superseded")
+        self.assertEqual(self.item(other)["status"], "pending")
+        event = [e for e in store.read_events(self.g, ref=old) if e["type"] == "items.superseded"][-1]
+        self.assertEqual(event["data"], {"by": r.item, "auto": True})
+        hint = next(h for h in r.hints if h.code == "auto-superseded")
+        self.assertEqual(hint.text, f"#{old} 已被新事项自动取代；确实要两项都答，请写【与 #{old} 并行】重发")
+
+    def test_parallel_marker_keeps_the_old_item(self):
+        old = self.receive(SINGLE).item
+        r = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【与 #{old} 并行】"), relay_id=101, at=T2)
+        self.assertEqual(self.item(old)["status"], "pending")
+        self.assertNotIn("auto-superseded", {h.code for h in r.hints})
+
+    def test_single_and_multi_line_items_do_not_replace_each_other(self):
+        multi = self.receive(MULTI, sender="coord").item
+        single = self.receive(SINGLE, sender="coord", relay_id=101, at=T2).item
+        self.assertEqual(self.item(multi)["status"], "pending")
+        self.assertEqual(self.item(single)["status"], "pending")
+
+    def test_answered_items_are_not_superseded(self):
+        old = self.receive(SINGLE).item
+        items.answer(self.g, items.interpret_reply(self.g, f"{old} A").answers, answered_at=T2)
+        self.receive(SINGLE, relay_id=101, at=T2)
+        self.assertEqual(self.item(old)["status"], "forwarded")
+
     def test_withdraw(self):
         old = self.receive(SINGLE).item
         r = self.receive(f"【撤回】\n事项：#{old}\n原因：需求取消\n", relay_id=102)
@@ -156,7 +187,7 @@ class ValidityAndOrderTest(ItemsCase):
 
     def test_pending_order(self):
         not_stopped = self.receive(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), at=T1).item
-        stopped_late = self.receive(SINGLE, at=T3).item
+        stopped_late = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【与 #{not_stopped} 并行】"), at=T3).item
         stopped_early = self.receive(SINGLE, sender="api-codex", at=T2).item
         multi = self.receive(MULTI.replace("适用会话：前端、API", "适用会话：前端、API、前端负责人").replace(
             "选项与我的建议：", "- 前端负责人：只看\n选项与我的建议："), sender="coord", at=T3).item
@@ -209,7 +240,8 @@ class InterpretTest(ItemsCase):
                 self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B"), (self.b, "A")])
 
     def test_questions_instead_of_answers(self):
-        withdrawn = self.receive(SINGLE, sender="fe-codex", at=T3).item
+        withdrawn = self.receive(SINGLE.replace("【等待用户】", f"【等待用户】【与 #{self.a} 并行】"),
+                                 sender="fe-codex", at=T3).item
         self.receive(f"【撤回】\n事项：#{withdrawn}\n")
         for text in ("99 A", f"{withdrawn} A", f"{self.a} D", f"{self.a} A，{self.a} B", "按推荐来"):
             with self.subTest(text=text):
