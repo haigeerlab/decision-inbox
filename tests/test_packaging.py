@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.3")
+        self.assertEqual(claude["version"], "0.0.4")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -147,7 +147,8 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("item-ids", self.read("commands/item.md"))
         self.assertIn("bridge_wake_status", self.read("commands/item.md"))
         setup = self.read("commands/hub-setup.md")
-        for needle in ("get_session", "create_scheduled_task", "onboard task", "立即运行", "bridge_register"):
+        for needle in ("get_session", "create_scheduled_task", "onboard task", "立即运行", "bridge_register",
+                       "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked, not just asked for
             self.assertIn(needle, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
         self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
@@ -177,7 +178,9 @@ class ReadmeTest(unittest.TestCase):
                        "## 日常", "/decision-inbox:lines", "/decision-inbox:flow", "/decision-inbox:item",
                        "/decision-inbox:map", "## 升级", "## 卸载", "/decision-inbox:leave",
                        "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视",
-                       "【答复告知】"):
+                       "【答复告知】",
+                       # e2e-round1-fixes F7, F3, F4
+                       "先删掉手贴的旧收件枢纽规则", "亲手输入", "靠收件枢纽遵守约定", "巡视还没跑完过"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

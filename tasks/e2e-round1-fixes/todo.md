@@ -51,10 +51,11 @@
     6. 巡视登记时间改到 20 分钟前：主视图第一行「⚠ 巡视还没跑完过一轮：去定时任务列表找 decision-inbox-patrol-cp2…」；
     7. 卸载开发A：预览写「确认后会删掉这个文件」，确认后 `dev/` 目录为空
 
-- [ ] Task 7：约定块、hub-setup、README、需求记录、版本 0.0.4
+- [x] Task 7：约定块、hub-setup、README、需求记录、版本 0.0.4
   - 验收：Spec 验收 2、6、8、11
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/onboard.py`、`hub.py`、`commands/hub-setup.md`、`README.md`、`docs/requirements-record.md`、两份 `plugin.json`、对应测试
+  - 记录（2026-10-17）：约定块和版本的 3 个测试先失败；hub-setup 和 README 的断言与实现同一步加入，没有单独看到失败。实现后 Ran 470 tests, OK。共用约定另加一条「收件枢纽不答疑：有疑问抛【等待用户】，不要回问后干等」，与 F2 的退回说明一致
 
 - [ ] Checkpoint 3（report）：全部测试全绿；推送本分支、开 PR（不合并）；给 spec-guard-monitor 发会话消息说明可以重跑，附分支、版本和改动要点
 

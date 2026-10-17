@@ -337,7 +337,10 @@ class ConventionTest(HubCase):
                        "bridge_agents", "/abs/io/said.txt", "includeAcknowledged: true",
                        "python3 -m decision_inbox inbox reply demo --text-file /abs/io/said.txt --agents /abs/io/agents.json",
                        "X 称", "原会话", "不替用户决定", "不改写选项", "不补后果", "不改任何项目的文件",
-                       "以后", "先向用户确认收件人", "一字不改", "maxChars"):
+                       "以后", "先向用户确认收件人", "一字不改", "maxChars",
+                       # e2e-round1-fixes F3: only words the user typed here count
+                       "亲手输入", "Another Claude session sent a message", "<cross-session-message>",
+                       "--relayed-from <来源>", "拿不准来源时按转来处理"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
