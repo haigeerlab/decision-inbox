@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：relay-reader 读出 activity、doubtfulIds、wake.doubt
+- [x] Task 1：relay-reader 读出 activity、doubtfulIds、wake.doubt
   - 验收：有、无三个字段的输入都能读；旧版本输出读出 None／空
   - 验证：`python3 -m unittest discover -s tests -p test_relay.py -v`
   - 文件：`decision_inbox/relay.py`、`tests/test_relay.py`
+  - 记录（2026-10-18）：2 个新测试先报错；实现后 Ran 555 tests, OK。`activity` 只认 busy／idle，其他值读成 None；三个新字段都有默认值，旧输出不受影响
 
 - [ ] Task 2：干活中、信号 5 拆分、没带状态不报全线停住、各线一行说实话
   - 验收：Spec 验收 1、4、5
