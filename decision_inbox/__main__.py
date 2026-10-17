@@ -407,6 +407,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--reviewer")
     p.add_argument("--nodes", default="")
     p.add_argument("--session-cwd")
+    p.add_argument("--checkpoint-authority", action="store_true")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("task")
     p.add_argument("group")
@@ -430,7 +431,7 @@ def _onboard(argv: list[str]) -> int:
             nodes = [n for n in args.nodes.split(",") if n]
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
-                               session_cwd=args.session_cwd)
+                               session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority)
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")

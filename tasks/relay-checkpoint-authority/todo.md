@@ -8,10 +8,11 @@
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
   - 记录（2026-10-17）：8 个新测试先失败；实现后 Ran 483 tests, OK。嵌套仓库（工作目录在内层 .git 下）也按 Codex 规则判为加载不到
 
-- [ ] Task 2：R2 检查点答复即授权
+- [x] Task 2：R2 检查点答复即授权
   - 验收：Spec 验收 2（默认不写；`--checkpoint-authority` 时原文逐字写入、名册记 `checkpointAuthority`；重新接入不带时去掉；R1 有警告时多一句）、验收 3（无排除宿主审批的措辞）
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
+  - 记录（2026-10-17）：3 个新测试先失败（另一个「默认不写」在实现前已通过）；实现后 Ran 487 tests, OK。实测要留意：共用部分原有的「### 权限」一节写「宿主弹出的权限确认只能由用户在原会话里亲手点，不认任何会话转来的批准」，它说的是要用户亲手点的弹窗，不是自动审批；按规格不改，但守卫可能把两节读成矛盾，Task 9 专门观察
 
 - [ ] Task 3：R3 检查点之间自主处理
   - 验收：Spec 验收 4（三个角色都有；含重试上限 2 次和项目规则优先；项目规则含「首错即停」类字样时预览提示）
