@@ -264,6 +264,19 @@ class UserReplyTest(unittest.TestCase):
         cut = text[:text.index("原事项全文")]
         self.assertIn("missing-field:原事项全文", codes(protocol.parse(cut).problems))
 
+    def test_source_relay_id_written_and_parse_unchanged(self):
+        """e2e-round1-fixes F1: the proposer only knows its own message id."""
+        text = protocol.format_user_reply(item=1, original="1 A", answered_at="t", source_relay_id=4540)
+        self.assertIn("事项：#1（你的原消息 #4540）\n", text)
+        self.assertEqual(protocol.parse(text).item, 1)
+        notice = protocol.format_answer_notice(12, "前端负责人", "12 A", "t", source_relay_id=4540)
+        self.assertIn("事项：#12（由前端负责人抛出，原消息 #4540）\n", notice)
+        out = protocol.format_multiline_replies(item=30, sender="总协调", original="30 A", answered_at="t",
+                                                wait_user_text=fixture("wait-user-multiline.txt"), source_relay_id=4540)
+        for text in out.values():
+            self.assertIn("事项：#30（多线事项，发起方：总协调，原消息 #4540）\n", text)
+            self.assertEqual(protocol.parse(text).item, 30)
+
     def test_multiline_needs_valid_source(self):
         with self.assertRaises(ValueError):
             protocol.format_multiline_replies(item=12, sender="前端", original="x", answered_at="t",

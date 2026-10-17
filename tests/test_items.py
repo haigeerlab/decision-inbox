@@ -240,6 +240,11 @@ class AnswerTest(ItemsCase):
         self.assertEqual(self.item(no)["status"], "forwarded")
         self.assertEqual(store.read_events(self.g, ref=no)[-1]["type"], "items.answered")
 
+    def test_reply_names_the_proposers_message(self):
+        no = self.receive(SINGLE, relay_id=4540).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        self.assertIn(f"事项：#{no}（你的原消息 #4540）", out[0].text)
+
     def test_free_sentence_forwarded_verbatim(self):
         no = self.receive(SINGLE).item
         text = f"{no} 按推荐来，支付宝下周再说"

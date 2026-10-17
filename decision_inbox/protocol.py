@@ -372,9 +372,16 @@ def parse(text: str) -> Message:
                    conclusion=conclusion)
 
 
-def format_user_reply(item: int, original: str, answered_at: str, option_text: str | None = None) -> str:
+def _source(relay_id) -> str:
+    """The proposer's own agent-relay id: it only knows that one, not the hub's item number (e2e-round1-fixes F1)."""
+    return "" if relay_id is None else f"原消息 #{relay_id}"
+
+
+def format_user_reply(item: int, original: str, answered_at: str, option_text: str | None = None,
+                      source_relay_id=None) -> str:
     """【用户答复】 to the proposer; the user's words are copied unchanged (requirement 6.4)."""
-    lines = ["【用户答复】", f"事项：#{item}", f"用户原话：{original}"]
+    head = f"事项：#{item}" if source_relay_id is None else f"事项：#{item}（你的{_source(source_relay_id)}）"
+    lines = ["【用户答复】", head, f"用户原话：{original}"]
     if option_text is not None:
         m = _OPTION_RE.match(option_text.strip())
         if not m:
@@ -384,24 +391,27 @@ def format_user_reply(item: int, original: str, answered_at: str, option_text: s
     return "\n".join(lines) + "\n"
 
 
-def format_answer_notice(item: int, owner_short: str, original: str, answered_at: str) -> str:
+def format_answer_notice(item: int, owner_short: str, original: str, answered_at: str,
+                         source_relay_id=None) -> str:
     """【答复告知】 to an owner's dev lines: information only, never an approval (answer-handoff-gaps)."""
-    return "\n".join(["【答复告知】", f"事项：#{item}（由{owner_short}抛出）", f"用户原话：{original}",
+    origin = f"由{owner_short}抛出" + ("" if source_relay_id is None else f"，{_source(source_relay_id)}")
+    return "\n".join(["【答复告知】", f"事项：#{item}（{origin}）", f"用户原话：{original}",
                       f"答复时间：{answered_at}",
                       "说明：这条只是告知，不是批准，不作执行依据；等负责人转交后，按转交的范围执行。"]) + "\n"
 
 
 def format_multiline_replies(item: int, sender: str, original: str, answered_at: str,
-                             wait_user_text: str) -> dict[str, str]:
+                             wait_user_text: str, source_relay_id=None) -> dict[str, str]:
     """One 【用户答复】 per session in 适用会话, each with its own scope (requirement 4.4)."""
     source = parse(wait_user_text)
     if source.kind != "wait-user" or not source.ok or not source.lines_in_scope:
         raise ValueError("wait_user_text must be a valid multi-line 【等待用户】")
     full = wait_user_text.rstrip("\n")
+    origin = f"多线事项，发起方：{sender}" + ("" if source_relay_id is None else f"，{_source(source_relay_id)}")
     return {
         line: "\n".join([
             "【用户答复】",
-            f"事项：#{item}（多线事项，发起方：{sender}）",
+            f"事项：#{item}（{origin}）",
             f"用户原话：{original}",
             f"适用于你的范围：{source.scopes[line]}",
             f"答复时间：{answered_at}",

@@ -160,7 +160,8 @@ def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
     if it["multi"] or owner is None or owner["role"] != "owner" or not it["answers"]:
         return []
     last = it["answers"][-1]
-    text = protocol.format_answer_notice(it["no"], owner["shortName"], last["original"], last["at"])
+    text = protocol.format_answer_notice(it["no"], owner["shortName"], last["original"], last["at"],
+                                         source_relay_id=it["relayId"])
     return [(e["relayName"], text) for e in store.roster(g)
             if e["role"] == "dev" and set(e["line"]) & set(owner["line"])]
 

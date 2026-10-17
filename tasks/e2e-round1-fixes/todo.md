@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：答复、多线答复、告知写原消息号
+- [x] Task 1：答复、多线答复、告知写原消息号
   - 验收：Spec 验收 1（三种正文都带「原消息 #R」；`source_relay_id` 为空时正文不变；带括号的「事项」解析出的事项号不变）；F1 回归：开发A 抛 #4540，答「1 A」，答复正文含「你的原消息 #4540」
   - 验证：`python3 -m unittest discover -s tests -p "test_*.py" -v`
   - 文件：`decision_inbox/protocol.py`、`items.py`、`hub.py`、对应测试
+  - 记录（2026-10-17）：4 个新测试先失败；实现后 Ran 451 tests, OK。【答复告知】本来不被 `protocol.parse` 识别（kind 为 unknown），测试改为只核对正文
 
 - [ ] Task 2：开发线追问自动退回
   - 验收：Spec 验收 3（标了要回复或填了 replyTo 的未知消息退回；replyTo 指向已发答复或告知时第三行带事项号和原消息号；主视图附注照旧；异常计数加一）、验收 4（回复退回消息、bridge 通知不退回；没标要回复的未知消息只记附注）；F2 回归：#4543 产生退回

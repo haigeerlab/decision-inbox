@@ -449,8 +449,15 @@ class AnswerNoticeTest(HubCase):
         self.assertIn("已转达：#1 → 前端负责人（另告知：前端）", r.show)
         body = Path(r.sends[1]["bodyFile"]).read_text(encoding="utf-8")
         self.assertEqual(body, "\n".join([
-            "【答复告知】", "事项：#1（由前端负责人抛出）", "用户原话：1 A", f"答复时间：{NOW}",
+            "【答复告知】", "事项：#1（由前端负责人抛出，原消息 #1501）", "用户原话：1 A", f"答复时间：{NOW}",
             "说明：这条只是告知，不是批准，不作执行依据；等负责人转交后，按转交的范围执行。"]) + "\n")
+
+    def test_s0_answer_names_the_dev_message(self):
+        """e2e-round1-fixes F1 regression: dev-a raised #4540 and only knows that id."""
+        self.receive(message(4540, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertIn("事项：#1（你的原消息 #4540）", body)
 
     def test_multiline_and_dev_items_not_copied(self):
         self.receive(message(1502, "fe-owner", MULTI))
