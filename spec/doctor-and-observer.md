@@ -106,3 +106,7 @@ onboard.permission_preview(hub_dir) -> (path, diff)   # 只预览；写入要 --
 ## 文档建议
 
 README 加「使用注意事项」表、`doctor` 与 `query stats`／`query events` 的用法；`docs/host-differences.md` 按第 7 条修订。
+
+## 实测记录
+
+2026-10-18：用户决定跳过 S1、S3，验收标准 10 未实测。命令行实跑结果见 `tasks/doctor-and-observer/todo.md` 检查点 2；doctor 在 di-e2e 上实跑发现：巡视 350 分钟没跑、本机 Codex 没装 decision-inbox 也没有钩子信任记录（S3 的前提），以及目录型插件市场的版本记录是旧的（已修，见宿主差异 H21）。
