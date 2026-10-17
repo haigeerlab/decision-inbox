@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.7")
+        self.assertEqual(claude["version"], "0.0.8")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -190,7 +190,9 @@ class ReadmeTest(unittest.TestCase):
                        "可能已失效", "本次没带 agent-relay 状态",
                        # doctor-and-observer
                        "## 使用注意事项", "doctor --report", "onboard allow", "query stats", "query events",
-                       "（有参考意见）"):
+                       "（有参考意见）",
+                       # protocol-contract-v1
+                       "## 消息协议", "session-protocol"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")
