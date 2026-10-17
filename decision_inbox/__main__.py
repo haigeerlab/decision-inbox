@@ -360,6 +360,11 @@ def _view(argv: list[str]) -> int:
 
 
 def _print_outcome(out, confirm: bool) -> None:
+    if out.warnings:
+        for warning in out.warnings:
+            print(f"⚠ {warning}")
+        for note in onboard.CODEX_NOTES:
+            print(f"  {note}")
     if out.drops:
         state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
                  else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
@@ -401,6 +406,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--project", default=".")
     p.add_argument("--reviewer")
     p.add_argument("--nodes", default="")
+    p.add_argument("--session-cwd")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("task")
     p.add_argument("group")
@@ -423,7 +429,8 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "join":
             nodes = [n for n in args.nodes.split(",") if n]
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
-                               args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now)
+                               args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
+                               session_cwd=args.session_cwd)
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")

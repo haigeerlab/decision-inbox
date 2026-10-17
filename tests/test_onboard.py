@@ -409,6 +409,91 @@ class CreatedRulesTest(OnboardCase):
         self.assertIn("接入时新建，删掉约定块后为空，确认后会删掉这个文件", buf.getvalue())
 
 
+class CodexLoadsTest(OnboardCase):
+    """relay-checkpoint-authority R1: Codex only loads AGENTS.md from the git root down to its cwd."""
+
+    def repo(self, name):
+        path = self.dir(name)
+        (path / ".git").mkdir(exist_ok=True)
+        return path
+
+    def test_cwd_is_rules_dir_or_below_in_same_repo(self):
+        repo = self.repo("app")
+        sub = repo / "web"
+        sub.mkdir()
+        self.assertEqual(onboard.codex_loads(repo / "AGENTS.md", repo), [])
+        self.assertEqual(onboard.codex_loads(repo / "AGENTS.md", sub), [])
+
+    def test_no_git_only_cwd_counts(self):
+        plain = self.dir("plain")
+        sub = plain / "inner"
+        sub.mkdir()
+        self.assertEqual(onboard.codex_loads(plain / "AGENTS.md", plain), [])
+        reasons = onboard.codex_loads(plain / "AGENTS.md", sub)
+        self.assertEqual(len(reasons), 1)
+        self.assertIn(f"在 {plain} 里开 Codex 会话", reasons[0])
+
+    def test_rules_outside_the_chain(self):
+        repo = self.repo("app")
+        elsewhere = self.dir("scratch")
+        reasons = onboard.codex_loads(repo / "AGENTS.md", elsewhere)
+        self.assertEqual(len(reasons), 1)
+        self.assertIn(f"会话的工作目录是 {elsewhere}", reasons[0])
+        self.assertIn(f"在 {repo} 里开 Codex 会话", reasons[0])
+        nested = self.repo("app/pkg")  # a nested repo stops the walk below the outer rules file
+        self.assertTrue(onboard.codex_loads(repo / "AGENTS.md", nested))
+
+    def test_override_shadows(self):
+        repo = self.repo("app")
+        (repo / "AGENTS.override.md").write_text("x", encoding="utf-8")
+        reasons = onboard.codex_loads(repo / "AGENTS.md", repo)
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("AGENTS.override.md", reasons[0])
+
+    def test_size_limit_counts_the_new_text(self):
+        repo = self.repo("app")
+        sub = repo / "web"
+        sub.mkdir()
+        (sub / "AGENTS.md").write_text("一" * 8000, encoding="utf-8")  # 24000 bytes
+        self.assertEqual(onboard.codex_loads(repo / "AGENTS.md", sub, rules_text="a" * 8000), [])
+        reasons = onboard.codex_loads(repo / "AGENTS.md", sub, rules_text="a" * 9000)
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("32KiB", reasons[0])
+
+    def join_fe(self, project, cwd, confirm=False, host="codex-desktop"):
+        self.hub()
+        return onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host=host,
+                            lines=["前端"], desktop_session=None, project=project, reviewer=None, nodes=[],
+                            confirm=confirm, now=NOW, session_cwd=cwd)
+
+    def test_join_warns_but_still_writes(self):
+        repo = self.repo("app")
+        out = self.join_fe(repo, self.dir("scratch"), confirm=True)
+        self.assertEqual(len(out.warnings), 1)
+        self.assertIn("BEGIN decision-inbox dev", (repo / "AGENTS.md").read_text(encoding="utf-8"))
+
+    def test_claude_sessions_are_not_checked(self):
+        repo = self.repo("app")
+        out = self.join_fe(repo, self.dir("scratch"), host="claude-desktop")
+        self.assertEqual(out.warnings, [])
+
+    def test_preview_prints_warnings_first(self):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        repo = self.repo("app")
+        self.hub()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            main(["onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-codex", "--short-name", "前端",
+                  "--host", "codex-desktop", "--line", "前端", "--project", str(repo),
+                  "--session-cwd", str(self.dir("scratch"))])
+        lines = buf.getvalue().split("\n")
+        self.assertTrue(lines[0].startswith("⚠ "), lines[0])
+        self.assertIn("Codex 不加载不受信任项目的 AGENTS.md", buf.getvalue())
+        self.assertIn("按 Codex 默认规则判断", buf.getvalue())
+
+
 class CommandLineTest(OnboardCase):
     def run_cli(self, *argv):
         import contextlib

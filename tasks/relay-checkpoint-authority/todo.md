@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：R1 核对 Codex 会话能否加载约定块
+- [x] Task 1：R1 核对 Codex 会话能否加载约定块
   - 验收：Spec 验收 1（工作目录即规则目录、在其子目录同一 git 仓库时不警告；规则目录在 git 根之上、无 `.git` 且目录不同、有 `AGENTS.override.md`、超过 32KiB 时警告并写明应在哪个目录开会话；Claude 会话不核对；警告不阻止写入）
   - 验证：`python3 -m unittest discover -s tests -p test_onboard.py -v`
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、`tests/test_onboard.py`
+  - 记录（2026-10-17）：8 个新测试先失败；实现后 Ran 483 tests, OK。嵌套仓库（工作目录在内层 .git 下）也按 Codex 规则判为加载不到
 
 - [ ] Task 2：R2 检查点答复即授权
   - 验收：Spec 验收 2（默认不写；`--checkpoint-authority` 时原文逐字写入、名册记 `checkpointAuthority`；重新接入不带时去掉；R1 有警告时多一句）、验收 3（无排除宿主审批的措辞）

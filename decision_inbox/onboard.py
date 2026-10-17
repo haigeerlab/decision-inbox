@@ -241,6 +241,7 @@ class Outcome:
     entry: dict
     steps: list = field(default_factory=list)
     patrol_prompt: str | None = None
+    warnings: list = field(default_factory=list)  # shown first in the preview (relay-checkpoint-authority R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
 
 
@@ -333,8 +334,48 @@ def _check_reviewer(g: store.Group, role: str, reviewer: str | None, nodes) -> N
         raise JoinError(f"审查节点只能是 {'、'.join(reviews.NODES)} 中的若干类")
 
 
+CODEX_DOC_MAX_BYTES = 32 * 1024  # Codex's default project_doc_max_bytes
+CODEX_NOTES = ("Codex 不加载不受信任项目的 AGENTS.md，请确认已信任这个项目",
+               "以上按 Codex 默认规则判断（项目根标记 .git、AGENTS.md 总量上限 32KiB），改过这两项设置时可能不准")
+
+
+def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[str]:
+    """Why a Codex session in `session_cwd` would not see `rules_file`; empty when it would.
+
+    Codex walks up from its cwd to the nearest directory holding .git and loads every
+    AGENTS.md from there down to the cwd (an AGENTS.override.md in a directory replaces
+    it); with no .git above, only the cwd counts. Nothing above that root is read, and
+    the total is capped (openai/codex codex-rs/core/src/agents_md.rs).
+    """
+    rules_file = Path(os.path.abspath(rules_file))
+    cwd = Path(os.path.abspath(session_cwd))
+    home = rules_file.parent
+    chain = [cwd]
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".git").exists():
+            chain = [d for d in [cwd, *cwd.parents] if d == parent or parent in d.parents]
+            break
+    if home not in chain:
+        span = f"{chain[-1]} 到 {cwd} 这一段" if len(chain) > 1 else f"{cwd} 这一个目录"
+        return [f"约定块写在 {rules_file}，会话的工作目录是 {cwd}：Codex 只加载 {span}的 AGENTS.md，看不到约定块。"
+                f"请在 {home} 里开 Codex 会话（它下面的子目录也行，但要和它在同一个 git 仓库里）"]
+    reasons = []
+    if (home / "AGENTS.override.md").exists():
+        reasons.append(f"{home} 里有 AGENTS.override.md，Codex 会用它取代 AGENTS.md，约定块不会被加载")
+    total = 0
+    for d in chain:
+        if d == home:
+            total += len((rules_text if rules_text is not None else _read(rules_file)).encode("utf-8"))
+        elif (d / "AGENTS.md").is_file():
+            total += (d / "AGENTS.md").stat().st_size
+    if total > CODEX_DOC_MAX_BYTES:
+        reasons.append(f"从项目根到工作目录的 AGENTS.md 加起来 {total} 字节，超过 Codex 默认的 32KiB 上限，"
+                       "约定块可能被截掉；请精简这些文件")
+    return reasons
+
+
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
-         project, reviewer, nodes, confirm: bool, now: str) -> Outcome:
+         project, reviewer, nodes, confirm: bool, now: str, session_cwd=None) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
@@ -357,6 +398,8 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
+    if host == "codex-desktop":
+        out.warnings = codex_loads(rules, session_cwd or os.getcwd(), rules_text=after)
     if confirm:
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
