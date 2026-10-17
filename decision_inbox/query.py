@@ -415,6 +415,7 @@ class Stats:
     superseded: int
     auto_superseded: int
     returned: int
+    questions_returned: int        # a line asked the hub and got the fixed answer (hub state, not events)
     relayed_refused: int
     open_tickets: int
     stale_tickets: int
@@ -451,6 +452,8 @@ def stats(g: store.Group, since: str | None = None) -> Stats:
         to_resume=_span([minutes(answered[no], at) for no, at in closed.items() if no in answered]),
         superseded=len(superseded), auto_superseded=sum(bool(e["data"].get("auto")) for e in superseded),
         returned=sum(e["type"] == "items.returned" for e in events),
+        questions_returned=sum(1 for rec in store.read_state(g, "hub").get("unknown", {}).values()
+                               if rec.get("returned") and (since is None or rec["at"][:10] >= since)),
         relayed_refused=sum(e["type"] == "hub.relayed-input" for e in events),
         open_tickets=len(open_), stale_tickets=len(tickets.stale_tickets(g)),
     )
@@ -475,7 +478,7 @@ def render_stats(s: Stats, group: str, since: str | None) -> str:
         f"绕过收件枢纽结束：{bypassed}",
         _span_text("抛出→答复", s.to_answer),
         _span_text("答复→恢复", s.to_resume),
-        f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 拒收转述 {s.relayed_refused} 次",
+        f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 追问被退回 {s.questions_returned} 次 · 拒收转述 {s.relayed_refused} 次",
         f"现在开着的等待单 {s.open_tickets} 单{stale}",
     ])
 

@@ -32,6 +32,10 @@ class StatsCase(TempHomeTestCase):
             for seq, (t, ref, actor, at, data) in enumerate(E, start=1):
                 f.write(json.dumps({"seq": seq, "at": at, "type": t, "ref": ref, "actor": actor, "data": data},
                                    ensure_ascii=False) + "\n")
+        with self.g.transaction() as tx:
+            tx.write_state("hub", {"unknown": {
+                "107": {"sender": "dev", "at": "2026-10-18T09:09:00+08:00", "returned": True},
+                "108": {"sender": "dev", "at": "2026-10-18T09:10:00+08:00", "returned": False}}})
 
 
 class StatsTest(StatsCase):
@@ -41,7 +45,8 @@ class StatsTest(StatsCase):
         self.assertEqual(s.bypassed, (3,))
         self.assertEqual((s.to_answer.median, s.to_answer.longest, s.to_answer.count), (20, 30, 2))
         self.assertEqual((s.to_resume.median, s.to_resume.longest, s.to_resume.count), (17.5, 30, 2))
-        self.assertEqual((s.superseded, s.auto_superseded, s.returned, s.relayed_refused), (2, 1, 1, 1))
+        self.assertEqual((s.superseded, s.auto_superseded, s.returned, s.questions_returned, s.relayed_refused),
+                         (2, 1, 1, 1, 1))
 
     def test_since_filters_by_day(self):
         s = query.stats(self.g, since="2026-10-18")
@@ -53,7 +58,7 @@ class StatsTest(StatsCase):
         self.assertIn("绕过收件枢纽结束：1 项（#3）", text)
         self.assertIn("抛出→答复：中位 20 分钟，最长 30 分钟（2 项）", text)
         self.assertIn("答复→恢复：中位 17.5 分钟，最长 30 分钟（2 项）", text)
-        self.assertIn("被取代 2 项（其中自动 1 项） · 退回 1 次 · 拒收转述 1 次", text)
+        self.assertIn("被取代 2 项（其中自动 1 项） · 退回 1 次 · 追问被退回 1 次 · 拒收转述 1 次", text)
         self.assertIn("现在开着的等待单 0 单", text)
         empty = query.render_stats(query.stats(self.g, since="2030-01-01"), "g", "2030-01-01")
         self.assertIn("抛出→答复：没有数据", empty)
