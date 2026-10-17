@@ -7,7 +7,7 @@
   - 验证：`python3 -m unittest discover -s tests -p test_stophook.py -v`
   - 文件：`decision_inbox/stophook.py`、`tests/test_stophook.py`
 
-- [ ] Task 2：巡视处理离线负责人压着的答复
+- [x] Task 2：巡视处理离线负责人压着的答复
   - 验收：Spec 验收 4（当轮出 `wake:<负责人>` 和 `notify:handoff:…`，文字含编号、短名、挡住的线数）、验收 5（排最前；超过 3 条时最后才合并）、验收 6（取走或上线后清记录；不重复通知；离线的是开发线时行为不变；叫醒不重复）
   - 验证：`python3 -m unittest discover -s tests -p test_patrol.py -v`
   - 文件：`decision_inbox/patrol.py`、`tests/test_patrol.py`

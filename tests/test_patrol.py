@@ -319,3 +319,64 @@ class CommandLineTest(PatrolCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HandoffTest(PatrolCase):
+    """answer-handoff-gaps 已定事项 2：答复积压在离线负责人时当轮叫醒并通知。"""
+
+    def answered_item(self, sender="fe-owner", minutes_ago=40, stopped=True):
+        text = WAIT_USER if stopped else WAIT_USER.replace("是否完全停住：是", "是否完全停住：否")
+        no = items.receive(self.g, text, sender=sender, relay_id=50, received_at=later(-minutes_ago)).item
+        items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=later(-1))
+        return no
+
+    def offline(self, name):
+        return agent(name, state="stopped", waiting=(1, ["hub"], 1))
+
+    def test_offline_owner_woken_and_user_told_in_the_same_round(self):
+        no = self.answered_item()
+        p = self.run_round(0, [self.offline("fe-owner")])
+        self.assertEqual(self.ids(p).count("wake:fe-owner"), 1)
+        notices = [a for a in p.actions if a.kind == "notify"]
+        self.assertEqual(notices[0].id, f"notify:handoff:{no}|fe-owner")
+        self.assertEqual(notices[0].text, f"decision-inbox：#{no} 的答复卡在离线的前端负责人，挡住 1 条线，详见收件枢纽")
+        wake = next(a for a in p.actions if a.id == "wake:fe-owner")
+        self.assertIn(f"#{no}", wake.text)
+
+    def test_told_once_then_cleared_when_owner_is_back(self):
+        no = self.answered_item()
+        self.run_round(0, [self.offline("fe-owner")])
+        again = self.run_round(5, [self.offline("fe-owner")])
+        self.assertNotIn(f"notify:handoff:{no}|fe-owner", self.ids(again))
+        self.run_round(10, [agent("fe-owner", state="running")])
+        self.assertNotIn(f"handoff:{no}|fe-owner", store.read_state(self.g, "patrol")["notices"])
+
+    def test_cleared_once_picked(self):
+        no = self.answered_item()
+        self.run_round(0, [self.offline("fe-owner")])
+        items.record_sent(self.g, no, to="fe-owner", relay_id=60, at=later(1))
+        items.update_delivery(self.g, {60: ("accepted", None)}, at=later(2))
+        p = self.run_round(5, [self.offline("fe-owner")])
+        self.assertFalse(any(i.startswith("notify:handoff") for i in self.ids(p)))
+        self.assertNotIn(f"handoff:{no}|fe-owner", store.read_state(self.g, "patrol")["notices"])
+
+    def test_owner_without_desktop_session_still_told(self):
+        no = self.answered_item(sender="api-owner")
+        p = self.run_round(0, [self.offline("api-owner")])
+        self.assertIn(f"notify:handoff:{no}|api-owner", self.ids(p))
+        self.assertNotIn("wake:api-owner", self.ids(p))
+
+    def test_offline_dev_unchanged(self):
+        no = self.answered_item(sender="fe")
+        p = self.run_round(0, [agent("fe", app="codex", state="stopped", waiting=(1, ["hub"], 1))])
+        self.assertFalse(any(i.startswith("notify:handoff") for i in self.ids(p)))
+
+    def test_kept_when_notices_are_capped(self):
+        for _ in range(3):
+            items.receive(self.g, WAIT_USER, sender="api", relay_id=70, received_at=later(-40))
+        no = self.answered_item(stopped=False)
+        p = self.run_round(0, [self.offline("fe-owner")])
+        notices = [a.id for a in p.actions if a.kind == "notify"]
+        self.assertEqual(len(notices), 3)
+        self.assertEqual(notices[0], f"notify:handoff:{no}|fe-owner")
+        self.assertEqual(notices[-1], "notify:more")

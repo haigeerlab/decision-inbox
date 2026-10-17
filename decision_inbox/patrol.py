@@ -77,6 +77,8 @@ def _fact(ctx: _Context, name: str):
 def _wake(ctx: _Context, entry: dict, text: str) -> None:
     """Wake a stopped Claude session once per offline episode; tell the user if that did not help."""
     name, short = entry["relayName"], entry["shortName"]
+    if name in ctx.plan.live["wakes"]:
+        return  # already handled this round (a stuck answer wakes the owner first)
     ctx.plan.live["wakes"].append(name)
     if not entry.get("desktopSession"):
         ctx.notify(f"unwakeable:{name}", f"{short} 停着，名册里没登记它的桌面版会话，叫不醒，请手动打开")
@@ -137,6 +139,21 @@ def _alerts(ctx: _Context, signals) -> None:
             ctx.notify(f"escalate:{key}", f"{short}：{signal.text}；负责人 {health.ESCALATE_MINUTES} 分钟没处理")
 
 
+def _handoffs(ctx: _Context) -> None:
+    """answer-handoff-gaps 已定事项 2: an answer queued for an offline owner wakes it and tells the user now."""
+    for it in items.by_status(ctx.g, "forwarded"):
+        for name in it["recipients"]:
+            entry = store.find_session(ctx.g, relay_name=name)
+            fact = _fact(ctx, name)
+            if entry is None or entry["role"] != "owner" or fact is None or fact.presence not in OFFLINE:
+                continue
+            blocks = items._blocks(it)
+            held = f"，挡住 {blocks} 条线" if blocks else ""
+            ctx.notify(f"handoff:{it['no']}|{name}", f"#{it['no']} 的答复卡在离线的{entry['shortName']}{held}")
+            if entry.get("desktopSession"):
+                _wake(ctx, entry, f"【decision-inbox 巡视】用户对 #{it['no']} 的答复在等你取走并转交，请查看收件箱。")
+
+
 def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
     """Signal 1, items holding lines up too long, and an unreadable agent-relay (spec 已定事项 5, 关键决策 5)."""
     for signal in signals:
@@ -170,6 +187,7 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     result = Plan(now=now, snapshot=assessment.snapshot)
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
     ctx = _Context(g, now, relay, state, result)
+    _handoffs(ctx)  # first, so its notices lead the round and survive the cap
     _user_notices(ctx, assessment.signals, relay_error)
     _wakes(ctx)
     _alerts(ctx, assessment.signals)
