@@ -57,7 +57,8 @@
   - 文件：`decision_inbox/onboard.py`、`hub.py`、`commands/hub-setup.md`、`README.md`、`docs/requirements-record.md`、两份 `plugin.json`、对应测试
   - 记录（2026-10-17）：约定块和版本的 3 个测试先失败；hub-setup 和 README 的断言与实现同一步加入，没有单独看到失败。实现后 Ran 470 tests, OK。共用约定另加一条「收件枢纽不答疑：有疑问抛【等待用户】，不要回问后干等」，与 F2 的退回说明一致
 
-- [ ] Checkpoint 3（report）：全部测试全绿；推送本分支、开 PR（不合并）；给 spec-guard-monitor 发会话消息说明可以重跑，附分支、版本和改动要点
+- [x] Checkpoint 3（report）：全部测试全绿；推送本分支、开 PR（不合并）；给 spec-guard-monitor 发会话消息说明可以重跑，附分支、版本和改动要点
+  - 记录（2026-10-17）：Ran 470 tests, OK；推送 `claude/decision-inbox-e2e-round1-fixes`，开 PR haigeerlab/decision-inbox#2（不合并，仓库没有 CI 检查）；已给 spec-guard-monitor 发会话消息
 
 - [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0
   - 验收：Spec 验收 12；结果写进规格的实测记录
