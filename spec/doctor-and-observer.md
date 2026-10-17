@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 24db4374debf -->
+<!-- spec-guard: review approved 6e61d5465fed -->
 # Spec: doctor-and-observer
 
 > 能力图模块 `doctor-and-observer`（2026-10-17 用 add-module 插入，排在 wait-honesty-and-briefs 之后）。来源：`docs/requirements-record.md` 第 13 节「后续模块待办」与 13.5「依赖插件升级核对」；spec-guard-monitor 转来的审查清单 A4、A5、A6、A10、C、C1、D、E（经用户同意转来）。用户在本会话同意按「模块乙」拆分；agent-relay 0.8 的新字段（空闲／忙碌、送达存疑、合并答复）另开模块丙，不在本模块。
