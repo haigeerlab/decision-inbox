@@ -13,7 +13,7 @@ from datetime import datetime
 from decision_inbox import items, store, tickets
 
 RECENT_MINUTES = 10
-OPTION_CHARS = 30
+COPY_LABEL = "推荐回复（点代码块右上角复制，发给我）："  # says what the copy block is even when it is not rendered
 TOPIC_CHARS = 20
 FORWARDED = ("forwarded", "picked", "acknowledged", "closed")
 INVALIDATED = ("superseded", "withdrawn")
@@ -130,14 +130,14 @@ def _anomaly_row(g: store.Group, signal) -> str:
     return f"- {who}：{signal.text}。建议：{advice(g, signal)}"
 
 
-def _anomaly_section(g: store.Group, assessment) -> str | None:
-    rows = [_anomaly_row(g, s) for s in _anomalies(assessment)]
+def _anomaly_section(g: store.Group, assessment, extra=()) -> str | None:
+    rows = [_anomaly_row(g, s) for s in _anomalies(assessment)] + list(extra)
     return "\n".join(["异常", *rows]) if rows else None
 
 
-def _overview(g: store.Group, now: str, assessment) -> str:
+def _overview(g: store.Group, now: str, assessment, extra=()) -> str:
     decide = len(items.pending(g)) + len(_needs_user(g, assessment))
-    text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment))}"
+    text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment)) + len(extra)}"
     recent = [it for it in items.by_status(g, *FORWARDED)
               if _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES]
     if recent:
@@ -189,11 +189,11 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
     if rec is not None:
         options = [rec] + [o for o in options if o is not rec]
     for o in options:
-        first = clip(o["text"].split("\n")[0], OPTION_CHARS)
+        first = o["text"].split("\n")[0]  # whole first line: clipped options looked alike (e2e-round1-fixes F12)
         out.append(f"推荐 {o['letter']}：{first}" if o is rec else f"{o['letter']}：{first}")
         out.append(f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}")
         if o is rec:
-            out += ["```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
+            out += [COPY_LABEL, "```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
         else:
             out.append(f"  回 {no} {o['letter']}")
     return "\n".join(out + _review_lines(it))
@@ -204,11 +204,14 @@ def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
     return confirms + [_item_card(g, now, it) for it in items.pending(g)]
 
 
-def render(g: store.Group, now: str, assessment, relay=None) -> str:
-    """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts."""
+def render(g: store.Group, now: str, assessment, relay=None, extra=()) -> str:
+    """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts.
+
+    `extra` holds anomaly rows the caller found outside line-health (hub-loop's returned questions).
+    """
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
-    head.append(_overview(g, now, assessment))
-    sections = ["\n".join(head), _anomaly_section(g, assessment), *_cards(g, now, assessment, relay),
+    head.append(_overview(g, now, assessment, extra))
+    sections = ["\n".join(head), _anomaly_section(g, assessment, extra), *_cards(g, now, assessment, relay),
                 _footer(g, now)]
     return "\n\n".join(s for s in sections if s)
 

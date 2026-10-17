@@ -66,7 +66,7 @@ class StripTest(unittest.TestCase):
 COMMON = ("协作组「demo」", "di-hub", "bridge_send", "replyTo", "回复：#", "expectsReply",
           "【等待用户】", "【等待其他会话】", "【已恢复】", "【撤回】", "【取代 #", "【与 #", "结束：",
           "选了会怎样", "你该回", "只认收件枢纽", "回显", "不是用户批准", "被挡住", "悄悄停下", "停止钩子", "原会话",
-          "做完要发【已恢复】")
+          "做完要发【已恢复】", "括号里的原消息号是你自己发出的那条", "收件枢纽给这个事项编的号", "或你自己那条消息的邮箱号")
 ONLY = {
     "dev": ("只抛本线", "架构审查：", "交付时", "适用于你的范围", "【答复告知】只是告知，不是批准"),
     "owner": ("【讨论】", "【审查结论】", "【进度】", "【提案已抛】", "审查编号", "模块：", "送审方",
@@ -318,6 +318,7 @@ class LeaveTest(OnboardCase):
     def test_task_recorded_and_printed_on_teardown(self):
         onboard.record_task("demo", "decision-inbox-patrol-demo-2", now=NOW)
         self.assertEqual(store.read_state(self.g, "onboarding")["patrolTask"], "decision-inbox-patrol-demo-2")
+        self.assertEqual(store.read_state(self.g, "onboarding")["patrolTaskAt"], NOW)  # e2e-round1-fixes F4
         steps = "\n".join(onboard.teardown("demo", project=None, confirm=False, now=NOW).steps)
         self.assertIn("delete_scheduled_task", steps)
         self.assertIn("decision-inbox-patrol-demo-2", steps)
@@ -359,6 +360,53 @@ class LeaveTest(OnboardCase):
         onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
         out = onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
         self.assertFalse(out.changed)
+
+
+class CreatedRulesTest(OnboardCase):
+    """e2e-round1-fixes F6: a rules file the join created and the leave emptied is removed."""
+
+    def join_fe(self):
+        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+
+    def test_created_and_emptied_file_is_dropped(self):
+        self.hub()
+        rules = self.project / "hub" / "CLAUDE.md"
+        out = onboard.teardown("demo", project=None, confirm=False, now=NOW)
+        self.assertTrue(out.drops)
+        self.assertTrue(rules.is_file())  # preview changes nothing
+        onboard.teardown("demo", project=None, confirm=True, now=NOW)
+        self.assertFalse(rules.exists())
+        self.assertNotIn(str(rules), store.read_state(store.open_group("demo"), "onboarding").get("created", {}))
+        again = onboard.teardown("demo", project=None, confirm=True, now=NOW)
+        self.assertEqual((again.changed, again.drops), (False, False))
+
+    def test_existing_file_is_kept_even_if_empty_after(self):
+        (self.dir("hub") / "CLAUDE.md").write_text("\n", encoding="utf-8")
+        self.hub()
+        out = onboard.teardown("demo", project=None, confirm=True, now=NOW)
+        self.assertFalse(out.drops)
+        self.assertTrue((self.project / "hub" / "CLAUDE.md").is_file())
+
+    def test_created_file_with_user_content_is_kept(self):
+        self.hub()
+        self.join_fe()
+        rules = self.project / "fe" / "AGENTS.md"
+        rules.write_text(rules.read_text(encoding="utf-8") + "\n# 我后来加的\n", encoding="utf-8")
+        out = onboard.leave("demo", relay_name="fe-codex", project=None, confirm=True, now=NOW)
+        self.assertFalse(out.drops)
+        self.assertEqual(rules.read_text(encoding="utf-8").strip(), "# 我后来加的")
+
+    def test_preview_says_it_will_drop(self):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        self.hub()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            main(["onboard", "teardown", "demo"])
+        self.assertIn("接入时新建，删掉约定块后为空，确认后会删掉这个文件", buf.getvalue())
 
 
 class CommandLineTest(OnboardCase):

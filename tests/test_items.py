@@ -240,6 +240,11 @@ class AnswerTest(ItemsCase):
         self.assertEqual(self.item(no)["status"], "forwarded")
         self.assertEqual(store.read_events(self.g, ref=no)[-1]["type"], "items.answered")
 
+    def test_reply_names_the_proposers_message(self):
+        no = self.receive(SINGLE, relay_id=4540).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        self.assertIn(f"事项：#{no}（你的原消息 #4540）", out[0].text)
+
     def test_free_sentence_forwarded_verbatim(self):
         no = self.receive(SINGLE).item
         text = f"{no} 按推荐来，支付宝下周再说"
@@ -324,6 +329,15 @@ class LifecycleTest(ItemsCase):
         items.on_resumed(self.g, mine, sender="fe-codex", at=T3)
         self.assertEqual(self.item(no)["status"], "closed")
         self.assertEqual(self.item(waiting)["status"], "pending")  # not answered yet: untouched
+
+    def test_resumed_with_own_relay_id(self):
+        """e2e-round1-fixes F10: the proposer may end with its own message id."""
+        no, _ = self.answered()
+        relay_id = self.item(no)["relayId"]
+        items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{relay_id}\n"), sender="api-codex", at=T3)
+        self.assertEqual(self.item(no)["status"], "forwarded")
+        closed = items.on_resumed(self.g, protocol.parse(f"【已恢复】\n结束：#{relay_id}\n"), sender="fe-codex", at=T3)
+        self.assertEqual((closed, self.item(no)["status"]), ((no,), "closed"))
 
     def test_invalidated_items_do_not_move(self):
         no = self.receive(SINGLE).item

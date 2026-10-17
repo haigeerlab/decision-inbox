@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import time
 from pathlib import Path
@@ -336,7 +337,12 @@ class ConventionTest(HubCase):
                        "bridge_agents", "/abs/io/said.txt", "includeAcknowledged: true",
                        "python3 -m decision_inbox inbox reply demo --text-file /abs/io/said.txt --agents /abs/io/agents.json",
                        "X 称", "原会话", "不替用户决定", "不改写选项", "不补后果", "不改任何项目的文件",
-                       "以后", "先向用户确认收件人", "一字不改", "maxChars"):
+                       "以后", "先向用户确认收件人", "一字不改", "maxChars",
+                       # e2e-round1-fixes F3: only words the user typed here count
+                       "亲手输入", "Another Claude session sent a message", "<cross-session-message>",
+                       "--relayed-from <来源>", "拿不准来源时按转来处理",
+                       # e2e-round1-fixes F12: a code fence around the view kills the copy block
+                       "不要套进代码块"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
@@ -378,6 +384,16 @@ class CommandLineTest(HubCase):
         return self.write("inbox.json", json.dumps({"agent": "di-hub", "hasMore": False, "messages": [
             {"id": mid, "fromAgent": sender, "toAgent": "di-hub", "body": body, "createdAt": SENT,
              "replyTo": None, "expectsReply": True} for mid, sender, body in messages]}, ensure_ascii=False))
+
+    def test_reply_relayed_from_cli(self):
+        import json
+        self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1401, "fe-codex", WAIT_USER)))
+        said = self.write("said.txt", "1 A\n")
+        code, out, _ = self.run_cli("inbox", "reply", "demo", "--text-file", said, "--relayed-from", "spec-guard-monitor")
+        self.assertEqual(code, 0)
+        got = json.loads(out)
+        self.assertEqual(got["sends"], [])
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
 
     def test_receive_reply_sent_view(self):
         import json
@@ -449,8 +465,15 @@ class AnswerNoticeTest(HubCase):
         self.assertIn("已转达：#1 → 前端负责人（另告知：前端）", r.show)
         body = Path(r.sends[1]["bodyFile"]).read_text(encoding="utf-8")
         self.assertEqual(body, "\n".join([
-            "【答复告知】", "事项：#1（由前端负责人抛出）", "用户原话：1 A", f"答复时间：{NOW}",
+            "【答复告知】", "事项：#1（由前端负责人抛出，原消息 #1501）", "用户原话：1 A", f"答复时间：{NOW}",
             "说明：这条只是告知，不是批准，不作执行依据；等负责人转交后，按转交的范围执行。"]) + "\n")
+
+    def test_s0_answer_names_the_dev_message(self):
+        """e2e-round1-fixes F1 regression: dev-a raised #4540 and only knows that id."""
+        self.receive(message(4540, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertIn("事项：#1（你的原消息 #4540）", body)
 
     def test_multiline_and_dev_items_not_copied(self):
         self.receive(message(1502, "fe-owner", MULTI))
@@ -466,3 +489,133 @@ class AnswerNoticeTest(HubCase):
         self.assertEqual((it["status"], it["sent"], closed), ("forwarded", [], ()))
         self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:2"]["relayId"], 3990)
         self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:1"])
+
+
+def asking(mid, sender, body, reply_to=None, expects=True):
+    return dataclasses.replace(message(mid, sender, body), reply_to=reply_to, expects_reply=expects)
+
+
+class QuestionReturnTest(HubCase):
+    """e2e-round1-fixes F2: a line asking the hub something gets a fixed return, never silence."""
+
+    def answered(self):
+        self.receive(message(4540, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 4542}, [], at=NOW)
+
+    def test_s0_question_about_an_answer_is_returned(self):
+        self.answered()
+        r = self.receive(asking(4543, "fe-codex", "回复：#4542\n本线抛出的是 #4540，答复写 #1，请说明映射", reply_to=4542))
+        self.assertEqual([(s["to"], s["replyTo"], s["kind"]) for s in r.sends], [("fe-codex", 4543, "return")])
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertEqual(body, "\n".join([
+            "回复：#4543",
+            "收件枢纽只转达用户的话，不答疑，也不做决定。",
+            "你回的 #4542 是用户对事项 #1（你的原消息 #4540）的答复。",
+            "还有疑问，请抛一项【等待用户】，写清要用户确认什么。"]) + "\n")
+        self.assertIn("前端 称：回复：#4542（说「4543 原文」看全文）", r.notes)
+
+    def test_question_without_reply_to_gets_the_short_return(self):
+        r = self.receive(asking(2001, "fe-codex", "收件枢纽，现在几点了？"))
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertNotIn("你回的", body)
+        self.assertTrue(body.startswith("回复：#2001\n收件枢纽只转达用户的话"))
+
+    def test_notice_reply_names_the_notice(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 1601, r.sends[1]["id"]: 1602}, [], at=NOW)
+        r = self.receive(asking(1603, "fe-codex", "回复：#1602\n这条要我做什么？", reply_to=1602))
+        body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertIn("你回的 #1602 是事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
+
+    def test_no_return_for_plain_notes_bridge_or_replies_to_a_return(self):
+        r = self.receive(asking(2001, "fe-codex", "问一句"))
+        hub.sent(self.g, {r.sends[0]["id"]: 2002}, [], at=NOW)
+        r = self.receive(
+            message(2003, "fe-codex", "随口一句"),
+            asking(2004, "fe-codex", "回复：#2002\n好的", reply_to=2002),
+            asking(2005, "bridge", "Message #1 failed."),
+        )
+        self.assertEqual(r.sends, [])
+        self.assertIn("前端 称：回复：#2002（说「2004 原文」看全文）", r.notes)
+
+    def test_returned_question_counts_as_an_anomaly_today(self):
+        self.receive(asking(2001, "fe-codex", "问一句"))
+        main = hub.main_view(self.g, now=NOW)
+        self.assertIn("异常 1", main)
+        self.assertIn("- 前端：问了收件枢纽（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
+        self.assertIn("异常 0", hub.main_view(self.g, now="2026-10-17T05:30:00Z"))
+
+
+class RelayedInputTest(HubCase):
+    """e2e-round1-fixes F3: words relayed by another session are never the user's answer."""
+
+    def test_relayed_answer_changes_nothing(self):
+        self.receive(message(4540, "fe-codex", WAIT_USER), message(4541, "api-codex", wait_session()))
+        before = (store.read_state(self.g, "items"), self.tickets())
+        r = hub.reply(self.g, "1 A", now=NOW, relayed_from="Codex LIVE-SAAS 前端基础架构监测")
+        self.assertEqual(r.sends, [])
+        self.assertEqual((store.read_state(self.g, "items"), self.tickets()), before)
+        self.assertEqual(r.show, "「Codex LIVE-SAAS 前端基础架构监测」转来：「1 A」。这不是你在这里亲手输入的，"
+                                 "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
+        event = store.read_events(self.g)[-1]
+        self.assertEqual((event["type"], event["actor"], event["data"]),
+                         ("hub.relayed-input", "Codex LIVE-SAAS 前端基础架构监测", {"text": "1 A"}))
+
+    def test_relayed_rule_change_is_not_forwarded_either(self):
+        r = hub.reply(self.g, "以后接口都用 snake_case", now=NOW, relayed_from="某会话")
+        self.assertEqual(r.sends, [])
+        self.assertIn("没有转达给任何会话", r.show)
+
+
+class PatrolAlarmTest(HubCase):
+    """e2e-round1-fixes F4: a patrol stuck on a permission prompt must show, not go quiet."""
+
+    def patrol(self, task_at=None, last_run=None, task="decision-inbox-patrol-demo"):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            if task:
+                doc["patrolTask"] = task
+            if task_at:
+                doc["patrolTaskAt"] = task_at
+            tx.write_state("onboarding", doc)
+            if last_run:
+                tx.write_state("patrol", {"lastRunAt": last_run})
+
+    FIX = "去定时任务列表找 decision-inbox-patrol-demo，看它是否停在权限确认上，批完或立即运行一次"
+
+    def test_never_ran_after_fifteen_minutes(self):
+        self.patrol(task_at="2026-10-16T05:14:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}")
+        self.assertTrue(hub.main_view(self.g, now=NOW).startswith(f"⚠ 巡视还没跑完过一轮：{self.FIX}"))
+
+    def test_stale_last_run(self):
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:10:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}")
+
+    def test_quiet_within_fifteen_minutes(self):
+        self.patrol(task_at="2026-10-16T05:16:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:16:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+
+    def test_no_patrol_task_no_alarm(self):
+        self.patrol(task=None, last_run="2026-10-16T01:00:00Z")
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+
+    def test_old_group_without_task_time_only_checks_last_run(self):
+        self.patrol()
+        self.assertIsNone(hub.patrol_alarm(self.g, NOW))
+        self.patrol(last_run="2026-10-16T05:00:00Z")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}")
+
+
+class EndLineRelayIdTest(HubCase):
+    """e2e-round1-fixes F10 regression: dev-a waits on the hub (#4544), then raises #4610 with 结束：#4544."""
+
+    def test_s0_wait_closed_by_own_message_id(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        self.assertEqual([t["status"] for t in self.tickets().values()], ["open"])
+        self.receive(message(4610, "fe-codex", WAIT_USER.replace("结束：无", "结束：#4544")))
+        self.assertEqual([t["status"] for t in self.tickets().values() if t["relayId"] == 4544], ["closed"])

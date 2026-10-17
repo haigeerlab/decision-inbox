@@ -223,6 +223,7 @@ class ItemCardTest(ViewCase):
             "要你决定：支付页先接哪种支付方式",
             "推荐 A：先接微信支付",
             "  选了会怎样：本周能上线支付页，支付宝下周补",
+            "推荐回复（点代码块右上角复制，发给我）：",
             "```",
             f"{no} A 先接微信支付",
             "```",
@@ -249,10 +250,11 @@ class ItemCardTest(ViewCase):
         no = self.ask(text)
         c = card(self.render(), no)
         self.assertNotIn("```", c)
-        self.assertNotIn("推荐", c)
+        self.assertNotIn("推荐", c)  # no 「推荐回复」 line either
         self.assertIn(f"A：先接微信支付\n  选了会怎样：本周能上线支付页，支付宝下周补\n  回 {no} A", c)
 
-    def test_truncation_and_not_stopped(self):
+    def test_long_option_shown_whole_topic_clipped(self):
+        """e2e-round1-fixes F12: a clipped option like `{"name":"d…` cannot be told apart."""
         long_option = "一" * 31
         long_topic = "二" * 21
         text = (SINGLE.replace("B. 先接支付宝", f"B. {long_option}")
@@ -261,7 +263,7 @@ class ItemCardTest(ViewCase):
         no = self.ask(text, minutes_ago=90)
         c = card(self.render(), no)
         self.assertEqual(c.split("\n")[0], f"━━ {no} · 前端 · {'二' * 20}… · 1 小时前")
-        self.assertIn(f"B：{'一' * 30}…\n", c)
+        self.assertIn(f"B：{'一' * 31}\n", c)
         self.assertNotIn("挡住", c)
 
     def test_multiline_source(self):
@@ -310,10 +312,15 @@ SPEC = Path(__file__).resolve().parent.parent / "spec" / "hub-view.md"
 
 
 def spec_sample() -> str:
-    """The 主视图样例 block of the spec, with its code-block placeholder made a real code block."""
+    """The 主视图样例 block of the spec, with its code-block placeholder made a real code block.
+
+    e2e-round1-fixes F12 reworks hub-view (the accepted spec stays as written): the copy block
+    now has a 「推荐回复」 line above it.
+    """
     text = SPEC.read_text(encoding="utf-8")
     body = text.split("## 主视图样例", 1)[1].split("```text\n", 1)[1].split("\n```", 1)[0]
-    return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）", "```\n12 A 先接微信支付\n```")
+    return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）",
+                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```")
 
 
 class AnomalyTest(ViewCase):

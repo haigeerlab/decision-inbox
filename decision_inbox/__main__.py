@@ -104,6 +104,8 @@ def _query(argv: list[str]) -> int:
         elif args.command == "flow":
             wakes = _parse(relay.parse_wake_jobs, _read(args.wakes))
             now, a, agents, _ = _assess(g, args)
+            if alarm := hub.patrol_alarm(g, now):
+                print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
         elif args.command == "item-ids":
             for relay_id in query.item_message_ids(g, args.number):
@@ -263,6 +265,7 @@ def _inbox(argv: list[str]) -> int:
     p.add_argument("--text-file", required=True)
     p.add_argument("--agents")
     p.add_argument("--relay-version")
+    p.add_argument("--relayed-from")
     p = sub.add_parser("sent")
     p.add_argument("group")
     p.add_argument("--done", nargs="*", default=[])
@@ -289,7 +292,8 @@ def _inbox(argv: list[str]) -> int:
         _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more})
     elif args.command == "reply":
         text = Path(args.text_file).read_text(encoding="utf-8")
-        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g))
+        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g),
+                      relayed_from=args.relayed_from)
         _print_json({"show": r.show, "sends": r.sends})
     elif args.command == "sent":
         done = {}
@@ -356,13 +360,16 @@ def _view(argv: list[str]) -> int:
 
 
 def _print_outcome(out, confirm: bool) -> None:
-    if not out.changed:
+    if out.drops:
+        state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
+                 else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
+    elif not out.changed:
         state = "没有变化"
     else:
         state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
     print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
-    if out.changed:
+    if out.changed and not out.drops:
         print("改动后的规则文件全文：")
         print(out.after, end="" if out.after.endswith("\n") else "\n")
     if out.steps:

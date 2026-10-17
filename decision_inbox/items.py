@@ -266,11 +266,13 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
             option = next((o for o in it["options"] if o["letter"] == a.letter), None)
             option_text = f"{option['letter']}：{option['text']}" if option else None
             batch = [Outgoing(it["sender"], protocol.format_user_reply(
-                item=a.item, original=a.original, answered_at=answered_at, option_text=option_text), a.item)]
+                item=a.item, original=a.original, answered_at=answered_at, option_text=option_text,
+                source_relay_id=it["relayId"]), a.item)]
             if it["multi"]:
                 sender = (store.find_session(g, relay_name=it["sender"]) or {}).get("shortName", it["sender"])
                 texts = protocol.format_multiline_replies(item=a.item, sender=sender, original=a.original,
-                                                          answered_at=answered_at, wait_user_text=it["text"])
+                                                          answered_at=answered_at, wait_user_text=it["text"],
+                                                          source_relay_id=it["relayId"])
                 for short, text in texts.items():
                     batch.append(Outgoing(store.find_session(g, short_name=short)["relayName"], text, a.item))
             it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at})
@@ -326,7 +328,11 @@ def on_resumed(g: store.Group, message, sender: str, at: str) -> tuple[int, ...]
     closed = []
     with g.transaction() as tx:
         doc = _doc(tx)
-        for no in message.ends.ids:
+        for written in message.ends.ids:
+            no = written
+            if str(no) not in doc["items"]:  # the proposer's own message id (e2e-round1-fixes F10)
+                no = next((int(k) for k, it in doc["items"].items()
+                           if it["relayId"] == written and it["sender"] == sender), written)
             it = doc["items"].get(str(no))
             if it is not None and it["sender"] == sender and it["status"] in PROGRESS:
                 _set_status(doc, no, "closed", at)
