@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved e97b2d73c4b7 -->
 # Spec: p0-field-fixes
 
 > 能力图模块 `p0-field-fixes`（2026-10-18 用 add-module 插入，排在 protocol-contract-v1-4 之后）。来源：第 ⑥ 阶段实地验收 P0 在测试组 di-p0 的补测（2026-10-18）。owesReplies 回落与 S3（Codex 停止钩子）实测通过；S1（负责人离线叫醒）未通过，另有四项实测发现。用户 2026-10-18 决定 P0 不算通过，插入本模块修 F-P0-1～5，顺带把契约升到 v1.5，修好后在 di-p0 只重测 S1。
