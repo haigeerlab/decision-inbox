@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: protocol-contract-v1
 
 > 依据：`spec/protocol-contract-v1.md`（已批准）。任务清单：`tasks/protocol-contract-v1/todo.md`。
