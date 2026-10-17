@@ -748,3 +748,16 @@ agent-relay 路线图（由其维护方告知，2026-10-16）：
 - **实测补缺口**（A10）：至少补 S1（负责人离线自动叫醒）、S3（Codex 桌面版停止钩子）。
 
 其他观察（未定去处）：各线一行仍按可能已失效的等待单写「阻塞：等X」；`inbox reply` 附的主视图读不到 agent-relay 时按「没带」写。
+
+### 13.5 依赖插件升级核对（2026-10-17 晚）
+
+本机实际版本：spec-guard 0.67.0（Claude）；agent-relay 0.8.2（两边，接口 2.5，信箱 schema 7）；delegate 仍是 0.5.2（Claude）与 0.5.0（Codex），没有 `interface.json`，最新发布是 0.5.3。
+
+- **spec-guard 0.67.0**：`interface.json` 与 0.66.0 相同（接口 1.0）。新增的是它自己读 delegate 的 `interface.json`：版本 `>=1.0,<2.0` 才用文件里的命令名；文件不存在按老版本处理、不当成没装。本插件读 delegate 时照同一规则。
+- **delegate 0.5.3**：`plugins/delegate/interface.json` 接口 1.0，`review.command` `/delegate:review`（后端 codex、claude-code，只读，报告 schemaVersion 1）、`run.command` `/delegate:run`（只 codex，写入要显式）、`doctor.command` `/delegate:doctor`。
+- **agent-relay 0.8.0–0.8.2**，对本插件有用的新事实（已在本机 `bridge_agents` 实读到）：
+  - `presence.activity`（Claude 会话 `running` 时 `busy`／`idle`）：现在主视图把「running 且有积压」一律写「已忙 N 分钟」，空闲时是错的，应改为按 activity 区分。
+  - 送达存疑：`waiting.doubtfulIds`、`bridge_outbox`／`bridge_wake_status` 的 `wake.doubt`（Codex 唤醒 accepted 满 5 分钟仍未读）。主视图和巡视应显示「送达存疑」，提示完全退出 ChatGPT 再打开那个任务，而不是当成已送达。
+  - `bridge_send` 的 `alsoAnswers`（一份答复关多条请求）与 `withdraws`（撤回自己发出的请求）、`bridge_outbox` 的 `closedBy`、结果 `withdrawn`。收件枢纽转达合并答复时可一次关掉多条；事项被取代时可撤回旧请求。`owesReplies` 不再统计已关闭的请求。
+  - `bridge_agents` 带参数时分页（`hasMore`／`nextAfterName`）；不带参数行为不变，本插件现有调用不受影响。
+  - 接口文档写明 `lastSeen`／`lastActivity` 不是心跳、`running` 不代表信箱连接正常（D231），doctor 与巡视按此解释。
