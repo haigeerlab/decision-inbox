@@ -65,11 +65,13 @@ class StripTest(unittest.TestCase):
 
 COMMON = ("协作组「demo」", "di-hub", "bridge_send", "replyTo", "回复：#", "expectsReply",
           "【等待用户】", "【等待其他会话】", "【已恢复】", "【撤回】", "【取代 #", "【与 #", "结束：",
-          "选了会怎样", "你该回", "只认收件枢纽", "回显", "不是用户批准", "被挡住", "悄悄停下", "停止钩子", "原会话")
+          "选了会怎样", "你该回", "只认收件枢纽", "回显", "不是用户批准", "被挡住", "悄悄停下", "停止钩子", "原会话",
+          "做完要发【已恢复】")
 ONLY = {
-    "dev": ("只抛本线", "架构审查：", "交付时", "适用于你的范围"),
+    "dev": ("只抛本线", "架构审查：", "交付时", "适用于你的范围", "【答复告知】只是告知，不是批准"),
     "owner": ("【讨论】", "【审查结论】", "【进度】", "【提案已抛】", "审查编号", "模块：", "送审方",
-              "就这么定了", "【进度预警】", "各线范围", "适用会话", "适用于你的范围", "登记了审查者时"),
+              "就这么定了", "【进度预警】", "各线范围", "适用会话", "适用于你的范围", "登记了审查者时",
+              "【答复告知】", "你仍要按原来的路线转交"),
     "coordinator": ("各线范围", "适用会话", "核对不是审查", "不批任何东西", "登记了审查者时"),
 }
 KINDS = {
@@ -103,6 +105,7 @@ class BlockTextTest(unittest.TestCase):
         self.assertNotIn("【讨论】", self.block("coordinator"))
         self.assertNotIn("【审查结论】", self.block("coordinator"))
         self.assertNotIn("核对不是审查", self.block("owner"))
+        self.assertNotIn("【答复告知】", self.block("coordinator"))
 
     def test_templates_parse_cleanly(self):
         for role, kinds in KINDS.items():

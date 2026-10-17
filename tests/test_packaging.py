@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.2")
+        self.assertEqual(claude["version"], "0.0.3")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -176,7 +176,8 @@ class ReadmeTest(unittest.TestCase):
                        "收件枢纽", "负责人", "开发线", "/decision-inbox:hub-setup", "/decision-inbox:join",
                        "## 日常", "/decision-inbox:lines", "/decision-inbox:flow", "/decision-inbox:item",
                        "/decision-inbox:map", "## 升级", "## 卸载", "/decision-inbox:leave",
-                       "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视"):
+                       "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视",
+                       "【答复告知】"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")
