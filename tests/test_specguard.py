@@ -208,3 +208,55 @@ class NoShellTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InterfaceTest(LocateCase):
+    """doctor-and-observer Task 1: read spec-guard through its interface.json."""
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.install("user", "0.67.0", script=False)
+        (self.root / "hooks" / "mv2.py").write_text(FAKE, encoding="utf-8")
+        (self.root / "hooks" / "map_view.py").write_text(FAKE, encoding="utf-8")
+        (self.root / "hooks" / "behavior.json").write_text(
+            json.dumps({"stdout": fixture("map-0.63.json")}), encoding="utf-8")
+        self.write_records({"spec-guard@m": [{"scope": "user", "installPath": str(self.root), "version": "0.67.0"}]})
+
+    def write_interface(self, text):
+        (self.root / "interface.json").write_text(text, encoding="utf-8")
+
+    def iface(self, version="1.0", script="hooks/mv2.py"):
+        return json.dumps({"interface": version, "mapView": {
+            "command": ["python3", "-B", script, "--json", "--project", "<project-root>"], "schemaVersion": 1}})
+
+    def test_command_from_interface(self):
+        self.write_interface(self.iface())
+        found = specguard.locate(project=str(self.project))
+        self.assertIsInstance(found, specguard.Located)
+        self.assertEqual(found.path, str(self.root / "hooks" / "mv2.py"))
+        self.assertEqual((found.interface.state, found.interface.version), ("ok", "1.0"))
+        self.assertEqual(specguard.read_line(project=str(self.project)).status, "ok")
+
+    def test_absent_and_unreadable_fall_back(self):
+        found = specguard.locate(project=str(self.project))
+        self.assertEqual((found.path, found.interface.state), (str(self.root / "hooks" / "map_view.py"), "absent"))
+        self.write_interface("{not json")
+        found = specguard.locate(project=str(self.project))
+        self.assertEqual((found.path, found.interface.state), (str(self.root / "hooks" / "map_view.py"), "unreadable"))
+        self.assertEqual(specguard.read_line(project=str(self.project)).status, "ok")
+
+    def test_incompatible_major_is_not_read(self):
+        self.write_interface(self.iface(version="2.0"))
+        found = specguard.locate(project=str(self.project))
+        self.assertIsInstance(found, specguard.Incompatible)
+        r = specguard.read_line(project=str(self.project))
+        self.assertEqual(r.status, "incompatible")
+        self.assertEqual(r.reason, "spec-guard 接口版本不兼容（2.0），本插件只认 1.x")
+        self.assertNotIn("没", r.reason)
+
+    def test_unknown_schema_version_in_interface_is_incompatible(self):
+        self.write_interface(json.dumps({"interface": "1.1", "mapView": {
+            "command": ["python3", "-B", "hooks/mv2.py", "--json", "--project", "<project-root>"], "schemaVersion": 2}}))
+        r = specguard.read_line(project=str(self.project))
+        self.assertEqual(r.status, "incompatible")
+        self.assertIn("schemaVersion 2", r.reason)

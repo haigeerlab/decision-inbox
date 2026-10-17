@@ -1,5 +1,8 @@
 """Read-only access to spec-guard's map_view.py (see spec/spec-guard-reader.md).
 
+The command comes from spec-guard's interface.json when it has one (0.66.0+,
+spec/doctor-and-observer.md decision 2); older installs fall back to hooks/map_view.py.
+
 The capability map and todo files are never parsed here; spec-guard owns that
 logic and this module only runs its script and reads its JSON.
 """
@@ -13,13 +16,20 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-PLUGIN_PREFIX = "spec-guard@"
+from . import deps
+
+PLUGIN = "spec-guard"
+INTERFACE_MAJOR = 1
+SCHEMA_VERSION = 1
+PROJECT_PLACEHOLDER = "<project-root>"
 
 
 @dataclass(frozen=True)
 class Located:
     path: str
     version: str | None
+    interface: deps.Interface = deps.Interface("absent")
+    argv: tuple[str, ...] = ()        # map-view command with the project left as PROJECT_PLACEHOLDER
 
 
 @dataclass(frozen=True)
@@ -27,38 +37,58 @@ class Missing:
     reason: str
 
 
-def _records_file() -> Path:
-    override = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
-    return Path(override) if override else Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+@dataclass(frozen=True)
+class Incompatible:
+    reason: str
+    version: str | None
 
 
-def locate(project: str) -> Located | Missing:
-    """Find map_view.py from Claude's install records; a project-scope install for `project` wins."""
-    path = _records_file()
-    try:
-        records = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return Missing(f"找不到 Claude 的插件安装记录：{path}")
-    except (OSError, json.JSONDecodeError) as e:
-        return Missing(f"插件安装记录读不出：{path}（{e}）")
-    entries = [e for key, value in (records.get("plugins") or {}).items()
-               if key.startswith(PLUGIN_PREFIX) for e in (value or []) if isinstance(e, dict)]
-    if not entries:
-        return Missing("本机没有安装 spec-guard")
-    project_path = os.path.realpath(project)
-    scoped = [e for e in entries if e.get("projectPath")
-              and os.path.realpath(e["projectPath"]) == project_path]
-    users = [e for e in entries if e.get("scope") == "user"]
-    chosen = (scoped or users or [None])[0]
-    if chosen is None:
-        return Missing("spec-guard 只装在别的项目里，这个仓库用不到")
-    script = Path(chosen.get("installPath", "")) / "hooks" / "map_view.py"
+def _from_interface(root: Path, iface: deps.Interface) -> tuple[str, tuple[str, ...]] | Incompatible | None:
+    """Script path and argv from interface.json's mapView; None when the file gives no usable command."""
+    view = iface.data.get("mapView")
+    if not isinstance(view, dict):
+        return None
+    if view.get("schemaVersion") != SCHEMA_VERSION:
+        return Incompatible(f"spec-guard 的 map-view 是 schemaVersion {view.get('schemaVersion')}，本插件只认 1",
+                            iface.version)
+    command = view.get("command")
+    if not isinstance(command, list) or not all(isinstance(c, str) for c in command):
+        return None
+    argv, script = [], None
+    for part in command:
+        if part == "python3":
+            argv.append(sys.executable)
+        elif script is None and part.endswith(".py"):
+            script = str(root / part)
+            argv.append(script)
+        else:
+            argv.append(part)
+    if script is None or not Path(script).is_file():
+        return None
+    return script, tuple(argv)
+
+
+def locate(project: str) -> Located | Missing | Incompatible:
+    """Find spec-guard's map-view: from interface.json when it is there, else the known script path."""
+    found = deps.find(PLUGIN, project)
+    if isinstance(found, deps.NotFound):
+        return Missing(found.reason)
+    root = Path(found.root)
+    iface = deps.read_interface(found.root, INTERFACE_MAJOR)
+    if iface.state == "incompatible":
+        return Incompatible(f"spec-guard 接口版本不兼容（{iface.version}），本插件只认 1.x", iface.version)
+    if iface.state == "ok":
+        picked = _from_interface(root, iface)
+        if isinstance(picked, Incompatible):
+            return picked
+        if picked is not None:
+            return Located(picked[0], found.version, iface, picked[1])
+    script = root / "hooks" / "map_view.py"
     if not script.is_file():
         return Missing(f"spec-guard 的安装目录里没有 map_view.py：{script}")
-    return Located(str(script), chosen.get("version"))
+    return Located(str(script), found.version, iface)
 
 
-SCHEMA_VERSION = 1
 
 
 class BadOutput(ValueError):
@@ -198,7 +228,10 @@ def read_line(project: str, timeout: float = DEFAULT_TIMEOUT) -> ReadResult:
     found = locate(project)
     if isinstance(found, Missing):
         return ReadResult("not-installed", found.reason)
-    argv = [sys.executable, "-B", found.path, "--project", project, "--json"]
+    if isinstance(found, Incompatible):
+        return ReadResult("incompatible", found.reason)
+    argv = ([project if a == PROJECT_PLACEHOLDER else a for a in found.argv] if found.argv
+            else [sys.executable, "-B", found.path, "--project", project, "--json"])
     try:
         done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:

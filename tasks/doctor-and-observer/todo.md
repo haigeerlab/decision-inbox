@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：deps.py 与 spec-guard 按接口说明读
+- [x] Task 1：deps.py 与 spec-guard 按接口说明读
   - 验收：Spec 验收 2（命令取自 interface.json；缺失、读不懂退回原入口；主版本不兼容不读能力图并写明原因；都不说成没装）
   - 验证：`python3 -m unittest discover -s tests -p test_specguard.py -v`
   - 文件：`decision_inbox/deps.py`、`specguard.py`、对应测试
+  - 记录（2026-10-17）：4 个新测试先失败（2 失败 2 报错）；实现后 Ran 516 tests, OK。和计划的差别：不兼容时 `locate` 返回新类型 `Incompatible`，`read_line` 给新状态 `incompatible`（显示走原因文字，调用方不用改）；interface.json 里 mapView 的 schemaVersion 不是 1 也按不兼容处理
 
 - [ ] Task 2：delegate、agent-relay 接口读取与审查对照表
   - 验收：Spec 验收 3、4
