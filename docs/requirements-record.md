@@ -751,7 +751,7 @@ agent-relay 路线图（由其维护方告知，2026-10-16）：
 
 ### 13.5 依赖插件升级核对（2026-10-17 晚）
 
-本机实际版本：spec-guard 0.67.0（Claude）；agent-relay 0.8.2（两边，接口 2.5，信箱 schema 7）；delegate 仍是 0.5.2（Claude）与 0.5.0（Codex），没有 `interface.json`，最新发布是 0.5.3。
+本机实际版本：spec-guard 0.67.0（Claude）；agent-relay 0.8.2（两边，接口 2.5，信箱 schema 7）；delegate 0.5.3（Claude，带 `interface.json`）；Codex 侧的 delegate 缓存仍是 10-14 的 0.5.0（本地克隆停在另一个分支），没有 `interface.json`，doctor 遇到这种情况按「读不到接口」报，不报没装。
 
 - **spec-guard 0.67.0**：`interface.json` 与 0.66.0 相同（接口 1.0）。新增的是它自己读 delegate 的 `interface.json`：版本 `>=1.0,<2.0` 才用文件里的命令名；文件不存在按老版本处理、不当成没装。本插件读 delegate 时照同一规则。
 - **delegate 0.5.3**：`plugins/delegate/interface.json` 接口 1.0，`review.command` `/delegate:review`（后端 codex、claude-code，只读，报告 schemaVersion 1）、`run.command` `/delegate:run`（只 codex，写入要显式）、`doctor.command` `/delegate:doctor`。
