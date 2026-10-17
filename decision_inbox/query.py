@@ -329,7 +329,8 @@ def _status_rows(g: store.Group, relay_id: int, at: str, statuses: dict) -> list
     st = statuses.get(relay_id)
     if st is None:
         return [(at, f"agent-relay 查不到 #{relay_id}")]
-    parts = [f"投递 {st.delivery_state or '未知'}"]
+    parts = (["已接受但没读到（送达存疑，来源：agent-relay）"] if st.wake_doubt
+             else [f"投递 {st.delivery_state or '未知'}"])
     if st.wake_state:
         parts.append(f"唤醒 {st.wake_state}" + (f"（{st.wake_detail}）" if st.wake_detail else ""))
     if st.reply_ids:

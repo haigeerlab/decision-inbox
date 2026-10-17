@@ -17,10 +17,11 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-18）：`python3 -m unittest discover -s tests` → Ran 560 tests, OK
 
-- [ ] Task 3：送达存疑的异常行、巡视通知、`/item` 措辞
+- [x] Task 3：送达存疑的异常行、巡视通知、`/item` 措辞
   - 验收：Spec 验收 2
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`view.py`、`patrol.py`、`query.py`、对应测试
+  - 记录（2026-10-18）：4 个新测试先失败（3 失败 1 报错）；实现后 Ran 564 tests, OK。新信号 11 `delivery-doubt`，文字带存疑编号和来源；巡视通知的键含信号文字，同一批编号只通知一次，编号变了再通知
 
 - [ ] Task 4：收件枢纽 `alsoAnswers` 与约定块 `withdraws`
   - 验收：Spec 验收 3

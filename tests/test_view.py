@@ -492,3 +492,12 @@ class ExpandedViewTest(ViewCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoubtRowTest(ViewCase):
+    def test_anomaly_row(self):
+        from decision_inbox.health import Signal
+        sig = Signal(11, "delivery-doubt", ("api-codex",), "API 有 1 条消息送达存疑（#8）（来源：agent-relay）")
+        text = self.render(self.assessment(signals=[sig]))
+        self.assertIn("- API：API 有 1 条消息送达存疑（#8）（来源：agent-relay）。"
+                      "建议：完全退出 ChatGPT 再打开 API 的任务", text)

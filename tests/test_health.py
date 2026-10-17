@@ -357,3 +357,16 @@ class HonestLineTest(HealthCase):
                                                       "sender": "fe"}}})
         r = self.assess(snapshot(agent("fe", activity_ago=1)))
         self.assertTrue(r.lines["fe"].text.startswith("阻塞：等你决定 #"), r.lines["fe"].text)
+
+
+class DeliveryDoubtTest(HealthCase):
+    """relay-presence-and-doubt Task 3."""
+
+    def test_signal_11(self):
+        a = agent("fe", app="codex", activity_ago=1, waiting=(2, ["hub"], 10))
+        a["waiting"]["doubtfulIds"] = [8, 9]
+        sig = next(x for x in self.assess(snapshot(a)).signals if x.code == "delivery-doubt")
+        self.assertEqual((sig.no, sig.sessions), (11, ("fe",)))
+        self.assertEqual(sig.text, "前端 有 2 条消息送达存疑（#8、#9）（来源：agent-relay）")
+        self.assertNotIn("delivery-doubt",
+                         [x.code for x in self.assess(snapshot(agent("fe", app="codex", activity_ago=1))).signals])

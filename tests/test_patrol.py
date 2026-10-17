@@ -384,3 +384,19 @@ class HandoffTest(PatrolCase):
         self.assertEqual(len(notices), 3)
         self.assertEqual(notices[0], f"notify:handoff:{no}|fe-owner")
         self.assertEqual(notices[-1], "notify:more")
+
+
+class DoubtNoticeTest(PatrolCase):
+    def test_once_per_batch(self):
+        def fe(ids):
+            a = agent("fe", app="codex", activity_ago=1, waiting=(len(ids), ["hub"], 10))
+            a["waiting"]["doubtfulIds"] = list(ids)
+            return a
+        first = self.run_round(0, [fe([8])])
+        doubt = [a for a in first.actions if a.id.startswith("notify:doubt:")]
+        self.assertEqual(len(doubt), 1)
+        self.assertIn("完全退出 ChatGPT 再打开 前端 的任务", doubt[0].text)
+        again = self.run_round(5, [fe([8])])
+        self.assertEqual([a for a in again.actions if a.id.startswith("notify:doubt:")], [])
+        new = self.run_round(10, [fe([8, 9])])
+        self.assertEqual(len([a for a in new.actions if a.id.startswith("notify:doubt:")]), 1)

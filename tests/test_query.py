@@ -397,3 +397,15 @@ class CommandLineTest(QueryCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoubtTimelineTest(QueryCase):
+    lifecycle = ItemTest.lifecycle
+
+    def test_doubt_wording(self):
+        from decision_inbox.relay import MessageStatusFact
+        no = self.lifecycle()
+        st = MessageStatusFact(7001, "hub", "fe", at(39), "accepted", None, (), "accepted", None, None, wake_doubt=True)
+        text = query.render_item(self.g, no, {7001: st})
+        self.assertIn("agent-relay #7001：已接受但没读到（送达存疑，来源：agent-relay）", text)
+        self.assertNotIn("投递 accepted", text)

@@ -159,6 +159,10 @@ def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
     for signal in signals:
         if signal.no == 1:
             ctx.notify("all-waiting", signal.text)
+        elif signal.no == 11:  # one notice per batch of doubtful ids (relay-presence-and-doubt)
+            short = (store.find_session(ctx.g, relay_name=signal.sessions[0]) or {}).get("shortName", signal.sessions[0])
+            ctx.notify(f"doubt:{signal.sessions[0]}:{signal.text}",
+                       f"{signal.text}。完全退出 ChatGPT 再打开 {short} 的任务")
     for it in items.pending(ctx.g):
         waited = (_instant(ctx.now) - _instant(it["receivedAt"])).total_seconds() / 60
         if it["blocks"] and waited >= HUB_REMINDER_MINUTES:

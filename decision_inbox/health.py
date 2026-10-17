@@ -10,7 +10,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from decision_inbox import items, reviews, store, tickets
+from decision_inbox import deps, items, reviews, store, tickets
 
 # Thresholds decided by the user on 2026-10-16 (requirement section 12 item 3).
 REWORK_FALLBACK_ROUNDS = 3
@@ -187,7 +187,7 @@ def _short(f: _Facts) -> str:
 
 def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime,
                      stale=frozenset(), relay_read: bool = True) -> list[Signal]:
-    """Signals 1, 2, 4, 5 and 10: waiting chains and message backlogs."""
+    """Signals 1, 2, 4, 5, 10 and 11: waiting chains, message backlogs and doubtful deliveries."""
     out = []
     open_count = sum(1 for f in facts.values() for t in f.tickets if t["no"] not in stale)
     # Without agent-relay this time nobody can be seen working, so no verdict (relay-presence-and-doubt).
@@ -203,6 +203,10 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
                 out.append(Signal(2, "delivered-not-picked", (name, target),
                                   f"交付了没人接：{t['target']} 已发消息给 {_short(f)}，"
                                   f"{_short(f)} 还没去取（{_short(f)} 在等 {t['target']}）"))
+        if fact is not None and fact.doubtful_ids:
+            ids = "、".join(f"#{i}" for i in fact.doubtful_ids)
+            out.append(Signal(11, "delivery-doubt", (name,), deps.sourced(
+                f"{_short(f)} 有 {len(fact.doubtful_ids)} 条消息送达存疑（{ids}）", "agent-relay")))
         if fact is None or not fact.waiting_count:
             continue
         if fact.presence in ("offline", "unreachable"):

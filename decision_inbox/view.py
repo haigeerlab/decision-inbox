@@ -110,6 +110,7 @@ _ADVICE = {
     8: "问 {who} 进展，或交负责人跟进",
     9: "确认旧等待是否还需要，不需要就说「关掉 #{ticket}」",
     10: "在 Codex 里点开 {who} 让它加载",
+    11: "完全退出 ChatGPT 再打开 {who} 的任务",
 }
 # A signal number shared by two cases picks its advice by code (relay-presence-and-doubt).
 _ADVICE_BY_CODE = {"idle-backlog": "巡视会叫醒 {who}；叫不醒就打开它"}
