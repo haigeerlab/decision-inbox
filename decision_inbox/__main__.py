@@ -7,7 +7,7 @@ from pathlib import Path
 from decision_inbox import doctor, health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
-         "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
+         "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
          "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
@@ -87,6 +87,12 @@ def _query(argv: list[str]) -> int:
         p.add_argument("--relay-version")
         if name == "flow":
             p.add_argument("--wakes", required=True)
+    for name in ("stats", "events"):
+        p = sub.add_parser(name)
+        p.add_argument("group")
+        p.add_argument("--since")
+        if name == "events":
+            p.add_argument("--json", action="store_true", required=True)
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -108,6 +114,10 @@ def _query(argv: list[str]) -> int:
             if alarm := hub.patrol_alarm(g, now):
                 print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
+        elif args.command == "stats":
+            print(query.render_stats(query.stats(g, args.since), args.group, args.since))
+        elif args.command == "events":
+            print(json.dumps(query.events(g, args.since), ensure_ascii=False, indent=1))
         elif args.command == "item-ids":
             for relay_id in query.item_message_ids(g, args.number):
                 print(relay_id)

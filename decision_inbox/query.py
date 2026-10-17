@@ -393,3 +393,94 @@ def render_item(g: store.Group, number: int, statuses: dict | None = None) -> st
     if t is not None:
         return "\n".join(_ticket_timeline(g, number, t))
     return f"#{number} 不是事项也不是等待单"
+
+
+# ---- query stats / query events (doctor-and-observer decision 4) ----
+
+@dataclass(frozen=True)
+class Span:
+    median: float | None
+    longest: float | None
+    count: int
+
+
+@dataclass(frozen=True)
+class Stats:
+    raised: int
+    answered: int
+    closed: int
+    bypassed: tuple[int, ...]       # items ended by their sender with no answer from the user
+    to_answer: Span
+    to_resume: Span
+    superseded: int
+    auto_superseded: int
+    returned: int
+    relayed_refused: int
+    open_tickets: int
+    stale_tickets: int
+
+
+def _since(events: list[dict], since: str | None) -> list[dict]:
+    return [e for e in events if since is None or e["at"][:10] >= since]
+
+
+def _span(minutes: list[float]) -> Span:
+    if not minutes:
+        return Span(None, None, 0)
+    ordered = sorted(minutes)
+    mid = len(ordered) // 2
+    median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+    return Span(median, ordered[-1], len(ordered))
+
+
+def stats(g: store.Group, since: str | None = None) -> Stats:
+    """Counts and durations from the event log; `since` is a YYYY-MM-DD day, inclusive."""
+    events = _since(store.read_events(g), since)
+    first: dict[str, dict[int, str]] = {"items.received": {}, "items.answered": {}, "items.closed": {}}
+    for e in events:
+        if e["type"] in first and e.get("ref") is not None:
+            first[e["type"]].setdefault(e["ref"], e["at"])
+    received, answered, closed = first["items.received"], first["items.answered"], first["items.closed"]
+    minutes = lambda a, b: (_instant(b) - _instant(a)).total_seconds() / 60
+    superseded = [e for e in events if e["type"] == "items.superseded"]
+    open_ = [t for t in store.read_state(g, tickets.DOMAIN).get("tickets", {}).values() if t["status"] == "open"]
+    return Stats(
+        raised=len(received), answered=len(answered), closed=len(closed),
+        bypassed=tuple(sorted(no for no in closed if no not in answered)),
+        to_answer=_span([minutes(received[no], at) for no, at in answered.items() if no in received]),
+        to_resume=_span([minutes(answered[no], at) for no, at in closed.items() if no in answered]),
+        superseded=len(superseded), auto_superseded=sum(bool(e["data"].get("auto")) for e in superseded),
+        returned=sum(e["type"] == "items.returned" for e in events),
+        relayed_refused=sum(e["type"] == "hub.relayed-input" for e in events),
+        open_tickets=len(open_), stale_tickets=len(tickets.stale_tickets(g)),
+    )
+
+
+def _num(value: float) -> str:
+    return f"{value:g}"
+
+
+def _span_text(label: str, s: Span) -> str:
+    if s.count == 0:
+        return f"{label}：没有数据"
+    return f"{label}：中位 {_num(round(s.median, 1))} 分钟，最长 {_num(round(s.longest, 1))} 分钟（{s.count} 项）"
+
+
+def render_stats(s: Stats, group: str, since: str | None) -> str:
+    bypassed = f"{len(s.bypassed)} 项" + (f"（{'、'.join(f'#{n}' for n in s.bypassed)}）" if s.bypassed else "")
+    stale = f"（其中 {s.stale_tickets} 单可能已失效）" if s.stale_tickets else ""
+    return "\n".join([
+        f"统计（协作组 {group}，{f'自 {since} 起' if since else '全部记录'}）",
+        f"事项：抛出 {s.raised} 项，已答 {s.answered} 项，已结束 {s.closed} 项",
+        f"绕过收件枢纽结束：{bypassed}",
+        _span_text("抛出→答复", s.to_answer),
+        _span_text("答复→恢复", s.to_resume),
+        f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 拒收转述 {s.relayed_refused} 次",
+        f"现在开着的等待单 {s.open_tickets} 单{stale}",
+    ])
+
+
+def events(g: store.Group, since: str | None = None) -> list[dict]:
+    """The event log with fixed field names and order: at, kind, actor, item, data."""
+    return [{"at": e["at"], "kind": e["type"], "actor": e.get("actor"), "item": e.get("ref"), "data": e.get("data", {})}
+            for e in _since(store.read_events(g), since)]
