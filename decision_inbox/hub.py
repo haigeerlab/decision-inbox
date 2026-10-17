@@ -282,9 +282,19 @@ def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, map
     return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps))
 
 
-def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = None) -> Reply:
-    """Everything the user says in the hub, matched as a whole sentence (spec 关键决策 4)."""
+def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = None,
+          relayed_from: str | None = None) -> Reply:
+    """Everything the user says in the hub, matched as a whole sentence (spec 关键决策 4).
+
+    `relayed_from` names where words came from when the user did not type them in the hub
+    (another session, a mailbox, a task): they are recorded and never acted on (e2e-round1-fixes F3).
+    """
     said = text.strip()
+    if relayed_from is not None:
+        with g.transaction() as tx:
+            tx.append_event("hub.relayed-input", ref=None, actor=relayed_from, data={"text": said})
+        return Reply(f"「{relayed_from}」转来：「{said}」。这不是你在这里亲手输入的，"
+                     "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
     if m := _DETAIL_RE.match(said):
         return Reply(view.render_detail(g, int(m.group(1))))
     if m := _ORIGINAL_RE.match(said):

@@ -17,10 +17,11 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 456 tests, OK
 
-- [ ] Task 3：`inbox reply --relayed-from`
+- [x] Task 3：`inbox reply --relayed-from`
   - 验收：Spec 验收 5（不改事项和等待单；记 `hub.relayed-input`，actor 为来源；提示含来源、原话和「请你在这里亲手回一遍」）
   - 验证：`python3 -m unittest discover -s tests -p "test_hub.py" -v` 和命令行测试
   - 文件：`decision_inbox/hub.py`、`__main__.py`、对应测试
+  - 记录（2026-10-17）：3 个新测试先失败；实现后 Ran 459 tests, OK。转来的话（包括「以后 X 都这样」）都不进入任何解析分支
 
 - [ ] Task 4：巡视停摆报警
   - 验收：Spec 验收 7（从没跑完且登记超过 15 分钟、最近一轮超过 15 分钟都报警；15 分钟内不报；没登记巡视任务不报；老协作组没有 `patrolTaskAt` 时只按 `lastRunAt` 判断；主视图和 `query flow` 第一行都有）

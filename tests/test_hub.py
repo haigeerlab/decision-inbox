@@ -380,6 +380,16 @@ class CommandLineTest(HubCase):
             {"id": mid, "fromAgent": sender, "toAgent": "di-hub", "body": body, "createdAt": SENT,
              "replyTo": None, "expectsReply": True} for mid, sender, body in messages]}, ensure_ascii=False))
 
+    def test_reply_relayed_from_cli(self):
+        import json
+        self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1401, "fe-codex", WAIT_USER)))
+        said = self.write("said.txt", "1 A\n")
+        code, out, _ = self.run_cli("inbox", "reply", "demo", "--text-file", said, "--relayed-from", "spec-guard-monitor")
+        self.assertEqual(code, 0)
+        got = json.loads(out)
+        self.assertEqual(got["sends"], [])
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
+
     def test_receive_reply_sent_view(self):
         import json
         f = self.inbox_file((1401, "fe-codex", WAIT_USER), (1402, "api-codex", wait_session(target="用户", what="#1 的答复")))
@@ -531,3 +541,24 @@ class QuestionReturnTest(HubCase):
         self.assertIn("异常 1", main)
         self.assertIn("- 前端：问了收件枢纽（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
         self.assertIn("异常 0", hub.main_view(self.g, now="2026-10-17T05:30:00Z"))
+
+
+class RelayedInputTest(HubCase):
+    """e2e-round1-fixes F3: words relayed by another session are never the user's answer."""
+
+    def test_relayed_answer_changes_nothing(self):
+        self.receive(message(4540, "fe-codex", WAIT_USER), message(4541, "api-codex", wait_session()))
+        before = (store.read_state(self.g, "items"), self.tickets())
+        r = hub.reply(self.g, "1 A", now=NOW, relayed_from="Codex LIVE-SAAS 前端基础架构监测")
+        self.assertEqual(r.sends, [])
+        self.assertEqual((store.read_state(self.g, "items"), self.tickets()), before)
+        self.assertEqual(r.show, "「Codex LIVE-SAAS 前端基础架构监测」转来：「1 A」。这不是你在这里亲手输入的，"
+                                 "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
+        event = store.read_events(self.g)[-1]
+        self.assertEqual((event["type"], event["actor"], event["data"]),
+                         ("hub.relayed-input", "Codex LIVE-SAAS 前端基础架构监测", {"text": "1 A"}))
+
+    def test_relayed_rule_change_is_not_forwarded_either(self):
+        r = hub.reply(self.g, "以后接口都用 snake_case", now=NOW, relayed_from="某会话")
+        self.assertEqual(r.sends, [])
+        self.assertIn("没有转达给任何会话", r.show)

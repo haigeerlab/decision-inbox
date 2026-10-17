@@ -263,6 +263,7 @@ def _inbox(argv: list[str]) -> int:
     p.add_argument("--text-file", required=True)
     p.add_argument("--agents")
     p.add_argument("--relay-version")
+    p.add_argument("--relayed-from")
     p = sub.add_parser("sent")
     p.add_argument("group")
     p.add_argument("--done", nargs="*", default=[])
@@ -289,7 +290,8 @@ def _inbox(argv: list[str]) -> int:
         _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more})
     elif args.command == "reply":
         text = Path(args.text_file).read_text(encoding="utf-8")
-        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g))
+        r = hub.reply(g, text, now=now, relay=_relay_or_none(args.agents, args.relay_version), maps=_dev_maps(g),
+                      relayed_from=args.relayed_from)
         _print_json({"show": r.show, "sends": r.sends})
     elif args.command == "sent":
         done = {}
