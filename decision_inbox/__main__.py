@@ -117,8 +117,7 @@ def _query(argv: list[str]) -> int:
         p = sub.add_parser(name)
         p.add_argument("group")
         p.add_argument("--since")
-        if name == "events":
-            p.add_argument("--json", action="store_true", required=True)
+        p.add_argument("--json", action="store_true", required=name == "events")
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -141,7 +140,11 @@ def _query(argv: list[str]) -> int:
                 print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
         elif args.command == "stats":
-            print(query.render_stats(query.stats(g, args.since), args.group, args.since))
+            s = query.stats(g, args.since)
+            if args.json:
+                print(json.dumps(query.stats_json(s), ensure_ascii=False, indent=1))
+            else:
+                print(query.render_stats(s, args.group, args.since))
         elif args.command == "events":
             print(json.dumps(query.events(g, args.since), ensure_ascii=False, indent=1))
         elif args.command == "item-ids":

@@ -420,6 +420,9 @@ class Stats:
     relayed_refused: int
     open_tickets: int
     stale_tickets: int
+    patrol_runs: int = 0                 # patrol-cadence: rounds the host actually ran
+    patrol_max_gap: int | None = None    # longest minutes between two rounds
+    patrol_stale: int = 0                # gaps over hub.PATROL_STALE_MINUTES
 
 
 def _since(events: list[dict], since: str | None) -> list[dict]:
@@ -457,7 +460,17 @@ def stats(g: store.Group, since: str | None = None) -> Stats:
                                if rec.get("returned") and (since is None or rec["at"][:10] >= since)),
         relayed_refused=sum(e["type"] == "hub.relayed-input" for e in events),
         open_tickets=len(open_), stale_tickets=len(tickets.stale_tickets(g)),
+        **_patrol_cadence(events),
     )
+
+
+def _patrol_cadence(events: list[dict]) -> dict:
+    """How often the patrol really ran (patrol-cadence; the host fires it irregularly, H24)."""
+    from decision_inbox.hub import PATROL_STALE_MINUTES
+    ats = sorted(_instant((e.get("data") or {}).get("now") or e["at"]) for e in events if e["type"] == "patrol.run")
+    gaps = [(b - a).total_seconds() / 60 for a, b in zip(ats, ats[1:])]
+    return {"patrol_runs": len(ats), "patrol_max_gap": round(max(gaps)) if gaps else None,
+            "patrol_stale": sum(gap > PATROL_STALE_MINUTES for gap in gaps)}
 
 
 def _num(value: float) -> str:
@@ -481,7 +494,21 @@ def render_stats(s: Stats, group: str, since: str | None) -> str:
         _span_text("答复→恢复", s.to_resume),
         f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 追问被退回 {s.questions_returned} 次 · 拒收转述 {s.relayed_refused} 次",
         f"现在开着的等待单 {s.open_tickets} 单{stale}",
+        (f"巡视：跑了 {s.patrol_runs} 轮，相邻两轮最长隔 {s.patrol_max_gap} 分钟，超过 15 分钟 {s.patrol_stale} 次"
+         if s.patrol_max_gap is not None else
+         f"巡视：跑了 {s.patrol_runs} 轮" if s.patrol_runs else "巡视：这段时间没跑过"),
     ])
+
+
+def stats_json(s: Stats) -> dict:
+    """query stats --json (patrol-cadence)."""
+    span = lambda x: {"median": x.median, "longest": x.longest, "count": x.count}
+    return {"schemaVersion": 1, "raised": s.raised, "answered": s.answered, "closed": s.closed,
+            "bypassed": list(s.bypassed), "toAnswer": span(s.to_answer), "toResume": span(s.to_resume),
+            "superseded": s.superseded, "autoSuperseded": s.auto_superseded, "returned": s.returned,
+            "questionsReturned": s.questions_returned, "relayedRefused": s.relayed_refused,
+            "openTickets": s.open_tickets, "staleTickets": s.stale_tickets,
+            "patrolRuns": s.patrol_runs, "patrolMaxGap": s.patrol_max_gap, "patrolStale": s.patrol_stale}
 
 
 def events(g: store.Group, since: str | None = None) -> list[dict]:
