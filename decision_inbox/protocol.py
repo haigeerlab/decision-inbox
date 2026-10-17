@@ -384,6 +384,13 @@ def format_user_reply(item: int, original: str, answered_at: str, option_text: s
     return "\n".join(lines) + "\n"
 
 
+def format_answer_notice(item: int, owner_short: str, original: str, answered_at: str) -> str:
+    """【答复告知】 to an owner's dev lines: information only, never an approval (answer-handoff-gaps)."""
+    return "\n".join(["【答复告知】", f"事项：#{item}（由{owner_short}抛出）", f"用户原话：{original}",
+                      f"答复时间：{answered_at}",
+                      "说明：这条只是告知，不是批准，不作执行依据；等负责人转交后，按转交的范围执行。"]) + "\n"
+
+
 def format_multiline_replies(item: int, sender: str, original: str, answered_at: str,
                              wait_user_text: str) -> dict[str, str]:
     """One 【用户答复】 per session in 适用会话, each with its own scope (requirement 4.4)."""

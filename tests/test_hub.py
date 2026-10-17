@@ -436,3 +436,33 @@ class CommandLineTest(HubCase):
         self.assertEqual(self.run_cli("inbox", "bogus")[0], 2)
         self.assertEqual(self.run_cli("view", "nope")[0], 2)
         self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
+
+
+class AnswerNoticeTest(HubCase):
+    """answer-handoff-gaps 已定事项 3：答复转给负责人时抄送其线上开发线，仅告知。"""
+
+    def test_owner_item_copies_its_dev_lines(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual([(s["to"], s["kind"], s["replyTo"]) for s in r.sends],
+                         [("fe-owner", "answer", 1501), ("fe-codex", "notice", None)])
+        self.assertIn("已转达：#1 → 前端负责人（另告知：前端）", r.show)
+        body = Path(r.sends[1]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertEqual(body, "\n".join([
+            "【答复告知】", "事项：#1（由前端负责人抛出）", "用户原话：1 A", f"答复时间：{NOW}",
+            "说明：这条只是告知，不是批准，不作执行依据；等负责人转交后，按转交的范围执行。"]) + "\n")
+
+    def test_multiline_and_dev_items_not_copied(self):
+        self.receive(message(1502, "fe-owner", MULTI))
+        self.receive(message(1503, "api-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A\n2 A", now=NOW)
+        self.assertNotIn("notice", [s["kind"] for s in r.sends])
+
+    def test_notice_sent_does_not_move_the_item(self):
+        self.receive(message(1504, "fe-owner", WAIT_USER))
+        hub.reply(self.g, "1 A", now=NOW)
+        closed = hub.sent(self.g, done={"out:2": 3990}, failed=[], at=NOW)
+        it = items.get(self.g, 1)
+        self.assertEqual((it["status"], it["sent"], closed), ("forwarded", [], ()))
+        self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:2"]["relayId"], 3990)
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:1"])

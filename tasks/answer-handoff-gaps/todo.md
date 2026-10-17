@@ -12,12 +12,13 @@
   - 验证：`python3 -m unittest discover -s tests -p test_patrol.py -v`
   - 文件：`decision_inbox/patrol.py`、`tests/test_patrol.py`
 
-- [ ] Task 3：收件枢纽抄送【答复告知】
+- [x] Task 3：收件枢纽抄送【答复告知】
   - 验收：Spec 验收 7（负责人抛的单线事项给其线上每个开发线一条；正文含「不是批准」「不作执行依据」；多线事项、开发线抛的事项不抄送）、验收 8（sent 记编号但不改事项状态、不关单）
   - 验证：`python3 -m unittest discover -s tests -p test_hub.py -v`
   - 文件：`decision_inbox/hub.py`、`decision_inbox/protocol.py`、`tests/test_hub.py`
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 448 tests, OK。Task 1–3 的测试都先失败；变异检查：去掉叫醒去重，被「只叫醒一次」的测试抓住。Task 3 另补了一处显示：回复里把告知对象单独写成「（另告知：…）」，不混进转达对象
 
 - [ ] Task 4：约定块加三条、README 一句、版本 0.0.3
   - 验收：Spec 验收 9（三条分别出现在共用、开发线、负责人部分；原有要点和模板解析不变）、验收 10（两份清单 0.0.3，原有测试全过）

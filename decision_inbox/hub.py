@@ -147,8 +147,22 @@ def _queue_answers(g: store.Group, outgoing, now: str) -> list[dict]:
             it = items.get(g, o.item)
             reply_to = it["relayId"] if o.to == it["sender"] else None
             sends.append(_queue(g, tx, doc, o.to, o.text, reply_to, "answer", o.item, now))
+            if o.to == it["sender"]:
+                for to, text in _notices(g, it, now):
+                    sends.append(_queue(g, tx, doc, to, text, None, "notice", o.item, now))
         tx.write_state(DOMAIN, doc)
     return sends
+
+
+def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
+    """A single-line item raised by an owner: tell the dev lines it owns (answer-handoff-gaps 已定事项 3)."""
+    owner = store.find_session(g, relay_name=it["sender"])
+    if it["multi"] or owner is None or owner["role"] != "owner" or not it["answers"]:
+        return []
+    last = it["answers"][-1]
+    text = protocol.format_answer_notice(it["no"], owner["shortName"], last["original"], last["at"])
+    return [(e["relayName"], text) for e in store.roster(g)
+            if e["role"] == "dev" and set(e["line"]) & set(owner["line"])]
 
 
 def outgoing(g: store.Group) -> list[dict]:
@@ -257,10 +271,16 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if parsed.question:
         return Reply(parsed.question)
     sends = _queue_answers(g, items.answer(g, parsed.answers, answered_at=now), now)
-    told = "；".join(f"#{a.item} → " + "＋".join(_short(g, s["to"]) for s in sends if _item_of(g, s) == a.item)
-                    for a in parsed.answers)
+    told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in parsed.answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends})
     return Reply(f"已转达：{told}\n\n{body}", sends)
+
+
+def _told(g: store.Group, item: int, sends: list[dict]) -> str:
+    """「#12 → 前端负责人（另告知：前端）」: notices are listed apart from the answers."""
+    text = f"#{item} → " + "＋".join(_short(g, s["to"]) for s in sends if s["kind"] == "answer")
+    notified = [_short(g, s["to"]) for s in sends if s["kind"] == "notice"]
+    return text + (f"（另告知：{'、'.join(notified)}）" if notified else "")
 
 
 def _item_of(g: store.Group, send: dict):
