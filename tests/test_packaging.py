@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.5")
+        self.assertEqual(claude["version"], "0.0.6")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -185,7 +185,9 @@ class ReadmeTest(unittest.TestCase):
                        # e2e-round1-fixes F7, F3, F4
                        "先删掉手贴的旧收件枢纽规则", "亲手输入", "靠收件枢纽遵守约定", "巡视还没跑完过", "被自动模式拦下",
                        # relay-checkpoint-authority
-                       "检查点答复即授权", "--checkpoint-authority", "一次答完", "信任这个项目"):
+                       "检查点答复即授权", "--checkpoint-authority", "一次答完", "信任这个项目",
+                       # wait-honesty-and-briefs
+                       "可能已失效", "本次没带 agent-relay 状态"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

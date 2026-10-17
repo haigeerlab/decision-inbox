@@ -29,10 +29,11 @@
   - 文件：`decision_inbox/stophook.py`、`onboard.py`、对应测试
   - 记录（2026-10-17）：3 个钩子测试先报错；实现后 Ran 510 tests, OK。约定块两句的关键词断言与实现同一步加入，没有单独看到失败。检查只对开发线、只在读得到 spec-guard 时做；本会话有任何待答事项（不只完全停住的）也算已报
 
-- [ ] Task 5：B2、B5、邮箱派活、README、版本 0.0.6
+- [x] Task 5：B2、B5、邮箱派活、README、版本 0.0.6
   - 验收：Spec 验收 5、6、7、8
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/protocol.py`、`onboard.py`、`hub.py`、`README.md`、两份 `plugin.json`、对应测试
+  - 记录（2026-10-17）：7 个测试先失败；实现后提示代码表测试要求新代码出现在规格里，改为在 spec/ 下所有规格里找（已验收的 message-protocol 规格不改，brief-thin 定义在本模块规格）；Ran 512 tests, OK
 
 - [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑，记下输出；推送本分支
 

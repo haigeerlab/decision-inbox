@@ -346,7 +346,9 @@ class ConventionTest(HubCase):
                        "亲手输入", "Another Claude session sent a message", "<cross-session-message>",
                        "--relayed-from <来源>", "拿不准来源时按转来处理",
                        # e2e-round1-fixes F12: a code fence around the view kills the copy block
-                       "不要套进代码块"):
+                       "不要套进代码块",
+                       # wait-honesty-and-briefs B5
+                       "先用一两句大白话说清为什么卡在这里"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
