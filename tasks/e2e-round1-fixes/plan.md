@@ -82,18 +82,23 @@
 
 - [ ] 全部测试全绿；推送分支并开 PR（不合并），通知 spec-guard-monitor 可以重跑
 
+### Phase 3b：重跑发现的 F10（用户 2026-10-17 追加）
+
+- [ ] Task 9：结束行认发送方自己的邮箱号，对不上时提示；约定块加一句；README 记 F9（Spec 验收 13、14）
+
 ### Phase 4：实测
 
 - [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0（Spec 验收 12）。重跑由它主持，本会话只收结果，写进规格的实测记录
 
 ### Checkpoint 4（gate）：模块最终验收
 
-- [ ] 全部测试全绿；12 条验收标准逐条有测试或实测记录；列出实际改动的文件；原样附上规格的改动差异
+- [ ] 全部测试全绿；14 条验收标准逐条有测试或实测记录；列出实际改动的文件；原样附上规格的改动差异
 - [ ] 本 Plan 获批即授权：
   - 返工 hub-loop、decision-queue、message-protocol、wait-tickets、onboarding 的代码；
   - 静态扫描开一个窄例外；
   - 版本号升到 0.0.4；
   - 每个任务完成后在当前分支做一次本地提交；
   - 在 scratchpad 里建临时协作组；
-  - Checkpoint 3 推送本分支、开 PR，并给 spec-guard-monitor 发一条「可以重跑」的会话消息。
+  - Checkpoint 3 推送本分支、开 PR，并给 spec-guard-monitor 发一条「可以重跑」的会话消息；
+  - Task 9 做完后再推送一次，并请 spec-guard-monitor 重跑。
 - [ ] 不授权：合并 PR、改 di-e2e 测试环境、替 spec-guard-monitor 重跑
