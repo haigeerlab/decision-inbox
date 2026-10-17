@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 03b71b1b1582 -->
 # Spec: protocol-contract-v1-3
 
 > 能力图模块 `protocol-contract-v1-3`（2026-10-18 用 add-module 插入，排在 relay-presence-and-doubt 之后）。来源：session-protocol 契约负责人 2026-10-18 通知 v1.3 已提交（42fe5f6，用户批准），补上了 protocol-contract-v1 验收时发现缺的过简要点样例；用户 2026-10-18 决定先做这个升级，再开始第 ⑥ 阶段实地验收。
