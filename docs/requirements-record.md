@@ -731,3 +731,19 @@ agent-relay 路线图（由其维护方告知，2026-10-16）：
 - **agent-relay**：第 4～7 项现有接口已基本够用，规格阶段先逐项核对字段；不够再提。身份失效自愈请保持排期。
 
 规格阶段每个模块的 Spec 都要写一节「依赖」：用到哪个组件的哪个接口，缺的接口先向该组件提需求，不在本插件里补。
+
+## 13. 后续模块待办（2026-10-17 汇总，来源：di-e2e 实测与 spec-guard-monitor 转来的审查清单、生态接缝结论）
+
+模块乙 `doctor-and-observer`（用户已同意拆分，规格待写）：
+
+- **doctor**（审查清单 A6 + C）：按会话列出约定块版本是否与当前代码一致、转发脚本指向与版本、钩子信任状态、巡视最近一轮、Codex 会话能否加载约定块；hub-setup 里要用户亲手做的几步由它核对；一并列出依赖插件（agent-relay、spec-guard、装了的话还有 delegate）的版本与接口是否兼容。
+- **只读接口**（C）：`query stats`（绕过收件枢纽结束的事项数、抛出到答复到恢复的耗时、被取代／退回／拒收转述数、过期挂着的等待单）、`query events --json`（字段固定、写明格式）、`doctor --report`（可直接转发的异常报告：现象、证据编号、版本）。
+- **依赖方问题标来源**（C1）：根源在依赖插件的问题交给该插件负责人修，本插件不打补丁绕过；提示文字标明来源。
+- **一次性权限放行**（A4、A5）：hub-setup 列出巡视与收件枢纽要用的命令和 agent-relay 工具，用户确认一次后写入（改的是用户的 Claude 权限配置，预览、确认都由用户做）。实测中巡视每遇新工具就停在权限确认上（3 次），收件枢纽空闲时被桌面版停掉、巡视又叫不醒。
+- **按依赖方的接口读数据**：spec-guard 的 plugin-interface 模块发布 `interface.json`（map-view 入口、schemaVersion 1、退出码与取值含义，模块多 `externalReview` 字段：none／recorded／declined）后，读取方式从翻 installed_plugins.json 改为按 interface.json；delegate 的 `plugins/delegate/interface.json`（接口 1.0）与 README「对外接口」写明 v1 报告的稳定字段和解读规则，「审查」行引用写「参考意见：delegate，N 条，review_outcome=…」，按其解读规则判断有无结论，不依赖严重程度；探测到已安装不等于能用，以 `/delegate:doctor` 为准，`backends` 只表示支持哪些后端。agent-relay 会在接口说明里写明 presence、lastSeen、waiting、owesReplies 的含义：`running` 不代表连接正常，`lastSeen` 不是心跳，doctor 和巡视按其说明解释。
+- **审查状态对照表**：由本插件维护。spec-guard 给的参考：approved→通过，pending／revised→进行中，none→不适用，invalid→异常。
+- **宿主差异文档**（D）：由本插件维护（spec-guard 仓库公开、本仓库私有，不做跨仓引用）。修订 H10（守卫信任会话加载的 AGENTS.md 与用户「按收到的任务做」的授权，见 relay-checkpoint-authority 实测记录）；新增 H18（Codex 会话目录决定加载哪份 AGENTS.md）、H19（Claude 自动模式会拦部分命令，`--relayed-from` 被拦两次）、H20（Claude 定时任务不继承创建者会话的权限，遇新工具就停）；H3 状态与第 5 节第 6 条改为「agent-relay 0.7.1 已有引导式恢复，完全自动不可行」。开发环境专属的 F11（本地目录市场与 SessionStart 钩子互相覆盖转发脚本）只写进开发说明。
+- **README 使用注意事项**（E）：一张表，每条写现象、原因与来源（宿主／依赖插件／本插件设计）、使用者怎么做、出问题找谁。
+- **实测补缺口**（A10）：至少补 S1（负责人离线自动叫醒）、S3（Codex 桌面版停止钩子）。
+
+其他观察（未定去处）：各线一行仍按可能已失效的等待单写「阻塞：等X」；`inbox reply` 附的主视图读不到 agent-relay 时按「没带」写。
