@@ -64,8 +64,9 @@
 - [x] Checkpoint 3（report）：全部测试全绿；推送本分支
   - 记录（2026-10-17）：Ran 497 tests, OK；推送 `claude/decision-inbox-relay-checkpoint-authority`（PR #2 合并后再开 PR）
 
-- [ ] Task 9：di-e2e 守卫对照实测
+- [x] Task 9：di-e2e 守卫对照实测
   - 验收：Spec 验收 10（对照组、实验组各至少 2 次，守卫评估结果写进规格）
   - 说明：先问用户；本会话驱动；结果抄送 spec-guard-monitor
+  - 记录（2026-10-17）：用户同意后由本会话驱动 dev-b。对照组 C1、C2 共 3 条命令、实验 E1（不提 AGENTS.md、中风险 npm install）1 条，守卫全部放行、授权评分都是 high。对照组全部放行后，用户同意把实验改成 E1/E2，又同意省掉 E2（打开 R2 不会带来新信息），所以「实验组至少 2 次」没有做满，结论见规格实测记录
 
 - [ ] Checkpoint 4（gate）：模块最终验收，等用户确认

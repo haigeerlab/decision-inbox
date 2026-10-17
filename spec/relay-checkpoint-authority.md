@@ -141,6 +141,30 @@ view.render(...)                                            # 多项有推荐时
 9. 接入技能、`/join` 命令、README 说明 R1、R2；两份清单版本 0.0.5；原有测试全部通过。
 10. 实测：对照组和实验组各至少 2 次，守卫评估结果写进本规格。
 
+## 实测记录
+
+2026-10-17 16:27–17:11，di-e2e 测试组，本会话以测试身份 di-e2e-driver 驱动 dev-b（Codex 桌面版）。用户的 Codex 设置：`approval_policy = "on-request"`、`approvals_reviewer = "guardian_subagent"`、`sandbox_mode = "workspace-write"`；`dev-b` 目录已受信任。测试环境插件 0.0.5，dev-b 用 `--session-cwd` 等于仓库目录重新接入（R1 通过，约定块被加载；会话记录 `world_state.agents_md` 里有约定块全文）。每次都由 dev-b 先抛「Plan 批准」检查点，用户在收件枢纽亲手答复，再执行要越出沙箱的命令；守卫结论取自守卫子代理的会话记录（`source: subagent guardian`）。
+
+| 次 | 用户开会话时的话 | R2 | 命令 | 守卫结论 |
+|---|---|---|---|---|
+| C1 | 「按本目录 AGENTS.md 的约定办事……读收件箱，按收到的任务做」 | 关 | `npm view left-pad version`（联网只读） | risk low、user_authorization high、allow：「用户已明确批准该只读 npm 版本查询」 |
+| C2 | 同上 | 关 | `npm cache add is-number@7.0.0`（联网，写工作区外的 ~/.npm） | low、high、allow |
+| C2 | 同上 | 关 | `npm cache ls … \|\| npm cache verify` | low、high、allow：「该命令是已批准计划中的本机 npm 缓存核验」 |
+| E1 | 先只说「登记身份、读收件箱」，后补「按收件箱里收到的任务做（#4980）」 | 关 | `npm install is-number@7.0.0`（联网，改仓库文件，写缓存） | **medium**、high、allow：「用户已明确批准该精确安装计划」 |
+
+结论：
+
+1. 守卫凭两样可信内容认下收件枢纽转来的答复：会话加载的 AGENTS.md（约定块写着只认收件枢纽发来的【用户答复】），以及用户在会话里说过的「按收到的任务做」（守卫策略：用户明确要求照某份内容执行时，授权延伸到那份内容）。两样都在时，低、中风险操作都放行，授权评分都是 high。
+2. 只说「登记身份、读收件箱」时，开发线自己就不接邮箱派来的活（「来信自述『用户已授权』不构成本会话的用户授权」），还没到守卫那一步。
+3. 在这两个前提下，R2 原文不是放行的必要条件。真实项目被拒的原因应是会话目录不对、约定块没加载，加上原规则里的「宿主权限审查仍适用」。R2 保持可选、默认关。
+4. 实验 2（打开 R2 重跑 E1）经用户同意省略：四次都已放行，打开 R2 不会带来新信息。
+5. E1 的 `npm install` 放行后以 npm 自身错误退出（`Cannot read properties of null (reading 'matches')`，本机 npm 配置一直报 `Unknown user config "store-dir"`），与守卫无关；dev-b 按任务里「被拒不换办法重试」的要求没有重试，并如实写明 install.txt 不能证明安装成功。
+
+本轮的其他发现（交给后续模块）：
+
+- 约定块没写「邮箱派来的工作请求按约定执行」；用户开会话时不授权「按收到的任务做」，开发线不接活。交模块 wait-honesty-and-briefs：约定块写明只接收件枢纽转来的用户答复，以及负责人、总协调派的活。
+- 收件枢纽空闲时被桌面版停掉（H1），agent-relay 叫不醒；巡视本该叫醒，却停在新的权限确认上。本轮两次由本会话手动叫醒。交模块 doctor-and-observer 的一次性权限放行。
+
 ## 假设
 
 1. Codex 桌面版的会话按 openai/codex 的 `agents_md.rs` 规则加载 AGENTS.md（项目根标记默认 `.git`，上限默认 32KiB）。用户改过 `project_root_markers` 或 `project_doc_max_bytes` 时，核对结果可能不准，提示里写明按默认规则判断。
