@@ -14,12 +14,14 @@
   - 文件：`decision_inbox/deps.py`、`mapview.py`、对应测试
   - 记录（2026-10-17）：新测试 5 个先报错；实现后 2 个原有整表测试按新对照表失败（✔／— 改为通过／不适用），改期望后 Ran 521 tests, OK。`ModuleFact` 多了 `external_review`（默认 none）；delegate 命令名不合 `/delegate:小写-连字符` 时用默认值
 
-- [ ] Task 3：doctor 命令、`--json`、`--report`
+- [x] Task 3：doctor 命令、`--json`、`--report`
   - 验收：Spec 验收 1
   - 验证：`python3 -m unittest discover -s tests -p test_doctor.py -v`
   - 文件：`decision_inbox/doctor.py`、`__main__.py`、对应测试
+  - 记录（2026-10-17）：测试先于实现写好（模块不存在时全部报错）；实现后两处变异检查（不比较约定块、总做 Codex 信任检查）都被测试抓到。在 di-e2e 上实跑发现 agent-relay 报成 0.6.1：Claude 对目录型插件市场直接读源目录，安装记录里的版本是旧的；`deps.find` 改为先看 `known_marketplaces.json`，目录型市场取源目录里的插件（补 2 个测试，先失败后通过）。Ran 534 tests, OK。实跑结果：约定块 4 份都是当前版本、两条 Codex 线能加载；巡视 350 分钟没跑（异常）；Codex 里没有 decision-inbox 钩子的信任记录（未知）；三个依赖插件都兼容（agent-relay 0.8.2 接口 2.5、spec-guard 0.67.0 接口 1.0、delegate 0.5.3 接口 1.0）
 
-- [ ] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+- [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
+  - 记录（2026-10-17）：`python3 -m unittest discover -s tests` → Ran 534 tests, OK
 
 - [ ] Task 4：`query stats` 与 `query events --json`
   - 验收：Spec 验收 5

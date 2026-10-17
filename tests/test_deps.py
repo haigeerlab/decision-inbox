@@ -68,3 +68,28 @@ class DependencyTest(DepsCase):
         d = deps.dependency("delegate")
         self.assertEqual(deps.delegate_command(d, "review"), "/delegate:review")
         self.assertEqual(deps.delegate_command(d, "doctor"), "/delegate:doctor")   # bad value -> default
+
+
+class DirectoryMarketplaceTest(DepsCase):
+    """Claude reads plugins of a directory marketplace from the source; the install record keeps an old copy."""
+
+    def test_directory_source_wins_over_stale_record(self):
+        self.install("agent-relay", "0.6.1", json.dumps({"interface": "2.0"}))
+        repo = self.tmp / "repo"
+        plugin = repo / "plugins" / "agent-relay"
+        (plugin / ".claude-plugin").mkdir(parents=True)
+        (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": "0.8.2"}), encoding="utf-8")
+        (plugin / "interface.json").write_text(json.dumps({"interface": "2.5"}), encoding="utf-8")
+        (repo / ".claude-plugin").mkdir()
+        (repo / ".claude-plugin" / "marketplace.json").write_text(json.dumps(
+            {"plugins": [{"name": "agent-relay", "source": "./plugins/agent-relay"}]}), encoding="utf-8")
+        (self.tmp / "known_marketplaces.json").write_text(json.dumps(
+            {"m": {"source": {"source": "directory", "path": str(repo)}}}), encoding="utf-8")
+        d = deps.dependency("agent-relay")
+        self.assertEqual((d.version, d.interface.version), ("0.8.2", "2.5"))
+
+    def test_github_source_keeps_record(self):
+        self.install("agent-relay", "0.8.2", json.dumps({"interface": "2.5"}))
+        (self.tmp / "known_marketplaces.json").write_text(json.dumps(
+            {"m": {"source": {"source": "github", "repo": "x/y"}}}), encoding="utf-8")
+        self.assertEqual(deps.dependency("agent-relay").version, "0.8.2")

@@ -46,7 +46,7 @@ def find(plugin: str, project: str | None = None) -> Install | NotFound:
         return NotFound(f"找不到 Claude 的插件安装记录：{path}")
     except (OSError, json.JSONDecodeError) as e:
         return NotFound(f"插件安装记录读不出：{path}（{e}）")
-    entries = [e for key, value in (records.get("plugins") or {}).items()
+    entries = [{**e, "_market": key.split("@", 1)[1]} for key, value in (records.get("plugins") or {}).items()
                if key.startswith(plugin + "@") for e in (value or []) if isinstance(e, dict)]
     if not entries:
         return NotFound(f"本机没有安装 {plugin}")
@@ -59,7 +59,25 @@ def find(plugin: str, project: str | None = None) -> Install | NotFound:
     chosen = (scoped or users or [None])[0]
     if chosen is None:
         return NotFound(f"{plugin} 只装在别的项目里，这个仓库用不到")
-    return Install(chosen.get("installPath", ""), chosen.get("version"))
+    live = _directory_source(path.parent, chosen["_market"], plugin)
+    return live or Install(chosen.get("installPath", ""), chosen.get("version"))
+
+
+def _directory_source(plugins_dir: Path, market: str, plugin: str) -> Install | None:
+    """Claude loads a directory marketplace's plugin from its source, not from the recorded copy."""
+    try:
+        known = json.loads((plugins_dir / "known_marketplaces.json").read_text(encoding="utf-8"))
+        source = known[market]["source"]
+        if source.get("source") != "directory":
+            return None
+        repo = Path(source["path"])
+        listed = json.loads((repo / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        rel = next(p["source"] for p in listed["plugins"] if p.get("name") == plugin)
+        root = (repo / rel).resolve()
+        meta = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        return None
+    return Install(str(root), meta.get("version"))
 
 
 def _major_minor(text) -> tuple[int, int] | None:

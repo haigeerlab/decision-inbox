@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import doctor, health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item> <协作组> ...\n"
@@ -15,7 +15,8 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
          "      python3 -m decision_inbox onboard <hub|join|task|leave|teardown> <协作组> ...\n"
          "      python3 -m decision_inbox shim [--if-installed]\n"
-         "      python3 -m decision_inbox whoami [--cwd <目录>]")
+         "      python3 -m decision_inbox whoami [--cwd <目录>]\n"
+         "      python3 -m decision_inbox doctor [--group <协作组>] [--json|--report]")
 
 
 def _init(name: str) -> int:
@@ -477,7 +478,28 @@ def _whoami(argv: list[str]) -> int:
     return 0
 
 
+def _doctor(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m decision_inbox doctor")
+    parser.add_argument("--group", action="append")
+    out = parser.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true")
+    out.add_argument("--report", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        checks = doctor.run(args.group)
+    except (store.InvalidName, store.GroupNotFound) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    print(doctor.to_json(checks) if args.json else doctor.report(checks) if args.report else doctor.render(checks))
+    return 3 if any(c.state == "bad" for c in checks) else 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["doctor"]:
+        return _doctor(argv[1:])
     if argv[:1] == ["whoami"]:
         return _whoami(argv[1:])
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):
