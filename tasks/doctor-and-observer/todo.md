@@ -49,10 +49,11 @@
     4. `onboard allow cp2 --project <hub>`：列出 9 条要加的放行，没有建出 `.claude/` 目录（只预览）。
     观察：本机 Codex 没有 decision-inbox 钩子的信任记录，S3（Codex 停止钩子）实测前要先处理
 
-- [ ] Task 7：宿主差异文档、README 使用注意事项、版本 0.0.7
+- [x] Task 7：宿主差异文档、README 使用注意事项、版本 0.0.7
   - 验收：Spec 验收 8、9
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`docs/host-differences.md`、`README.md`、两份 `plugin.json`
+  - 记录（2026-10-17）：先改版本断言与 README 断言（加 doctor 子命令和 6 处新文字），2 个失败；改完 Ran 547 tests, OK。宿主差异：H3 改为 0.7.1 起有引导式恢复；H10 补「邮箱转来的任务」一行；新增 H18、H19、H20，另加 H21（目录型插件市场读源目录，Task 3 实跑发现）；约束汇总表加 4 行。README：接入第 1 步加 `onboard allow`；改掉「只说读收件箱时开发线不接邮箱派的活」这句过时说法（0.0.6 起约定块写明，Task 6 实测已验证）；查询命令后加体检与统计；新增「使用注意事项」表 11 行；排查表加 doctor 一行
 
 - [ ] Task 8：实测 S1、S3
   - 验收：Spec 验收 10

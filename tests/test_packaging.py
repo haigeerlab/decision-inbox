@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.6")
+        self.assertEqual(claude["version"], "0.0.7")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -106,7 +106,7 @@ class HookCommandTest(TempHomeTestCase):
 COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown")
 QUERIES = ("lines", "flow", "item", "map")
 CHANGES = ("hub-setup", "join", "leave", "teardown")
-SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami"}
+SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor"}
 
 
 def frontmatter(text):
@@ -187,7 +187,10 @@ class ReadmeTest(unittest.TestCase):
                        # relay-checkpoint-authority
                        "检查点答复即授权", "--checkpoint-authority", "一次答完", "信任这个项目",
                        # wait-honesty-and-briefs
-                       "可能已失效", "本次没带 agent-relay 状态"):
+                       "可能已失效", "本次没带 agent-relay 状态",
+                       # doctor-and-observer
+                       "## 使用注意事项", "doctor --report", "onboard allow", "query stats", "query events",
+                       "（有参考意见）"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")
