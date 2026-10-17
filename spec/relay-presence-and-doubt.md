@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved c280147e7982 -->
+<!-- spec-guard: review approved 220a876e91b0 -->
 # Spec: relay-presence-and-doubt
 
 > 能力图模块 `relay-presence-and-doubt`（2026-10-17 用 add-module 插入，排在 protocol-contract-v1 之后）。来源：`docs/requirements-record.md` 13.5「依赖插件升级核对」（agent-relay 0.8.0–0.8.2 的新事实），以及 wait-honesty-and-briefs、doctor-and-observer 实测记录里的观察。用户 2026-10-17 同意另开本模块。
