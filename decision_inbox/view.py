@@ -199,6 +199,17 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
     return "\n".join(out + _review_lines(it))
 
 
+def _combined(g: store.Group) -> str | None:
+    """One copy block answering every recommended card at once (relay-checkpoint-authority R4)."""
+    pending = items.pending(g)
+    picks = [f"{it['no']} {it['recommended']}" for it in pending if it["recommended"]]
+    if len(picks) < 2:
+        return None
+    out = ["一次答完（全按推荐）：", "```", "，".join(picks), "```"]
+    out += [f"#{it['no']} 没有推荐，要单独回" for it in pending if not it["recommended"]]
+    return "\n".join(out)
+
+
 def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
     confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment)]
     return confirms + [_item_card(g, now, it) for it in items.pending(g)]
@@ -212,7 +223,7 @@ def render(g: store.Group, now: str, assessment, relay=None, extra=()) -> str:
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
     head.append(_overview(g, now, assessment, extra))
     sections = ["\n".join(head), _anomaly_section(g, assessment, extra), *_cards(g, now, assessment, relay),
-                _footer(g, now)]
+                _combined(g), _footer(g, now)]
     return "\n\n".join(s for s in sections if s)
 
 

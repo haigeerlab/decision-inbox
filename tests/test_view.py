@@ -266,6 +266,25 @@ class ItemCardTest(ViewCase):
         self.assertIn(f"B：{'一' * 31}\n", c)
         self.assertNotIn("挡住", c)
 
+    def test_combined_reply_for_several_recommended(self):
+        """relay-checkpoint-authority R4: one copy block answers every recommended card at once."""
+        stopped = self.ask(SINGLE, minutes_ago=3)
+        loose = self.ask(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), sender="api-codex", minutes_ago=50)
+        plain = self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", ""), minutes_ago=10)
+        text = self.render()
+        order = sorted((stopped, loose, plain), key=lambda no: text.index(f"━━ {no} ·"))
+        recommended = [no for no in order if no != plain]
+        block = (f"一次答完（全按推荐）：\n```\n{'，'.join(f'{no} A' for no in recommended)}\n```\n"
+                 f"#{plain} 没有推荐，要单独回")
+        self.assertIn(block, text)
+        self.assertLess(text.index(f"━━ {order[-1]} ·"), text.index("一次答完"))
+        self.assertLess(text.index("一次答完"), text.index("等待中 "))
+
+    def test_no_combined_reply_for_one(self):
+        self.ask(SINGLE)
+        self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", ""))
+        self.assertNotIn("一次答完", self.render())
+
     def test_multiline_source(self):
         no = self.ask(MULTI, sender="coord")
         self.assertIn(f"━━ {no} · 多线：前端＋API · 订单状态字段统一用哪套命名 · 5 分钟前 · 挡住 2 条线", self.render())

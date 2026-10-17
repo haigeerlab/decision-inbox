@@ -23,10 +23,11 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-17）：`python3 -m unittest discover -s tests -v` → Ran 490 tests, OK
 
-- [ ] Task 4：R4 组合答复复制块
+- [x] Task 4：R4 组合答复复制块
   - 验收：Spec 验收 5
   - 验证：`python3 -m unittest discover -s tests -p test_view.py -v`
   - 文件：`decision_inbox/view.py`、`tests/test_view.py`
+  - 记录（2026-10-17）：新测试先失败（「只有一项时不出现」的守护测试实现前已通过）；实现后 Ran 492 tests, OK
 
 - [ ] Task 5：F13 结束行指向事项时提示
   - 验收：Spec 验收 6
