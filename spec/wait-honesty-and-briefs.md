@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved cfdbe24abb2f -->
+<!-- spec-guard: review approved aef278bc6286 -->
 # Spec: wait-honesty-and-briefs
 
 > 能力图模块 `wait-honesty-and-briefs`（2026-10-17 用 add-module 插入）。来源：spec-guard-monitor 的使用者／观察者视角审查清单 A2、A3、A7、B1、B2、B5（经用户同意转来），以及 relay-checkpoint-authority 实测发现「开发线不接邮箱派来的活」。用户在本会话同意按「模块甲」拆分。
