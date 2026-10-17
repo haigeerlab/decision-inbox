@@ -72,8 +72,9 @@
   - 文件：`decision_inbox/view.py`、`hub.py`、`tests/test_view.py`、`tests/test_hub.py`
   - 记录（2026-10-17）：3 个改后的测试先失败；实现后 hub-view 规格样例的逐字比对也失败（预期内，样例没有「推荐回复」一行），测试里给样例套上 F12 的改动，已验收的 hub-view 规格不改。Ran 475 tests, OK
 
-- [ ] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0
+- [x] Task 8：spec-guard-monitor 在 di-e2e 重跑 S0
   - 验收：Spec 验收 12；结果写进规格的实测记录
   - 说明：重跑由 spec-guard-monitor 主持，本会话不动测试环境
+  - 记录（2026-10-17）：第一次重跑因转发脚本被改回 0.0.3 只验证了 F3；用户授权后本会话切换插件来源、重新接入，第二次重跑由本会话（di-e2e-driver）驱动 dev-a 的 S0、spec-guard-monitor 驱动 dev-b 的 S0b，F1、F2、F3、F4、F10 通过，F12 部分实测。详见规格的实测记录
 
 - [ ] Checkpoint 4（gate）：模块最终验收，等用户确认
