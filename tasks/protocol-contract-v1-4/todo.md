@@ -8,9 +8,10 @@
   - 文件：`tests/fixtures/session-protocol/`、`tests/test_contract.py`
   - 记录（2026-10-18）：先改测试（版本 v1.4、来源 e33c077、解析 52、生成 6），在 v1.3 副本上 1 失败 7 报错；从契约 e33c077 `git archive` 取出 v1.4 样例替换后 `shasum -c` 通过、一致性测试 6 个全过。变异检查：去掉 `_review` 的半角转全角，只有 `wait-user/review-advice-halfwidth` 失败；去掉字段冒号后的 `\s*`，只有 `user-reply/original-whitespace` 失败；还原后产品代码无改动。Ran 568 tests, OK
 
-- [ ] Task 2：能力图、README、版本 0.0.11、通知契约负责人
+- [x] Task 2：能力图、README、版本 0.0.11、通知契约负责人
   - 验收：Spec 验收 4、5
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`spec/CAPABILITY-MAP.md`、`README.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：先改版本断言和 README 断言，2 个失败；改完 Ran 568 tests, OK。能力图外部依赖行改为已钉住 v1.4（e33c077）；README「消息协议」写 v1.4；已发消息请契约负责人更新 conformance 登记行（已送达，对方开始处理）
 
 - [ ] Checkpoint（gate）：模块最终验收，等用户确认
