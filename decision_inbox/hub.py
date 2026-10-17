@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, install, items, protocol, reviews, store, tickets, view
+from decision_inbox import deps, health, install, items, protocol, reviews, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -239,6 +239,7 @@ class Reply:
 
 
 PATROL_STALE_MINUTES = 15  # three missed */5 runs
+HOST = "Claude 桌面版"  # the patrol is a desktop scheduled task; a stuck run is the host waiting on a prompt
 
 
 def patrol_alarm(g: store.Group, now: str) -> str | None:
@@ -257,10 +258,10 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     if last is None:
         since = onboarding.get("patrolTaskAt")
         if since is not None and view._minutes(now, since) > PATROL_STALE_MINUTES:
-            return f"⚠ 巡视还没跑完过一轮：{fix}"
+            return deps.sourced(f"⚠ 巡视还没跑完过一轮：{fix}", HOST)
         return None
     idle = view._minutes(now, last)
-    return f"⚠ 巡视 {idle} 分钟没跑：{fix}" if idle > PATROL_STALE_MINUTES else None
+    return deps.sourced(f"⚠ 巡视 {idle} 分钟没跑：{fix}", HOST) if idle > PATROL_STALE_MINUTES else None
 
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
@@ -271,7 +272,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
     if unsent:
         head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
     if relay is None and relay_status == "unreadable":
-        head.append(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全")
+        head.append(deps.sourced(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全", "agent-relay"))
     elif relay is None:
         head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
     previous = store.read_state(g, "patrol").get("snapshot")

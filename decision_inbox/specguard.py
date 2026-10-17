@@ -76,7 +76,8 @@ def locate(project: str) -> Located | Missing | Incompatible:
     root = Path(found.root)
     iface = deps.read_interface(found.root, INTERFACE_MAJOR)
     if iface.state == "incompatible":
-        return Incompatible(f"spec-guard 接口版本不兼容（{iface.version}），本插件只认 1.x", iface.version)
+        return Incompatible(deps.sourced(f"spec-guard 接口版本不兼容（{iface.version}），本插件只认 1.x", PLUGIN),
+                            iface.version)
     if iface.state == "ok":
         picked = _from_interface(root, iface)
         if isinstance(picked, Incompatible):

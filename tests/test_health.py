@@ -209,6 +209,7 @@ class SessionSignalTest(HealthCase):
     def test_codex_backlog(self):
         r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 11))))
         self.assertIn((10, "codex-backlog", ("fe",)), codes(r))
+        self.assertTrue(next(x for x in r.signals if x.code == "codex-backlog").text.endswith("（来源：Codex 桌面版）"))
         r = self.assess(snapshot(agent("fe", app="codex", state="unknown", waiting=(2, ["api"], 9))))
         self.assertNotIn("codex-backlog", [x.code for x in r.signals])
         r = self.assess(snapshot(agent("fe", app="codex", state="running", waiting=(2, ["api"], 30))))

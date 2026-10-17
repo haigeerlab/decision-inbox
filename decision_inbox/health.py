@@ -204,7 +204,7 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
             if waited >= BACKLOG_MINUTES:
                 out.append(Signal(10, "codex-backlog", (name,),
                                   f"{_short(f)}（Codex）没被加载，有 {fact.waiting_count} 条消息积压，"
-                                  f"最早一条已等 {int(waited)} 分钟"))
+                                  f"最早一条已等 {int(waited)} 分钟（来源：Codex 桌面版）"))
     return out
 
 

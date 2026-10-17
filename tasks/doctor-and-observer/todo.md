@@ -35,10 +35,11 @@
   - 文件：`decision_inbox/onboard.py`、`__main__.py`、对应测试
   - 记录（2026-10-17）：4 个新测试先失败（1 失败 3 报错）；实现后 Ran 547 tests, OK。和计划的差别：做成单独的 `onboard allow <组> --project <收件枢纽目录> [--confirm]`，hub 的接入步骤里加一步提示运行它（老协作组也能单独补）；放行条目：转发脚本命令、7 个 agent-relay 工具、桌面版会话消息工具。在 di-e2e 收件枢纽目录上只跑了预览，没写入
 
-- [ ] Task 6：来源标注
+- [x] Task 6：来源标注
   - 验收：Spec 验收 7
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`patrol.py`、`view.py`、对应测试
+  - 记录（2026-10-17）：先把 7 处测试期望改成带来源（含 3 处新断言），7 个失败；实现后 Ran 547 tests, OK。标注的提示：巡视没跑与没跑完一轮、叫不醒（Claude 桌面版）、读不到 agent-relay 与巡视读不到（agent-relay）、Codex 没被加载（Codex 桌面版）、spec-guard 接口不兼容（spec-guard）。格式函数 `deps.sourced`；实际改的是 `hub.py` 而不是 `view.py`
 
 - [ ] Checkpoint 2（report）：全部测试全绿；scratchpad 临时协作组命令行实跑 doctor、stats、权限预览，记下输出；推送本分支
 

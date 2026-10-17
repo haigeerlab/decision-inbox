@@ -87,7 +87,7 @@ def _wake(ctx: _Context, entry: dict, text: str) -> None:
     if tried is None:
         ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
     elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
-        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开")
+        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开（来源：Claude 桌面版）")
 
 
 def _wakes(ctx: _Context) -> None:
@@ -165,7 +165,7 @@ def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
             topic = it["decide"].splitlines()[0]
             ctx.notify(f"item:{it['no']}", f"#{it['no']}「{topic}」已等 {int(waited)} 分钟，挡住 {it['blocks']} 条线")
     if relay_error:
-        ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态")
+        ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态（来源：agent-relay）")
 
 
 def _cap(ctx: _Context) -> None:

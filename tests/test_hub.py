@@ -325,7 +325,7 @@ class ReplyTest(HubCase):
         self.assertIn("本次没有 agent-relay 状态，无法判断", text)
         self.assertNotIn("agent-relay 没有它的数据", text)
         unreadable = hub.main_view(self.g, now=NOW, relay=None, relay_status="unreadable", relay_error="第 1 行不是 JSON")
-        self.assertEqual(unreadable.split("\n")[1], "⚠ 读不到 agent-relay（第 1 行不是 JSON），各线状态不全")
+        self.assertEqual(unreadable.split("\n")[1], "⚠ 读不到 agent-relay（第 1 行不是 JSON），各线状态不全（来源：agent-relay）")
 
 
 class ConventionTest(HubCase):
@@ -594,12 +594,12 @@ class PatrolAlarmTest(HubCase):
 
     def test_never_ran_after_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:14:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视还没跑完过一轮：{self.FIX}（来源：Claude 桌面版）")
         self.assertTrue(hub.main_view(self.g, now=NOW).startswith(f"⚠ 巡视还没跑完过一轮：{self.FIX}"))
 
     def test_stale_last_run(self):
         self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:10:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 20 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
     def test_quiet_within_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:16:00Z")
@@ -615,7 +615,7 @@ class PatrolAlarmTest(HubCase):
         self.patrol()
         self.assertIsNone(hub.patrol_alarm(self.g, NOW))
         self.patrol(last_run="2026-10-16T05:00:00Z")
-        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}")
+        self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
 
 class EndLineRelayIdTest(HubCase):

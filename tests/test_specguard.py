@@ -251,7 +251,7 @@ class InterfaceTest(LocateCase):
         self.assertIsInstance(found, specguard.Incompatible)
         r = specguard.read_line(project=str(self.project))
         self.assertEqual(r.status, "incompatible")
-        self.assertEqual(r.reason, "spec-guard 接口版本不兼容（2.0），本插件只认 1.x")
+        self.assertEqual(r.reason, "spec-guard 接口版本不兼容（2.0），本插件只认 1.x（来源：spec-guard）")
         self.assertNotIn("没", r.reason)
 
     def test_unknown_schema_version_in_interface_is_incompatible(self):

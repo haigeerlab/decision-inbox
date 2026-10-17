@@ -69,6 +69,8 @@ class WakeTest(PatrolCase):
         self.assertEqual([i for i in self.ids(second) if "fe-owner" in i], ["notify:unwakeable:fe-owner"])
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
                         .startswith("decision-inbox：叫不醒 前端负责人"))
+        self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
+                        .endswith("请手动打开（来源：Claude 桌面版），详见收件枢纽"))
         for minutes in (10, 12):  # still stopped: neither another wake nor another notice
             quiet = self.run_round(minutes, [owner])
             self.assertEqual([i for i in self.ids(quiet) if "fe-owner" in i], [], minutes)

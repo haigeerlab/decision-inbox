@@ -108,6 +108,11 @@ def read_interface(root: str, major: int, rel: str = "interface.json") -> Interf
     return Interface("ok", version, data)
 
 
+def sourced(text: str, source: str) -> str:
+    """Mark where a problem comes from, so it reaches whoever can fix it (doctor-and-observer decision 6)."""
+    return f"{text}（来源：{source}）"
+
+
 # Accepted interface major per dependency (spec/doctor-and-observer.md decision 2).
 MAJORS = {"spec-guard": 1, "delegate": 1, "agent-relay": 2}
 _DELEGATE_DEFAULTS = {"review": "/delegate:review", "run": "/delegate:run", "doctor": "/delegate:doctor"}
