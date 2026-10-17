@@ -8,10 +8,11 @@
   - 文件：`decision_inbox/hub.py`、`tickets.py`、`health.py`、`view.py`、对应测试
   - 记录（2026-10-17）：5 个新测试中 4 个先失败（「用户照常能关」实现前已通过）；实现后 Ran 502 tests, OK。和计划的差别：判断写成 `tickets.stale_tickets(g)`，直接读收件枢纽的收件记录和事件日志，没有用传函数的办法（读的数据一样，且 tickets 不依赖 hub）
 
-- [ ] Task 2：A3 区分没带、读不到、查不到
+- [x] Task 2：A3 区分没带、读不到、查不到
   - 验收：Spec 验收 2
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/health.py`、`hub.py`、`view.py`、`query.py`、`__main__.py`、对应测试
+  - 记录（2026-10-17）：2 个改写的测试和 1 个新测试先失败；实现后 Ran 503 tests, OK。`view` 命令区分三种；`inbox reply` 回复里附的主视图仍只区分「带了」和「没带」（读不到时按没带写），影响小，留作观察
 
 - [ ] Task 3：A7 新事项默认取代
   - 验收：Spec 验收 3（默认取代同一会话同类待答事项；【并行】保留；单线多线互不取代；别的会话不动；回执提示；约定块一条改写）

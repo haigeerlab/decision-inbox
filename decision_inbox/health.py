@@ -161,7 +161,11 @@ def _state(f: _Facts, now: datetime) -> LineState:
     if f.activity is not None:
         return LineState("idle", f"{_duration((now - f.activity).total_seconds() / 60)}无活动",
                          since=f.activity.isoformat())
-    return LineState("idle", "无活动记录（agent-relay 没有它的数据）")
+    return LineState("idle", NO_RECORD)
+
+
+NO_RECORD = "无活动记录（agent-relay 没有它的数据）"
+NO_RELAY = "本次没有 agent-relay 状态，无法判断"  # not read this time, not missing (wait-honesty-and-briefs A3)
 
 
 def _short(f: _Facts) -> str:
@@ -275,6 +279,8 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap)
     lines = {name: _state(f, moment) for name, f in facts.items()}
+    if relay is None:
+        lines = {name: LineState(s.word, NO_RELAY) if s.text == NO_RECORD else s for name, s in lines.items()}
     stale = frozenset(tickets.stale_tickets(g))  # waits the sender has moved past (wait-honesty-and-briefs A2)
     signals = _session_signals(facts, lines, moment, stale) + _progress_signals(g, facts, lines, snap, moment)
     return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)

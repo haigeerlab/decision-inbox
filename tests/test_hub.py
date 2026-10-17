@@ -321,7 +321,11 @@ class ReplyTest(HubCase):
         text = hub.main_view(self.g, now=NOW, relay=None)
         lines = text.split("\n")
         self.assertEqual(lines[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
-        self.assertEqual(lines[1], "⚠ 读不到 agent-relay，各线状态不全")
+        self.assertEqual(lines[1], "⚠ 本次没带 agent-relay 状态，各线状态不全")  # wait-honesty-and-briefs A3
+        self.assertIn("本次没有 agent-relay 状态，无法判断", text)
+        self.assertNotIn("agent-relay 没有它的数据", text)
+        unreadable = hub.main_view(self.g, now=NOW, relay=None, relay_status="unreadable", relay_error="第 1 行不是 JSON")
+        self.assertEqual(unreadable.split("\n")[1], "⚠ 读不到 agent-relay（第 1 行不是 JSON），各线状态不全")
 
 
 class ConventionTest(HubCase):
@@ -424,10 +428,11 @@ class CommandLineTest(HubCase):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1403, "api-codex", "【等待用户】\n结束：无\n")))
         code, out, _ = self.run_cli("view", "demo", "--agents", self.write("agents.json", "not json"))
         self.assertEqual(code, 0)
-        self.assertEqual(out.split("\n")[:2], ["⚠ 有 1 条消息没发出去，说「重发」再试", "⚠ 读不到 agent-relay，各线状态不全"])
+        self.assertEqual(out.split("\n")[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
+        self.assertTrue(out.split("\n")[1].startswith("⚠ 读不到 agent-relay（"), out)
         code, out, _ = self.run_cli("view", "demo")
         self.assertEqual(code, 0)
-        self.assertIn("读不到 agent-relay", out)
+        self.assertIn("⚠ 本次没带 agent-relay 状态，各线状态不全", out)
 
     def test_expanded_views(self):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1404, "fe-codex", WAIT_USER)))

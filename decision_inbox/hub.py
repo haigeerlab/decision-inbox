@@ -263,14 +263,17 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     return f"⚠ 巡视 {idle} 分钟没跑：{fix}" if idle > PATROL_STALE_MINUTES else None
 
 
-def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=()) -> str:
+def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
+              relay_status: str | None = None, relay_error: str | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
         head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
-    if relay is None:
-        head.append("⚠ 读不到 agent-relay，各线状态不全")
+    if relay is None and relay_status == "unreadable":
+        head.append(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全")
+    elif relay is None:
+        head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
     previous = store.read_state(g, "patrol").get("snapshot")
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous)
     return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now))])

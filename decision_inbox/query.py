@@ -324,6 +324,8 @@ def item_message_ids(g: store.Group, number: int) -> tuple[int, ...]:
 
 
 def _status_rows(g: store.Group, relay_id: int, at: str, statuses: dict) -> list[tuple[str, str]]:
+    if statuses is None:  # nothing brought this time is not the mailbox lacking it (wait-honesty-and-briefs A3)
+        return [(at, f"本次没带 #{relay_id} 的 agent-relay 状态")]
     st = statuses.get(relay_id)
     if st is None:
         return [(at, f"agent-relay 查不到 #{relay_id}")]
@@ -386,7 +388,7 @@ def render_item(g: store.Group, number: int, statuses: dict | None = None) -> st
     """/item: one item's or wait ticket's timeline; message bodies never appear."""
     it = items.get(g, number)
     if it is not None:
-        return "\n".join(_item_timeline(g, it, statuses or {}))
+        return "\n".join(_item_timeline(g, it, statuses))
     t = store.read_state(g, tickets.DOMAIN).get("tickets", {}).get(str(number))
     if t is not None:
         return "\n".join(_ticket_timeline(g, number, t))

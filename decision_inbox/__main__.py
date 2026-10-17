@@ -111,7 +111,7 @@ def _query(argv: list[str]) -> int:
             for relay_id in query.item_message_ids(g, args.number):
                 print(relay_id)
         else:
-            statuses = {}
+            statuses = {} if args.status else None
             for path in args.status:
                 st = _parse(relay.parse_message_status, _read(path))
                 statuses[st.id] = st
@@ -235,6 +235,16 @@ def _patrol(argv: list[str]) -> int:
     return 0
 
 
+def _relay_read(path: str | None, version: str | None):
+    """(snapshot or None, "ok"／"absent"／"unreadable", first line of the error)."""
+    if not path:
+        return None, "absent", None
+    try:
+        return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version), "ok", None
+    except (OSError, relay.RelayDataError) as e:
+        return None, "unreadable", (str(e).splitlines() or ["原因不明"])[0]
+
+
 def _relay_or_none(path: str | None, version: str | None):
     """The hub keeps going without agent-relay facts; the main view says so."""
     if not path:
@@ -338,7 +348,7 @@ def _view(argv: list[str]) -> int:
         print(str(e), file=sys.stderr)
         return 2
     now = store.now()
-    agents = _relay_or_none(args.agents, args.relay_version)
+    agents, relay_status, relay_error = _relay_read(args.agents, args.relay_version)
     if not what:
         hub_entry = next((e for e in store.roster(g) if e["role"] == "hub"), None)
         if args.outbox and hub_entry is not None:
@@ -347,7 +357,7 @@ def _view(argv: list[str]) -> int:
                 items.update_delivery(g, {m.id: (m.delivery_state, m.acknowledged_at) for m in out.messages}, at=now)
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
-        print(hub.main_view(g, now, agents, _dev_maps(g)))
+        print(hub.main_view(g, now, agents, _dev_maps(g), relay_status=relay_status, relay_error=relay_error))
     elif what[0] == "detail":
         print(view.render_detail(g, int(what[1])))
     elif what[0] == "waits":
