@@ -32,6 +32,10 @@
   - 文件：`README.md`、`commands/hub-setup.md`、`docs/host-differences.md`、`docs/stage6-field-acceptance.md`、`spec/CAPABILITY-MAP.md`、两份 `plugin.json`、`tests/test_packaging.py`
   - 记录（2026-10-18）：先改打包测试（0.0.12、README 写 v1.5、「第一次手动运行之前，定时不会触发」「名字还绑在旧会话上」），2 失败；README 接入第 1 步与排查表（新增 3 行）、hub-setup 说明、宿主差异 H22／H23 与约束汇总、实地验收方案 P2 第 2 步、能力图外部依赖行（v1.5、246e138）改完后通过。Ran 585 tests, OK
 
-- [ ] Checkpoint（gate）：S1 重测，开始前另问用户
+- [x] Checkpoint（gate）：S1 重测，开始前另问用户
+  - 记录（2026-10-18）：用户同意先开 PR（#6，用户已合并）再重测。主 checkout 快进到 3b44203，Claude 侧 `claude plugin update` 到 0.0.12、Codex 侧重装 0.0.12；巡视每轮新开会话、转发脚本指向主 checkout 0.0.12，未重开收件枢纽与负责人会话。负责人空闲（running/idle）、测试消息 #5537 关闭唤醒已积压约 57 分钟；03:05 手动立即运行巡视，03:08:40 记录 `done: [wake:di-p0-owner]`，负责人读信并回复 #5656「S1 已收到……原文开头：【decision-inbox 巡视】你有 1 条消息在等」。S1 通过。
+  - 输入文件读完即删已生效（这一轮后 `$TMPDIR` 下没有残留）。这一轮从触发到记录 178 秒（含新会话启动），**没达到「通常 90 秒内」的目标**；只测到 1 轮，原计划 3 轮没测成，原因见下一条。
+  - 新发现 F-P0-6：宿主的周期定时任务触发不规律——建好后只在 02:21、02:34 自己跑过，02:37～03:05 一次都没触发（`nextRunAt` 一直往后推，运行记录不增加）。不在本插件代码里，记入宿主差异 H24，对策另议。
 
-- [ ] Checkpoint（gate）：模块最终验收，等用户确认
+- [x] Checkpoint（gate）：模块最终验收，等用户确认
+  - 记录（2026-10-18）：用户验收通过；剩余文档提交另开小 PR，F-P0-6 的对策另写方案。Ran 585 tests, OK
