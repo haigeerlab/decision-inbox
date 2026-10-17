@@ -76,7 +76,9 @@ def receive(g: store.Group, text: str, sender: str, relay_id, sent_at: str) -> R
             closed = _close_by_end_line(tx, doc, msg.ends.ids, sender, 2, f"新消息 #{relay_id}", sent_at, hints)
         if msg.kind == "wait-session":
             target = msg.fields["在等谁"].strip()
-            entry = None if target in USER_TARGETS else store.find_session(g, short_name=target)
+            # Short name first; lines also write the agent-relay name (e2e-round1-fixes F5).
+            entry = None if target in USER_TARGETS else (store.find_session(g, short_name=target)
+                                                         or store.find_session(g, relay_name=target))
             if entry is None and target not in USER_TARGETS:
                 hints.append(Issue("unknown-target", f"「在等谁」里的 {target} 不在会话名册里，不判断它是否在线"))
             opened = tx.allocate_number()

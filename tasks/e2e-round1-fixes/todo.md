@@ -29,10 +29,11 @@
   - 文件：`decision_inbox/hub.py`、`onboard.py`、`__main__.py`、对应测试
   - 记录（2026-10-17）：7 个新测试和断言先失败；实现后 Ran 465 tests, OK。判断函数 `hub.patrol_alarm` 由主视图和 `query flow` 共用，阈值常量 `PATROL_STALE_MINUTES = 15`
 
-- [ ] Task 5：「在等谁」认身份名
+- [x] Task 5：「在等谁」认身份名
   - 验收：Spec 验收 9
   - 验证：`python3 -m unittest discover -s tests -p test_tickets.py -v`
   - 文件：`decision_inbox/tickets.py`、`tests/test_tickets.py`
+  - 记录（2026-10-17）：新测试先失败；实现后 Ran 466 tests, OK
 
 - [ ] Task 6：卸载删掉空的新建规则文件
   - 验收：Spec 验收 10（新建且删块后为空才删；原有文件、另加了内容的新建文件都保留；预览写明会删；静态扫描只放行 `_drop_created_rules`）

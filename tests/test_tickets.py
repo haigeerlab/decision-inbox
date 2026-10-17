@@ -112,6 +112,13 @@ class OpenAndCloseTest(TicketsCase):
         self.assertIn("unknown-target", {h.code for h in r.hints})
         self.assertIsNone(self.ticket(r.opened)["targetRelay"])
 
+    def test_target_by_relay_name(self):
+        """e2e-round1-fixes F5: dev-a wrote the hub's agent-relay name, not its short name."""
+        entry = store.roster(self.g)[0]
+        r = self.receive(wait_session(target=entry["relayName"]))
+        self.assertNotIn("unknown-target", {h.code for h in r.hints})
+        self.assertEqual(self.ticket(r.opened)["targetRelay"], entry["relayName"])
+
     def test_other_kinds_not_handled(self):
         self.assertFalse(self.receive("【撤回】\n事项：#3\n").handled)
 
