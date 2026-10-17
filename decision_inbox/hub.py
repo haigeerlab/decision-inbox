@@ -159,7 +159,7 @@ def receive(g: store.Group, inbox, now: str) -> Receipt:
                 result.sends.append(_queue(g, tx, doc, m.sender, text, m.id, "return", None, now))
             if unknown is not None:
                 doc["unknown"][str(m.id)] = unknown
-            doc["received"][str(m.id)] = {"at": now, "kind": kind, "returned": bool(texts)}
+            doc["received"][str(m.id)] = {"at": now, "kind": kind, "returned": bool(texts), "sender": m.sender}
             tx.append_event("hub.received", ref=None, actor=m.sender, data={"relayId": m.id, "kind": kind})
             tx.write_state(DOMAIN, doc)
     if inbox.has_more:

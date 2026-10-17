@@ -2,10 +2,11 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：A2 等待单可能已失效
+- [x] Task 1：A2 等待单可能已失效
   - 验收：Spec 验收 1（发送方之后有消息时标可能已失效；信号 1 与推送行不计入；只剩这类单时不报全线停住；「看等待」和计数行写明；「关掉 #N」照常；老记录从事件日志补读发送方）
   - 验证：`python3 -m unittest discover -s tests -v`
   - 文件：`decision_inbox/hub.py`、`tickets.py`、`health.py`、`view.py`、对应测试
+  - 记录（2026-10-17）：5 个新测试中 4 个先失败（「用户照常能关」实现前已通过）；实现后 Ran 502 tests, OK。和计划的差别：判断写成 `tickets.stale_tickets(g)`，直接读收件枢纽的收件记录和事件日志，没有用传函数的办法（读的数据一样，且 tickets 不依赖 hub）
 
 - [ ] Task 2：A3 区分没带、读不到、查不到
   - 验收：Spec 验收 2

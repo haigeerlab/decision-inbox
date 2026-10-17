@@ -69,7 +69,7 @@ def _push_line(g: store.Group, now: str, assessment) -> str | None:
     """Decided format 5: the session waited on most that itself waits for nobody."""
     if not any(s.no == 1 for s in assessment.signals):
         return None
-    open_ = tickets.open_tickets(g, now)
+    open_ = [t for t in tickets.open_tickets(g, now) if t.maybe_stale is None]
     if not open_:
         return None
     on_sessions = [t for t in open_ if t.target not in tickets.USER_TARGETS]
@@ -150,7 +150,9 @@ def _overview(g: store.Group, now: str, assessment, extra=()) -> str:
 def _footer(g: store.Group, now: str) -> str:
     count = tickets.counts(g, _today(now))
     invalid = len(items.by_status(g, *INVALIDATED))
-    return f"等待中 {count['open']} 单 · 已失效 {invalid} 项 · 今天已关 {count['closed_today']} 单"
+    stale = len(tickets.stale_tickets(g))
+    waiting = f"等待中 {count['open']} 单" + (f"（其中 {stale} 单可能已失效）" if stale else "")
+    return f"{waiting} · 已失效 {invalid} 项 · 今天已关 {count['closed_today']} 单"
 
 
 def _confirm_card(g: store.Group, now: str, relay_name: str, relay) -> str:
@@ -262,7 +264,10 @@ def render_waits(g: store.Group, now: str, relay=None) -> str:
         parts = [f"#{t.no} {_ticket_head(g, t.waiter, t.target, t.what)}"]
         if "waited" not in t.marks:
             parts.append(f"已等 {t.minutes} 分钟")
-        rows.append(" · ".join(parts + [_one_line(n) for n in t.notes]))
+        row = " · ".join(parts + [_one_line(n) for n in t.notes])
+        if t.maybe_stale is not None:
+            row += f"（可能已失效：之后又发过 #{t.maybe_stale}，回『关掉 #{t.no}』）"
+        rows.append(row)
     return "\n".join(rows) or "没有开着的等待单"
 
 

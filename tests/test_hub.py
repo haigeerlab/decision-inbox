@@ -5,7 +5,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import hub, install, items, relay, reviews, store
+from decision_inbox import health, hub, install, items, relay, reviews, store, tickets, view
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 WAIT_USER = (PROTO / "wait-user.txt").read_text(encoding="utf-8")
@@ -634,3 +634,47 @@ class StatusQuestionTest(HubCase):
         self.receive(message(1401, "fe-codex", WAIT_USER), message(1402, "api-codex", WAIT_USER))
         r = hub.reply(self.g, "卡住了吗", now=NOW)
         self.assertEqual(r.show, items.NO_ITEM_QUESTION)
+
+
+class StaleTicketTest(HubCase):
+    """wait-honesty-and-briefs A2: a wait its sender has since moved past is flagged, not counted as all-waiting."""
+
+    def stale_setup(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        no = int(next(iter(self.tickets())))
+        self.receive(message(4610, "fe-codex", WAIT_USER))   # 结束：无 — the old wait stays open
+        return no
+
+    def test_flagged_and_explained(self):
+        no = self.stale_setup()
+        views = {t.no: t for t in tickets.open_tickets(self.g, NOW)}
+        self.assertEqual(views[no].maybe_stale, 4610)
+        waits = view.render_waits(self.g, NOW)
+        self.assertIn(f"（可能已失效：之后又发过 #4610，回『关掉 #{no}』）", waits)
+        self.assertIn("等待中 1 单（其中 1 单可能已失效）", hub.main_view(self.g, now=NOW))
+
+    def test_not_counted_as_all_waiting(self):
+        self.stale_setup()
+        main = hub.main_view(self.g, now=NOW)
+        self.assertNotIn("全线停住", main)
+        a = health.assess(self.g, now=NOW)
+        self.assertNotIn(1, [s.no for s in a.signals])
+
+    def test_fresh_wait_still_counts(self):
+        self.receive(message(4544, "fe-codex", wait_session(target="di-hub", what="编号核对")))
+        self.assertIsNone(tickets.open_tickets(self.g, NOW)[0].maybe_stale)
+        self.assertIn(1, [s.no for s in health.assess(self.g, now=NOW).signals])
+
+    def test_old_receipts_without_sender_use_the_event_log(self):
+        no = self.stale_setup()
+        with self.g.transaction() as tx:
+            doc = tx.read_state("hub")
+            for rec in doc["received"].values():
+                rec.pop("sender", None)
+            tx.write_state("hub", doc)
+        self.assertEqual({t.no: t for t in tickets.open_tickets(self.g, NOW)}[no].maybe_stale, 4610)
+
+    def test_user_can_still_close_it(self):
+        no = self.stale_setup()
+        r = hub.reply(self.g, f"关掉 #{no} 旧单", now=NOW)
+        self.assertEqual(self.tickets()[str(no)]["status"], "closed")

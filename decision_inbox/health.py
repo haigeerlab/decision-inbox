@@ -10,7 +10,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from decision_inbox import items, reviews, store
+from decision_inbox import items, reviews, store, tickets
 
 # Thresholds decided by the user on 2026-10-16 (requirement section 12 item 3).
 REWORK_FALLBACK_ROUNDS = 3
@@ -168,10 +168,11 @@ def _short(f: _Facts) -> str:
     return f.entry["shortName"]
 
 
-def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime) -> list[Signal]:
+def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now: datetime,
+                     stale=frozenset()) -> list[Signal]:
     """Signals 1, 2, 4, 5 and 10: waiting chains and message backlogs."""
     out = []
-    open_count = sum(len(f.tickets) for f in facts.values())
+    open_count = sum(1 for f in facts.values() for t in f.tickets if t["no"] not in stale)
     if open_count and all(state.word != "working" for state in lines.values()):
         out.append(Signal(1, "all-waiting", tuple(sorted(facts)),
                           f"全线互等：所有会话都没在干活，还有 {open_count} 张等待单没关"))
@@ -274,5 +275,6 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap)
     lines = {name: _state(f, moment) for name, f in facts.items()}
-    signals = _session_signals(facts, lines, moment) + _progress_signals(g, facts, lines, snap, moment)
+    stale = frozenset(tickets.stale_tickets(g))  # waits the sender has moved past (wait-honesty-and-briefs A2)
+    signals = _session_signals(facts, lines, moment, stale) + _progress_signals(g, facts, lines, snap, moment)
     return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)
