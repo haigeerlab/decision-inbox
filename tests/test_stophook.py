@@ -235,3 +235,36 @@ class AnsweredNotResumedTest(HookCase):
             "做完了：发【已恢复】，结束行写这个编号。",
             "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
         ]))
+
+
+def progress(done, total, status="ok", module="pay"):
+    from types import SimpleNamespace
+    m = SimpleNamespace(id=module, progress_done=done, progress_total=total)
+    return lambda repo: SimpleNamespace(status=status, map=SimpleNamespace(active_module=module, modules=(m,)))
+
+
+class SilentStopTest(HookCase):
+    """wait-honesty-and-briefs B1: open todos and nothing reported means the session stopped silently."""
+
+    def decide_with(self, read_map, **kw):
+        return stophook.decide(self.g, payload=self.payload(**kw), now=NOW, read_map=read_map)
+
+    def test_open_todos_and_nothing_reported_blocks_once(self):
+        d = self.decide_with(progress(2, 5))
+        self.assertTrue(d.block)
+        self.assertEqual(d.reason.split("\n")[0],
+                         "【decision-inbox】收工前请先处理：当前模块 pay 还有 3 项没勾，你既没报阻塞也没抛事项。")
+        self.assertIn("手上没有已批准、还没做完的下一步：抛一项【等待用户】", d.reason)
+        self.assertFalse(self.decide_with(progress(2, 5), active=True).block)
+
+    def test_passes_when_done_unreadable_or_reported(self):
+        self.assertFalse(self.decide_with(progress(5, 5)).block)
+        self.assertFalse(self.decide_with(progress(2, 5, status="not-installed")).block)
+        self.wait("api-codex", "前端", 3)
+        self.assertFalse(self.decide_with(progress(2, 5)).block)
+
+    def test_pending_item_counts_as_reported(self):
+        text = (Path(__file__).resolve().parent / "fixtures" / "protocol" / "wait-user.txt").read_text(encoding="utf-8")
+        items.receive(self.g, text.replace("是否完全停住：是", "是否完全停住：否"), sender="api-codex", relay_id=9,
+                      received_at=at(1))
+        self.assertFalse(self.decide_with(progress(2, 5)).block)

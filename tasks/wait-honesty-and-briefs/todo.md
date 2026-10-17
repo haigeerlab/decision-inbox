@@ -23,10 +23,11 @@
 - [x] Checkpoint 1（report）：全部测试全绿，记下命令与结果后继续
   - 记录（2026-10-17）：Ran 507 tests, OK
 
-- [ ] Task 4：B1 约定硬规则与停止钩子检查
+- [x] Task 4：B1 约定硬规则与停止钩子检查
   - 验收：Spec 验收 4
   - 验证：`python3 -m unittest discover -s tests -p test_stophook.py -v`
   - 文件：`decision_inbox/stophook.py`、`onboard.py`、对应测试
+  - 记录（2026-10-17）：3 个钩子测试先报错；实现后 Ran 510 tests, OK。约定块两句的关键词断言与实现同一步加入，没有单独看到失败。检查只对开发线、只在读得到 spec-guard 时做；本会话有任何待答事项（不只完全停住的）也算已报
 
 - [ ] Task 5：B2、B5、邮箱派活、README、版本 0.0.6
   - 验收：Spec 验收 5、6、7、8
