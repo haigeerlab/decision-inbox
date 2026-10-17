@@ -37,9 +37,10 @@
 | relay-checkpoint-authority | 经收件枢纽中转的体验与直接对话一致：接入时核对 Codex 会话能加载约定块；可选打开「检查点答复即授权」并说明对宿主自动审批的覆盖范围；检查点之间开发线自主修正与重试；多项待答给组合答复；结束行指向事项时提示（2026-10-17 实测后提出，用户确认另开模块） | onboarding, hub-loop, hub-view, wait-tickets, e2e-round1-fixes |
 | wait-honesty-and-briefs | 主视图说实话、事项写得清楚：发送方后来又有消息的等待单标为可能已失效，不再引发「全线停住」假警报；没读到 agent-relay 时说没读到而不是查不到；新【等待用户】默认取代本会话之前未答的事项；约定块写明没有已批准的下一步就必须抛事项、要点按事项类型写、邮箱派来的活按来源接；收件枢纽先讲清卡点原因（2026-10-17 实测与审查清单，用户确认拆分） | wait-tickets, line-health, hub-view, decision-queue, onboarding, hub-loop, relay-checkpoint-authority |
 | doctor-and-observer | 装对了吗、跑得怎么样、出了问题找谁：doctor 逐项核对约定块、转发脚本、钩子信任、巡视、Codex 加载与依赖插件接口兼容（按 spec-guard、delegate 的 interface.json 读）；只读统计与事件导出、可转发的异常报告；评审状态对照表；hub-setup 一次性权限放行；问题标来源；宿主差异文档与 README 使用注意事项（2026-10-17 实测与审查清单，用户确认拆分） | onboarding, spec-guard-reader, map-view, query-commands, patrol, hub-loop, wait-honesty-and-briefs |
+| protocol-contract-v1 | 钉住共用契约 session-protocol v1.0：把契约的样例与期望结果按版本复制进测试、核对指纹，用本插件的解析与生成代码逐份跑通；能力图外部依赖表与 README 写明以契约为准；行为不变（2026-10-18 用户批准契约迁移计划） | message-protocol, hub-loop, decision-queue, doctor-and-observer |
 | relay-presence-and-doubt | 接上 agent-relay 0.8 的新事实并修实测观察：按 presence.activity 区分空闲与忙碌、显示送达存疑、合并答复用 alsoAnswers 一次关多条请求、事项被取代时撤回旧请求；没带 agent-relay 状态时不报「全线停住」；各线一行不按可能已失效的单写阻塞、写短名；停止钩子不把已发出的【已恢复】误判为没发（2026-10-17 依赖升级核对与实测，用户确认另开模块） | relay-reader, line-health, hub-view, hub-loop, stop-hook, decision-queue, wait-honesty-and-briefs |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → relay-presence-and-doubt
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 

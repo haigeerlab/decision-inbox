@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 04f09583822d -->
 # Spec: protocol-contract-v1
 
 > 能力图模块 `protocol-contract-v1`（2026-10-18 用 add-module 插入，排在 doctor-and-observer 之后、relay-presence-and-doubt 之前）。来源：用户 2026-10-18 批准的契约迁移计划——共用契约仓库 `session-protocol` v1.0 以 decision-inbox 0.0.7 的现行行为为准，契约仓库只在本地，decision-inbox 侧作为模块乙之后的新模块；契约仓库已建（`~/Documents/haigeerlab/session-protocol`，提交 7585be8）。
@@ -63,7 +63,7 @@ to_contract(msg: protocol.Message) -> dict   # 契约 PROTOCOL.md 第 12 节的�
 
 ## 未决问题
 
-1. 第 5 条：指向契约写在能力图和 README（推荐），还是按原计划改 `spec/message-protocol.md`（改后该规格要重新评审）。
+无。第 5 条用户 2026-10-18 定：指向契约写在能力图外部依赖表和 README，不改 `spec/message-protocol.md`。
 
 ## 文档建议
 
