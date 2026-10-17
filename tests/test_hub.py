@@ -688,3 +688,31 @@ class StaleTicketTest(HubCase):
         no = self.stale_setup()
         r = hub.reply(self.g, f"关掉 #{no} 旧单", now=NOW)
         self.assertEqual(self.tickets()[str(no)]["status"], "closed")
+
+
+class AlsoAnswersTest(HubCase):
+    """relay-presence-and-doubt Task 4: close the proposer's superseded and withdrawn requests too."""
+
+    def answer(self, no, letter="A"):
+        outs = items.answer(self.g, items.interpret_reply(self.g, f"{no} {letter}").answers, answered_at=NOW)
+        return hub._queue_answers(self.g, outs, now=NOW)
+
+    def test_superseded_and_withdrawn_closed_once(self):
+        self.receive(message(1401, "fe-codex", WAIT_USER))                                  # #1
+        self.receive(message(1402, "fe-codex", WAIT_USER.replace("【等待用户】", "【与 #1 并行】\n【等待用户】")))  # #2
+        self.receive(message(1403, "fe-codex", "【撤回】\n事项：#2\n原因：不要了\n"))
+        self.receive(message(1404, "fe-codex", WAIT_USER))                                  # #3 supersedes #1
+        self.receive(message(1405, "api-codex", WAIT_USER))                                 # #4 other session
+        self.receive(message(1406, "api-codex", WAIT_USER))                                 # #5 supersedes #4
+        sends = self.answer(3)
+        self.assertEqual((sends[0]["replyTo"], sends[0]["alsoAnswers"]), (1404, [1401, 1402]))
+        self.receive(message(1407, "fe-codex", WAIT_USER))                                  # #6
+        self.assertNotIn("alsoAnswers", self.answer(6)[0])                                  # not repeated
+        self.assertEqual(self.answer(5)[0]["alsoAnswers"], [1405])
+
+    def test_plain_answer_has_no_also_answers(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        self.assertNotIn("alsoAnswers", self.answer(1)[0])
+
+    def test_hub_convention_says_to_fill_it(self):
+        self.assertIn("有 `alsoAnswers` 就照填", hub.convention("demo"))

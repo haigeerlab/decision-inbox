@@ -68,8 +68,11 @@ def _queue(g: store.Group, tx, doc: dict, to: str, text: str, reply_to, kind: st
 
 def _send_view(g: store.Group, out_id: str, entry: dict) -> dict:
     n = out_id.partition(":")[2]
-    return {"id": out_id, "to": entry["to"], "bodyFile": str(g.path / "outgoing" / f"{n}.txt"),
-            "replyTo": entry["replyTo"], "kind": entry["kind"]}
+    view_ = {"id": out_id, "to": entry["to"], "bodyFile": str(g.path / "outgoing" / f"{n}.txt"),
+             "replyTo": entry["replyTo"], "kind": entry["kind"]}
+    if entry.get("alsoAnswers"):
+        view_["alsoAnswers"] = entry["alsoAnswers"]
+    return view_
 
 
 def _hints(g: store.Group, sender: str, hints) -> list[str]:
@@ -180,11 +183,27 @@ def _queue_answers(g: store.Group, outgoing, now: str) -> list[dict]:
             it = items.get(g, o.item)
             reply_to = it["relayId"] if o.to == it["sender"] else None
             sends.append(_queue(g, tx, doc, o.to, o.text, reply_to, "answer", o.item, now))
+            if reply_to is not None and (also := _also_answers(g, doc, it)):
+                sends[-1]["alsoAnswers"] = also
+                doc["outgoing"][sends[-1]["id"]]["alsoAnswers"] = also
+                doc.setdefault("alsoClosed", []).extend(also)
             if o.to == it["sender"]:
                 for to, text in _notices(g, it, now):
                     sends.append(_queue(g, tx, doc, to, text, None, "notice", o.item, now))
         tx.write_state(DOMAIN, doc)
     return sends
+
+
+def _also_answers(g: store.Group, doc: dict, it: dict) -> list[int]:
+    """The proposer's own superseded or withdrawn requests the hub never answered (relay-presence-and-doubt).
+
+    agent-relay refuses the whole send when one of them cannot be closed, so only ids the
+    hub recorded as that sender's items, and never put in alsoAnswers before, go in.
+    """
+    done = set(doc.get("alsoClosed", []))
+    return sorted(x["relayId"] for x in items.by_status(g, "superseded", "withdrawn")
+                  if x["sender"] == it["sender"] and x["relayId"] is not None and x["relayId"] not in done
+                  and x["relayId"] != it["relayId"])
 
 
 def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
@@ -373,7 +392,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 
 1. 用 `bridge_inbox` 读自己的收件箱，把返回的 JSON 原样写入 {io}/inbox.json。
 2. 运行 `{cli} inbox receive {group} --inbox {io}/inbox.json`。
-3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填，不要求回复。
+3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填；有 `alsoAnswers` 就照填（一次关掉这个会话已被取代或撤回、还没回复过的旧请求），不要求回复。
 4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N …`，发成的写在 --done 后，失败的写在 --failed 后。
 5. 对输出 `ack` 里的每个编号调用 `bridge_ack`。`unread` 里的消息正文没读全：用 `bridge_inbox` 把 maxChars 调大（最多 400000）重读，再从第 1 步做。
 6. 输出 `more` 为真时，从第 1 步再读一页。

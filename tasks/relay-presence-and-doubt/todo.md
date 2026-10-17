@@ -23,10 +23,11 @@
   - 文件：`decision_inbox/health.py`、`view.py`、`patrol.py`、`query.py`、对应测试
   - 记录（2026-10-18）：4 个新测试先失败（3 失败 1 报错）；实现后 Ran 564 tests, OK。新信号 11 `delivery-doubt`，文字带存疑编号和来源；巡视通知的键含信号文字，同一批编号只通知一次，编号变了再通知
 
-- [ ] Task 4：收件枢纽 `alsoAnswers` 与约定块 `withdraws`
+- [x] Task 4：收件枢纽 `alsoAnswers` 与约定块 `withdraws`
   - 验收：Spec 验收 3
   - 验证：`python3 -m unittest discover -s tests -p "test_hub.py" -v`
   - 文件：`decision_inbox/hub.py`、`onboard.py`、对应测试
+  - 记录（2026-10-18）：5 个新断言先失败（4 失败 1 报错）；实现后 Ran 568 tests, OK。和计划的差别：`alsoAnswers` 只在有编号时出现在 send 里（没有的不加这个键，原有测试不受影响）；放过的编号记在收件枢纽状态的 `alsoClosed`，下次不重复；「重发」时照样带上。已接入的协作组需要重跑接入命令才能拿到新约定块（doctor 会报「约定块不是当前版本」）
 
 - [ ] Task 5：停止钩子说明、需求记录、README、版本 0.0.9
   - 验收：Spec 验收 6、7

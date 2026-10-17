@@ -705,3 +705,10 @@ class AllowTest(TempHomeTestCase):
     def test_hub_steps_mention_allow(self):
         out = onboard.hub("g", "g-hub", "local_1", self.hub_dir, False, "2026-10-17T22:00:00+08:00")
         self.assertTrue(any("onboard allow g" in s for s in out.steps))
+
+
+class WithdrawsRuleTest(unittest.TestCase):
+    def test_block_mentions_withdraws(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                self.assertIn("`withdraws: [旧那条的邮箱号]`", onboard.block(role, "g", "g-hub"))
