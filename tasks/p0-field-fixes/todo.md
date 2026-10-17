@@ -26,10 +26,11 @@
   - 文件：`decision_inbox/items.py`、`decision_inbox/onboard.py`
   - 记录（2026-10-18）：先加用例（【取代 #邮箱号】且是本会话待答事项时，退回说明写「#5538 是邮箱号，对应事项 #1；去掉【取代】靠默认取代，或改写【取代 #1】」，问题代码仍为 not-owner；别人的邮箱号照旧说明；约定块须含「还不知道事项号就别写」），2 失败；实现后通过。Ran 585 tests, OK
 
-- [ ] Task 5：文档与版本 0.0.12（F-P0-4）
+- [x] Task 5：文档与版本 0.0.12（F-P0-4）
   - 验收：Spec 验收 3、6
   - 验证：全量测试
-  - 文件：`README.md`、`commands/hub-setup.md`、`docs/host-differences.md`、`docs/stage6-field-acceptance.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 文件：`README.md`、`commands/hub-setup.md`、`docs/host-differences.md`、`docs/stage6-field-acceptance.md`、`spec/CAPABILITY-MAP.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：先改打包测试（0.0.12、README 写 v1.5、「第一次手动运行之前，定时不会触发」「名字还绑在旧会话上」），2 失败；README 接入第 1 步与排查表（新增 3 行）、hub-setup 说明、宿主差异 H22／H23 与约束汇总、实地验收方案 P2 第 2 步、能力图外部依赖行（v1.5、246e138）改完后通过。Ran 585 tests, OK
 
 - [ ] Checkpoint（gate）：S1 重测，开始前另问用户
 
