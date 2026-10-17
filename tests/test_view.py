@@ -501,3 +501,10 @@ class DoubtRowTest(ViewCase):
         text = self.render(self.assessment(signals=[sig]))
         self.assertIn("- API：API 有 1 条消息送达存疑（#8）（来源：agent-relay）。"
                       "建议：完全退出 ChatGPT 再打开 API 的任务", text)
+
+    def test_idle_backlog_advice_follows_the_host(self):
+        from decision_inbox.health import Signal
+        claude = Signal(5, "idle-backlog", ("hub",), "收件枢纽 空闲，有 1 条消息没读")
+        codex = Signal(5, "idle-backlog", ("api-codex",), "API 空闲，有 1 条消息没读")
+        self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 收件枢纽；叫不醒就打开它")
+        self.assertEqual(view.advice(self.g, codex), "打开 API 的任务")

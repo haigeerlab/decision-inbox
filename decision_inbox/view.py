@@ -114,13 +114,17 @@ _ADVICE = {
 }
 # A signal number shared by two cases picks its advice by code (relay-presence-and-doubt).
 _ADVICE_BY_CODE = {"idle-backlog": "巡视会叫醒 {who}；叫不醒就打开它"}
+# The patrol can wake Claude sessions only (p0-field-fixes F-P0-2).
+_ADVICE_FOR_CODEX = {"idle-backlog": "打开 {who} 的任务"}
 
 
 def advice(g: store.Group, signal) -> str:
     """The fixed advice sentence for signals 3～10 (shared with patrol's owner alerts)."""
     who = _short(g, signal.sessions[0]) if signal.sessions else "?"
     found = re.search(r"等待单 #(\d+)", signal.text)
-    text = _ADVICE_BY_CODE.get(signal.code, _ADVICE.get(signal.no, ""))
+    entry = store.find_session(g, relay_name=signal.sessions[0]) if signal.sessions else None
+    by_code = _ADVICE_FOR_CODEX if (entry or {}).get("host") == "codex-desktop" else {}
+    text = by_code.get(signal.code) or _ADVICE_BY_CODE.get(signal.code, _ADVICE.get(signal.no, ""))
     return text.format(who=who, ticket=found.group(1) if found else "编号")
 
 

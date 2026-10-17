@@ -41,8 +41,9 @@
 | relay-presence-and-doubt | 接上 agent-relay 0.8 的新事实并修实测观察：按 presence.activity 区分空闲与忙碌、显示送达存疑、合并答复用 alsoAnswers 一次关多条请求、事项被取代时撤回旧请求；没带 agent-relay 状态时不报「全线停住」；各线一行不按可能已失效的单写阻塞、写短名；停止钩子不把已发出的【已恢复】误判为没发（2026-10-17 依赖升级核对与实测，用户确认另开模块） | relay-reader, line-health, hub-view, hub-loop, stop-hook, decision-queue, wait-honesty-and-briefs |
 | protocol-contract-v1-3 | 契约升到 session-protocol v1.3：复制 v1.3 样例替换 v1.0 副本，一致性测试跳过本插件不解析的三种新消息（交审、公共变更请求、协调通知），三个过简词各有一份样例能被变异检查抓到；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1 |
 | protocol-contract-v1-4 | 契约升到 session-protocol v1.4：复制 v1.4 样例替换 v1.3 副本，审查行取值与用户原话首行空白读法有样例保护，计数调为解析 52、生成 6；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1-3 |
+| p0-field-fixes | 修第 ⑥ 阶段 P0 实测发现的五个问题：取代写邮箱号被退回的约定与退回说明、巡视叫醒空闲且积压 ≥5 分钟的 Claude 会话（含收件枢纽）、巡视任务须先手动运行一次的文档、命令读完输入文件即删除以免巡视卡住；契约升到 session-protocol v1.5（2026-10-18 用户批准） | patrol, decision-queue, hub-view, hub-loop, onboarding, protocol-contract-v1-4 |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
@@ -59,7 +60,7 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 | spec-guard-reader | spec-guard | 状态查询：`lastTickAt`、`firstTickAt`、`tickCommits`、`suspendedAt`、顶层 `history`（stall-signals） | 已发布（0.63.0，见 spec-guard 仓库 `spec/stall-signals.md` 的 Contract；审查轮数已去掉；`tickCommits` 小于 2 的模块算不出平均间隔） |
 | patrol | Claude 桌面版 | 会话消息工具（叫醒已停止的 Claude 会话） | 已验证可用；需求 13.2 的例外 |
 | patrol | Claude 桌面版 | 定时任务 | 已验证可用；周期 5 分钟实测稳定、延迟约 38 秒；补跑未验证，设计上不依赖（2026-10-16） |
-| protocol-contract-v1 | session-protocol（本地契约仓库 `~/Documents/haigeerlab/session-protocol`） | 契约 v1.4 的样例与期望结果（2026-10-18 由 protocol-contract-v1-3 从 v1.0 升到 v1.3，再由 protocol-contract-v1-4 升到 v1.4），副本在 `tests/fixtures/session-protocol/v1.4/`，跳过本插件不解析的三种 v1.1 新消息，由 `tests/test_contract.py` 跑通；协议改动先改契约再改实现 | 已钉住 v1.4（提交 e33c077） |
+| protocol-contract-v1 | session-protocol（本地契约仓库 `~/Documents/haigeerlab/session-protocol`） | 契约 v1.5 的样例与期望结果（2026-10-18 由 protocol-contract-v1-3 从 v1.0 升到 v1.3，protocol-contract-v1-4 升到 v1.4，p0-field-fixes 升到 v1.5），副本在 `tests/fixtures/session-protocol/v1.5/`，跳过本插件不解析的三种 v1.1 新消息，由 `tests/test_contract.py` 跑通；协议改动先改契约再改实现 | 已钉住 v1.5（提交 246e138） |
 | stop-hook | Codex、Claude 桌面版 | `Stop` 钩子 | Codex 已验证；Claude 桌面版未验证（第 12 节第 5 项） |
 
 ## 范围对照（需求 11.1 → 模块）

@@ -41,10 +41,11 @@ class StaticScanTest(unittest.TestCase):
                     self.assertIn(name.split(".")[0], allowed, f"{path.name} imports {name}")
 
     def test_no_deletion_calls(self):
-        """Nothing is ever deleted, except one narrow case (e2e-round1-fixes F6): onboard's
-        _drop_created_rules may unlink a rules file the join itself created."""
+        """Nothing is ever deleted, except two narrow cases: onboard's _drop_created_rules may unlink a
+        rules file the join itself created (e2e-round1-fixes F6), and _consume drops an input file a hub or
+        patrol command just read, only under the temp dirs or a group's io/ (p0-field-fixes F-P0-5)."""
         banned = {"unlink", "rmtree", "truncate", "remove", "rmdir"}
-        allowed = {("onboard.py", "_drop_created_rules", "unlink")}
+        allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink")}
         seen = set()
         for path in _sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))

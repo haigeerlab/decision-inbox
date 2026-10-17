@@ -142,6 +142,21 @@ class ValidityAndOrderTest(ItemsCase):
         self.assertIn("not-owner", codes(r.problems))
         self.assertEqual(self.item(old)["status"], "pending")
 
+    def test_supersede_by_mail_id_names_the_item(self):
+        """p0-field-fixes F-P0-1: a mail id in 【取代】 is still returned, but the text says which item it is."""
+        old = self.receive(SINGLE, relay_id=5538).item
+        r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5538】"), relay_id=5539, at=T2)
+        self.assertFalse(r.accepted)
+        self.assertEqual(codes(r.problems), {"not-owner"})
+        self.assertIn(f"#5538 是邮箱号，对应事项 #{old}；去掉【取代】靠默认取代，或改写【取代 #{old}】", r.return_text)
+        self.assertEqual(self.item(old)["status"], "pending")
+
+    def test_other_senders_mail_id_gets_the_plain_text(self):
+        self.receive(SINGLE, sender="api-codex", relay_id=5538)
+        r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5538】"), relay_id=5539, at=T2)
+        self.assertIn("#5538 不存在，或不是你抛出的事项", r.return_text)
+        self.assertNotIn("邮箱号", r.return_text)
+
     def test_new_item_supersedes_own_pending_by_default(self):
         """wait-honesty-and-briefs A7: no marker means the new item replaces this session's unanswered one."""
         old = self.receive(SINGLE).item

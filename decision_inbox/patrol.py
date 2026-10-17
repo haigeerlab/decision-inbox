@@ -18,6 +18,7 @@ PROGRESS_SIGNALS = (3, 6, 7, 8, 9)
 HUB_REMINDER_MINUTES = 30  # spec 已定事项 5
 NOTICES_PER_ROUND = 3      # spec 关键决策 5
 WAKE_GRACE_MINUTES = 5     # one patrol interval before a wake counts as failed (spec 关键决策 3)
+IDLE_WAKE_MINUTES = 5      # an idle session's mail this old means agent-relay's own ping did not take (p0-field-fixes)
 
 
 @dataclass(frozen=True)
@@ -74,8 +75,8 @@ def _fact(ctx: _Context, name: str):
     return ctx.relay.agents.get(name) if ctx.relay is not None else None
 
 
-def _wake(ctx: _Context, entry: dict, text: str) -> None:
-    """Wake a stopped Claude session once per offline episode; tell the user if that did not help."""
+def _wake(ctx: _Context, entry: dict, text: str, stopped: bool = True) -> None:
+    """Wake a Claude session once per backlog episode; tell the user if that did not help."""
     name, short = entry["relayName"], entry["shortName"]
     if name in ctx.plan.live["wakes"]:
         return  # already handled this round (a stuck answer wakes the owner first)
@@ -87,23 +88,34 @@ def _wake(ctx: _Context, entry: dict, text: str) -> None:
     if tried is None:
         ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
     elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
-        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，它还停着，请手动打开（来源：Claude 桌面版）")
+        still = "它还停着" if stopped else "它的消息还没读"
+        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，{still}，请手动打开（来源：Claude 桌面版）")
+
+
+def _idle_backlog(ctx: _Context, fact) -> bool:
+    """Idle with mail older than IDLE_WAKE_MINUTES (p0-field-fixes F-P0-2)."""
+    if fact.activity != "idle" or not fact.waiting_oldest_at:
+        return False
+    return (_instant(ctx.now) - _instant(fact.waiting_oldest_at)).total_seconds() >= IDLE_WAKE_MINUTES * 60
 
 
 def _wakes(ctx: _Context) -> None:
-    """Spec 关键决策 3: stopped Claude sessions with messages waiting."""
+    """Spec 关键决策 3: Claude sessions with messages waiting, stopped or idle too long; the hub too (F-P0-3)."""
     for entry in store.roster(ctx.g):
         fact = _fact(ctx, entry["relayName"])
-        if (entry["host"] == "claude-desktop" and entry["role"] != "hub" and fact is not None
-                and fact.presence in OFFLINE and fact.waiting_count):
-            _wake(ctx, entry, f"【decision-inbox 巡视】你有 {fact.waiting_count} 条消息在等，请查看收件箱后继续。")
+        if entry["host"] != "claude-desktop" or fact is None or not fact.waiting_count:
+            continue
+        stopped = fact.presence in OFFLINE
+        if stopped or _idle_backlog(ctx, fact):
+            _wake(ctx, entry, f"【decision-inbox 巡视】你有 {fact.waiting_count} 条消息在等，请查看收件箱后继续。",
+                  stopped=stopped)
 
 
 def _wake_hub(ctx: _Context) -> None:
     """Spec 关键决策 3: wake the hub too when the user is about to be notified and it is stopped."""
     hub = next((e for e in store.roster(ctx.g) if e["role"] == "hub"), None)
     fact = _fact(ctx, hub["relayName"]) if hub else None
-    if hub is None or fact is None or fact.presence not in OFFLINE:
+    if hub is None or fact is None or fact.presence not in OFFLINE or hub["relayName"] in ctx.plan.live["wakes"]:
         return
     if not any(a.kind == "notify" for a in ctx.plan.actions) and hub["relayName"] not in ctx.state.get("wakes", {}):
         return
