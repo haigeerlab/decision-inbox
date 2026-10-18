@@ -26,7 +26,7 @@ E = [  # (type, ref, actor, at, data)
     ("patrol.run", None, "patrol", "2026-10-17T10:05:20+08:00", {"now": "2026-10-17T10:05:00+08:00"}),
     ("patrol.run", None, "patrol", "2026-10-17T10:30:20+08:00", {"now": "2026-10-17T10:30:00+08:00"}),
     ("patrol.run", None, "patrol", "2026-10-18T09:00:20+08:00", {"now": "2026-10-18T09:00:00+08:00"}),
-    ("patrol.run", None, "patrol", "2026-10-18T09:04:20+08:00", {"now": "2026-10-18T09:04:00+08:00"}),
+    ("patrol.run", None, "patrol", "2026-10-18T09:04:20+08:00", {"now": "2026-10-18T09:04:00+08:00", "by": "hub"}),
 ]
 
 
@@ -57,6 +57,7 @@ class StatsTest(StatsCase):
     def test_patrol_cadence(self):
         s = query.stats(self.g)
         self.assertEqual((s.patrol_runs, s.patrol_max_gap, s.patrol_stale), (5, 1350, 2))
+        self.assertEqual((s.patrol_by_schedule, s.patrol_by_hub), (4, 1))
         s = query.stats(self.g, since="2026-10-18")
         self.assertEqual((s.patrol_runs, s.patrol_max_gap, s.patrol_stale), (2, 4, 0))
         none = query.stats(self.g, since="2030-01-01")
@@ -74,7 +75,7 @@ class StatsTest(StatsCase):
         self.assertIn("答复→恢复：中位 17.5 分钟，最长 30 分钟（2 项）", text)
         self.assertIn("被取代 2 项（其中自动 1 项） · 退回 1 次 · 追问被退回 1 次 · 拒收转述 1 次", text)
         self.assertIn("现在开着的等待单 0 单", text)
-        self.assertIn("巡视：跑了 5 轮，相邻两轮最长隔 1350 分钟，超过 15 分钟 2 次", text)
+        self.assertIn("巡视：跑了 5 轮（定时任务 4 轮，收件枢纽顺带 1 轮），相邻两轮最长隔 1350 分钟，超过 15 分钟 2 次", text)
         empty = query.render_stats(query.stats(self.g, since="2030-01-01"), "g", "2030-01-01")
         self.assertIn("抛出→答复：没有数据", empty)
         self.assertIn("巡视：这段时间没跑过", empty)
@@ -102,4 +103,5 @@ class EventsTest(StatsCase):
             self.assertEqual(main(["query", "stats", "g", "--json"]), 0)
         doc = json.loads(buf.getvalue())
         self.assertEqual((doc["patrolRuns"], doc["patrolMaxGap"], doc["patrolStale"]), (5, 1350, 2))
+        self.assertEqual((doc["patrolBySchedule"], doc["patrolByHub"]), (4, 1))
         self.assertEqual((doc["raised"], doc["bypassed"]), (5, [3]))

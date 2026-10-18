@@ -423,6 +423,8 @@ class Stats:
     patrol_runs: int = 0                 # patrol-cadence: rounds the host actually ran
     patrol_max_gap: int | None = None    # longest minutes between two rounds
     patrol_stale: int = 0                # gaps over hub.PATROL_STALE_MINUTES
+    patrol_by_schedule: int = 0          # hub-patrol: rounds the scheduled task ran
+    patrol_by_hub: int = 0               # hub-patrol: rounds the hub ran itself
 
 
 def _since(events: list[dict], since: str | None) -> list[dict]:
@@ -467,10 +469,13 @@ def stats(g: store.Group, since: str | None = None) -> Stats:
 def _patrol_cadence(events: list[dict]) -> dict:
     """How often the patrol really ran (patrol-cadence; the host fires it irregularly, H24)."""
     from decision_inbox.hub import PATROL_STALE_MINUTES
-    ats = sorted(_instant((e.get("data") or {}).get("now") or e["at"]) for e in events if e["type"] == "patrol.run")
+    runs = [e for e in events if e["type"] == "patrol.run"]
+    ats = sorted(_instant((e.get("data") or {}).get("now") or e["at"]) for e in runs)
     gaps = [(b - a).total_seconds() / 60 for a, b in zip(ats, ats[1:])]
+    by_hub = sum((e.get("data") or {}).get("by") == "hub" for e in runs)
     return {"patrol_runs": len(ats), "patrol_max_gap": round(max(gaps)) if gaps else None,
-            "patrol_stale": sum(gap > PATROL_STALE_MINUTES for gap in gaps)}
+            "patrol_stale": sum(gap > PATROL_STALE_MINUTES for gap in gaps),
+            "patrol_by_schedule": len(runs) - by_hub, "patrol_by_hub": by_hub}
 
 
 def _num(value: float) -> str:
@@ -494,10 +499,14 @@ def render_stats(s: Stats, group: str, since: str | None) -> str:
         _span_text("答复→恢复", s.to_resume),
         f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 追问被退回 {s.questions_returned} 次 · 拒收转述 {s.relayed_refused} 次",
         f"现在开着的等待单 {s.open_tickets} 单{stale}",
-        (f"巡视：跑了 {s.patrol_runs} 轮，相邻两轮最长隔 {s.patrol_max_gap} 分钟，超过 15 分钟 {s.patrol_stale} 次"
+        (f"巡视：跑了 {s.patrol_runs} 轮{_by(s)}，相邻两轮最长隔 {s.patrol_max_gap} 分钟，超过 15 分钟 {s.patrol_stale} 次"
          if s.patrol_max_gap is not None else
-         f"巡视：跑了 {s.patrol_runs} 轮" if s.patrol_runs else "巡视：这段时间没跑过"),
+         f"巡视：跑了 {s.patrol_runs} 轮{_by(s)}" if s.patrol_runs else "巡视：这段时间没跑过"),
     ])
+
+
+def _by(s: Stats) -> str:
+    return f"（定时任务 {s.patrol_by_schedule} 轮，收件枢纽顺带 {s.patrol_by_hub} 轮）" if s.patrol_by_hub else ""
 
 
 def stats_json(s: Stats) -> dict:
@@ -508,7 +517,8 @@ def stats_json(s: Stats) -> dict:
             "superseded": s.superseded, "autoSuperseded": s.auto_superseded, "returned": s.returned,
             "questionsReturned": s.questions_returned, "relayedRefused": s.relayed_refused,
             "openTickets": s.open_tickets, "staleTickets": s.stale_tickets,
-            "patrolRuns": s.patrol_runs, "patrolMaxGap": s.patrol_max_gap, "patrolStale": s.patrol_stale}
+            "patrolRuns": s.patrol_runs, "patrolMaxGap": s.patrol_max_gap, "patrolStale": s.patrol_stale,
+            "patrolBySchedule": s.patrol_by_schedule, "patrolByHub": s.patrol_by_hub}
 
 
 def events(g: store.Group, since: str | None = None) -> list[dict]:

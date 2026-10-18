@@ -245,7 +245,8 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
         state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at)
         tx.write_state(DOMAIN, state)
         tx.append_event("patrol.run", ref=None, actor="patrol",
-                        data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed})
+                        data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed,
+                              "by": plan_doc.get("by", "schedule")})
 
 
 PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
