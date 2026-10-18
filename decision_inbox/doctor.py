@@ -121,13 +121,15 @@ def _shim() -> Check:
 
 
 def _patrol(g: store.Group, now: str) -> Check:
-    task = store.read_state(g, onboard.DOMAIN).get("patrolTask")
-    if not task:
-        return Check("巡视", "unknown", "本插件", "没有登记巡视任务", "按 onboard hub 打印的步骤建巡视任务后运行 onboard task")
+    state = store.read_state(g, onboard.DOMAIN)
+    session, task = state.get("patrolSession"), state.get("patrolTask")
+    if not (session or task):
+        return Check("巡视", "unknown", "本插件", "没有登记巡视会话",
+                     "按 onboard hub 打印的步骤开巡视会话后运行 onboard patrol-session")
     alarm = hub.patrol_alarm(g, now)
     if alarm:
         return Check("巡视", "bad", "Claude 桌面版", alarm.lstrip("⚠ ").split("：")[0],
-                     hub.patrol_fix(task))
+                     hub.patrol_session_fix(session) if session else hub.patrol_fix(task))
     last = store.read_state(g, "patrol").get("lastRunAt")
     return Check("巡视", "ok", "本插件", f"最近一轮 {view._minutes(now, last)} 分钟前" if last else "刚登记，还没到第一轮")
 

@@ -295,10 +295,25 @@ HUB_PATROL_MINUTES = 10  # hub-patrol: the hub runs a round itself when the patr
 def patrol_due(g: store.Group, now: str) -> bool:
     """The scheduled patrol barely fires on some hosts (H24); the hub fills in (hub-patrol)."""
     onboarding = store.read_state(g, "onboarding")
-    if not onboarding.get("patrolTask"):
+    runner = _patrol_runner(onboarding)
+    if runner is None:
         return False
-    since = store.read_state(g, "patrol").get("lastRunAt") or onboarding.get("patrolTaskAt")
+    since = store.read_state(g, "patrol").get("lastRunAt") or runner[2]
     return since is not None and view._minutes(now, since) > HUB_PATROL_MINUTES
+
+
+def _patrol_runner(onboarding: dict) -> tuple[str, str, str | None] | None:
+    """What runs the patrol: the looping session (stall-and-patrol R18) or the older scheduled task."""
+    if onboarding.get("patrolSession"):
+        return "session", onboarding["patrolSession"], onboarding.get("patrolSessionAt")
+    if onboarding.get("patrolTask"):
+        return "task", onboarding["patrolTask"], onboarding.get("patrolTaskAt")
+    return None
+
+
+def patrol_session_fix(session: str) -> str:
+    return (f"打开巡视会话 claude://claude.ai/epitaxy/{session}：它停在权限确认上就批完；循环停了就在里面重新发一次"
+            "「/loop 5m」加巡视提示词；会话不在了就重跑 /decision-inbox:hub-setup")
 
 
 def patrol_fix(task: str) -> str:
@@ -315,13 +330,13 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     judged by lastRunAt alone.
     """
     onboarding = store.read_state(g, "onboarding")
-    task = onboarding.get("patrolTask")
-    if not task:
+    runner = _patrol_runner(onboarding)
+    if runner is None:
         return None
-    fix = patrol_fix(task)
+    kind, name, since = runner
+    fix = patrol_session_fix(name) if kind == "session" else patrol_fix(name)
     last = store.read_state(g, "patrol").get("lastRunAt")
     if last is None:
-        since = onboarding.get("patrolTaskAt")
         if since is not None and view._minutes(now, since) > PATROL_STALE_MINUTES:
             return deps.sourced(f"⚠ 巡视还没跑完过一轮：{fix}", HOST)
         return None

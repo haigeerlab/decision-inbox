@@ -323,7 +323,6 @@ def _git_ignored(home: str, name: str) -> bool:
                               timeout=10).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
-PATROL_CRON = "*/5 * * * *"
 
 
 @dataclass
@@ -401,14 +400,18 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
-    task_id = f"decision-inbox-patrol-{group}"
     cli = install.cli()
+    try:
+        old_task = store.read_state(store.open_group(group), DOMAIN).get("patrolTask")
+    except store.GroupNotFound:
+        old_task = None
     steps = [
         _register_step(relay_name),
-        f"用桌面版定时任务工具 create_scheduled_task 建巡视任务：taskId 用 {task_id}，"
-        f"cronExpression 用 \"{PATROL_CRON}\"，prompt 用下面打印的巡视提示词原文",
-        f"运行 {cli} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
-        "请用户在定时任务列表里手动「立即运行」一次这个任务，把 Bash 和 agent-relay 工具的权限批一遍",
+        # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead
+        f"用桌面版的开会话工具 start_session 在收件枢纽目录开巡视会话：标题「decision-inbox 巡视 {group}」，"
+        f"权限模式与本会话相同，提示词写「用 /loop 5m 执行下面的巡视提示词，每轮做完就等下一轮，不做别的事」，"
+        "后面接下面打印的巡视提示词原文",
+        f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
         f"运行 {cli} onboard allow {group} --project <收件枢纽目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
         "之后巡视和收件枢纽不再为这些工具停下来问",
         HOOK_STEP,
@@ -416,6 +419,8 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
         "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
     ]
+    if old_task:
+        steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
         steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
     out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
@@ -591,6 +596,17 @@ def record_task(group: str, task_id: str, now: str) -> None:
         tx.append_event("onboarding.task", ref=None, actor="hub", data={"taskId": task_id, "at": now})
 
 
+def record_patrol_session(group: str, session: str, now: str) -> None:
+    """Remember the looping patrol session (stall-and-patrol R18), so alarms and teardown can name it."""
+    g = store.open_group(group)
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        doc["patrolSession"] = session
+        doc["patrolSessionAt"] = now
+        tx.write_state(DOMAIN, doc)
+        tx.append_event("onboarding.patrol-session", ref=None, actor="hub", data={"session": session, "at": now})
+
+
 def _unfinished(g: store.Group, entry: dict) -> list[str]:
     """What the leaving session still has open; leave only says so, it does not stop (rehearsal-fixes)."""
     name = entry["relayName"]
@@ -730,10 +746,13 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     g = store.open_group(group)
     entry = store.find_session(g, relay_name=_hub_relay(g))
     out = _leave(g, entry, project, confirm, now)
-    task_id = store.read_state(g, DOMAIN).get("patrolTask")
+    state = store.read_state(g, DOMAIN)
+    task_id = state.get("patrolTask")
+    if state.get("patrolSession"):
+        out.steps.append(f"用会话管理工具 archive_session 停掉并归档巡视会话 {state['patrolSession']}")
     if task_id:
         out.steps.append(f"用定时任务工具 delete_scheduled_task 删除巡视任务 {task_id}")
-    else:
+    elif not state.get("patrolSession"):
         out.steps.append(f"没有记下巡视任务编号：先用 list_scheduled_tasks 核对，通常是 decision-inbox-patrol-{group}，"
                          "再用 delete_scheduled_task 删除")
     out.steps.append("协作组的状态目录保留，不删")

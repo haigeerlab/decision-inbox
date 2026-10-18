@@ -173,8 +173,8 @@ class HubTest(OnboardCase):
         self.assertTrue((g.path / "io").is_dir())
         self.assertEqual(out.patrol_prompt, patrol.prompt("demo"))
         steps = "\n".join(out.steps)
-        for needle in ("create_scheduled_task", "decision-inbox-patrol-demo", "*/5 * * * *", "onboard task demo",
-                       "立即运行", "bridge_register", "wake: \"auto\"", "di-hub", "停止钩子", "Claude Code", "Codex",
+        for needle in ("start_session", "/loop 5m", "onboard patrol-session demo",  # stall-and-patrol R18
+                       "bridge_register", "wake: \"auto\"", "di-hub", "停止钩子", "Claude Code", "Codex",
                        "onboard join demo"):
             self.assertIn(needle, steps)
         state = store.read_state(g, "onboarding")
@@ -849,7 +849,7 @@ class CommandLineTest(OnboardCase):
         code, out, _ = self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
                                     "--project", hub_dir, "--confirm")
         self.assertEqual(code, 0)
-        for needle in ("已写入", "CLAUDE.md", "巡视提示词", "patrol plan demo", "create_scheduled_task"):
+        for needle in ("已写入", "CLAUDE.md", "巡视提示词", "patrol plan demo", "start_session"):
             self.assertIn(needle, out)
         code, out, _ = self.run_cli("onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-codex",
                                     "--short-name", "前端", "--host", "codex-desktop", "--line", "前端",
@@ -1089,3 +1089,29 @@ class MultiResumeRuleTest(unittest.TestCase):
         for role in ("dev", "owner", "coordinator"):
             with self.subTest(role=role):
                 self.assertIn("适用线不用发【已恢复】，结项只认发起方", onboard.block(role, "demo", "di-hub"))
+
+
+class PatrolSessionTest(OnboardCase):
+    """stall-and-patrol Task 2 (R18): one patrol session looping, not a scheduled task opening a session a run."""
+
+    hub = HubTest.hub
+
+    def test_no_scheduled_task_step(self):
+        steps = "\n".join(self.hub(confirm=False).steps)
+        self.assertNotIn("create_scheduled_task", steps)
+        self.assertIn("decision-inbox 巡视 demo", steps)
+
+    def test_old_task_is_deleted_on_rerun(self):
+        self.hub()
+        onboard.record_task("demo", "decision-inbox-patrol-demo", NOW)
+        steps = "\n".join(self.hub(confirm=False).steps)
+        self.assertIn("delete_scheduled_task 删除旧巡视任务 decision-inbox-patrol-demo", steps)
+        self.assertIn("建过的会话会一起归档", steps)
+
+    def test_record_and_teardown(self):
+        self.hub()
+        onboard.record_patrol_session("demo", "local_patrol1", NOW)
+        state = store.read_state(store.open_group("demo"), "onboarding")
+        self.assertEqual((state["patrolSession"], state["patrolSessionAt"]), ("local_patrol1", NOW))
+        out = onboard.teardown("demo", self.dir("hub"), confirm=False, now=NOW)
+        self.assertTrue(any("archive_session" in s and "local_patrol1" in s for s in out.steps))

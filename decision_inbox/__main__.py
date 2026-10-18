@@ -537,6 +537,9 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("task")
     p.add_argument("group")
     p.add_argument("--task-id", required=True)
+    p = sub.add_parser("patrol-session")
+    p.add_argument("group")
+    p.add_argument("--session", required=True)
     for name in ("leave", "teardown"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -577,6 +580,10 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")
+            return 0
+        elif args.command == "patrol-session":
+            onboard.record_patrol_session(args.group, args.session, now)
+            print(f"已记下巡视会话：{args.session}")
             return 0
         elif args.command == "leave":
             out = onboard.leave(args.group, args.relay_name, args.project, args.confirm, now)
