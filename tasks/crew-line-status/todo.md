@@ -8,7 +8,7 @@
   - 验证：主视图与 `/lines` 显示带括号的状态；现有测试全部通过
 - [x] Task 4：doctor 与依赖检查（Spec 验收 8）
   - 验证：`tests/test_doctor.py`、`tests/test_deps.py` 新用例：可选、有协调会话却没装、主版本不对、契约次版本不同、出口读到几个模块或读不到的原因
-- [ ] Task 5：README 与版本 0.0.18（Spec 验收 9）
+- [x] Task 5：README 与版本 0.0.18（Spec 验收 9）
   - 验证：`python3 -m unittest discover -s tests` 全部通过；两份清单 0.0.18
 
 ## Checkpoint（gate）：模块最终验收
