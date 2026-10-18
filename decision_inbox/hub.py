@@ -453,8 +453,8 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 
 定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
 
-1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）。
-2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json。
+2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
 3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
 
 只做计划里的动作，不读也不转述别的消息正文。

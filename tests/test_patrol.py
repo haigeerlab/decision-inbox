@@ -51,8 +51,10 @@ class PatrolCase(TempHomeTestCase):
         return [a.id for a in p.actions]
 
     def digest(self):
+        """Group state; io/snapshots holds diagnostic copies of raw input, not state (stall-and-patrol R19)."""
         return {str(f.relative_to(self.g.path)): hashlib.sha256(f.read_bytes()).hexdigest()
-                for f in sorted(self.g.path.rglob("*")) if f.is_file()}
+                for f in sorted(self.g.path.rglob("*"))
+                if f.is_file() and "snapshots" not in f.relative_to(self.g.path).parts}
 
 
 STOPPED_OWNER = dict(state="stopped", waiting=(2, ["fe"], 5))
@@ -71,7 +73,7 @@ class WakeTest(PatrolCase):
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
                         .startswith("decision-inbox：叫不醒 前端负责人"))
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
-                        .endswith("请手动打开（来源：Claude 桌面版），详见收件枢纽"))
+                        .endswith(f"请手动打开 claude://claude.ai/epitaxy/{OWNER_DESKTOP}（来源：Claude 桌面版），详见收件枢纽"))
         for minutes in (10, 12):  # still stopped: neither another wake nor another notice
             quiet = self.run_round(minutes, [owner])
             self.assertEqual([i for i in self.ids(quiet) if "fe-owner" in i], [], minutes)
@@ -509,3 +511,65 @@ class NotifyCommandTest(TempHomeTestCase):
         r = subprocess.run([sys.executable, "-m", "decision_inbox", "notify"], cwd=root, env=env,
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
+
+
+import json  # noqa: E402
+
+from decision_inbox import relay  # noqa: E402
+
+
+def hub_outbox(*rows):
+    """bridge_outbox for the hub: (id, to, minutes_before_NOW, pendingReason)."""
+    entries = [{"id": i, "toAgent": to, "createdAt": later(-ago), "deliveryState": "accepted",
+                "acknowledgedAt": None, "wake": {"state": "pending", "detail": "", "pendingReason": reason}}
+               for i, to, ago, reason in rows]
+    return relay.parse_outbox(json.dumps({"agent": "hub", "entries": entries}), sender="hub")
+
+
+class OfflineMailTest(PatrolCase):
+    """stall-and-patrol Task 1 (R19): agent-relay could not wake a stopped Claude session; patrol steps in."""
+
+    def round_with(self, minutes, outbox, agents=()):
+        now = later(minutes)
+        p = patrol.plan(self.g, now=now, relay=snapshot(*agents), outbox=outbox)
+        patrol.record(self.g, p.to_json(), done=[a.id for a in p.actions], now=now)
+        return p
+
+    def test_offline_three_minutes_wakes_then_link(self):
+        busy = agent("fe-owner", activity_ago=0)  # presence says running: the old rules would not fire
+        busy["presence"]["activity"] = "busy"
+        self.assertEqual(self.ids(self.round_with(0, hub_outbox((901, "fe-owner", 2, "offline")), [busy])), [])
+        p = self.round_with(1, hub_outbox((901, "fe-owner", 3, "offline")), [busy])
+        wake = next(a for a in p.actions if a.id == "wake:fe-owner")
+        self.assertEqual(wake.target, OWNER_DESKTOP)
+        again = self.round_with(6, hub_outbox((901, "fe-owner", 8, "offline")), [busy])
+        text = next(a.text for a in again.actions if a.id == "notify:unwakeable:fe-owner")
+        self.assertIn(f"claude://claude.ai/epitaxy/{OWNER_DESKTOP}", text)
+
+    def test_unregistered_session_told_at_once(self):
+        p = self.round_with(0, hub_outbox((902, "api-owner", 4, "offline")), [agent("api-owner")])
+        self.assertIn("没登记", next(a.text for a in p.actions if a.id == "notify:unwakeable:api-owner"))
+
+    def test_busy_or_acknowledged_mail_is_left_alone(self):
+        self.assertEqual(self.ids(self.round_with(0, hub_outbox((903, "fe-owner", 9, "busy")),
+                                                  [agent("fe-owner")])), [])
+
+    def test_codex_not_loaded_with_mail_is_told(self):
+        fe = agent("fe", app="codex", state="not-loaded", waiting=(2, ["hub"], 4))
+        p = self.round_with(0, None, [fe])
+        text = next(a.text for a in p.actions if a.id == "notify:not-loaded:fe")
+        self.assertIn("去 Codex 打开 前端 的任务", text)
+
+
+class SnapshotTest(TempHomeTestCase):
+    """Task 1: each round's raw state is kept, at most SNAPSHOTS of each kind."""
+
+    def test_keeps_the_latest_24(self):
+        store.init_group("demo")
+        for i in range(30):
+            patrol.save_snapshot("demo", f"2026-10-19T00:{i:02d}:00+08:00", {"agents": f"a{i}", "outbox": f"o{i}"})
+        folder = store.root_dir() / "demo" / "io" / "snapshots"
+        agents = sorted(folder.glob("*-agents.json"))
+        self.assertEqual(len(agents), patrol.SNAPSHOTS)
+        self.assertEqual(agents[-1].read_text(encoding="utf-8"), "a29")
+        self.assertEqual(len(list(folder.glob("*-outbox.json"))), patrol.SNAPSHOTS)

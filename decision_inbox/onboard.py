@@ -418,7 +418,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     ]
     if start_number is not None:
         steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
-    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group))
+    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
     if confirm:
         g, _ = store.init_group(group)
         if start_number is not None:

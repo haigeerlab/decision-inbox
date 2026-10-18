@@ -18,7 +18,10 @@ PROGRESS_SIGNALS = (3, 6, 7, 8, 9)
 HUB_REMINDER_MINUTES = 30  # spec 已定事项 5
 NOTICES_PER_ROUND = 3      # spec 关键决策 5
 WAKE_GRACE_MINUTES = 5     # one patrol interval before a wake counts as failed (spec 关键决策 3)
-IDLE_WAKE_MINUTES = 5      # an idle session's mail this old means agent-relay's own ping did not take (p0-field-fixes)
+IDLE_WAKE_MINUTES = 3      # an idle session's mail this old means agent-relay's own ping did not take (stall-and-patrol R19)
+OFFLINE_MAIL_MINUTES = 3   # the hub's mail agent-relay could not deliver for "offline" this long (R19)
+SNAPSHOTS = 24             # raw agents/outbox kept per kind, so a missed wake can be traced (R19)
+DESKTOP_LINK = "claude://claude.ai/epitaxy/{session}"
 
 
 @dataclass(frozen=True)
@@ -65,6 +68,7 @@ class _Context:
     state: dict
     plan: Plan
     from_hub: bool = False
+    outbox: object | None = None
 
     def notify(self, key: str, text: str) -> None:
         """Queue a user notice once per live episode of `key`."""
@@ -91,7 +95,8 @@ def _wake(ctx: _Context, entry: dict, text: str, stopped: bool = True) -> None:
         ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
     elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
         still = "它还停着" if stopped else "它的消息还没读"
-        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，{still}，请手动打开（来源：Claude 桌面版）")
+        link = DESKTOP_LINK.format(session=entry["desktopSession"])
+        ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，{still}，请手动打开 {link}（来源：Claude 桌面版）")
 
 
 def _idle_backlog(ctx: _Context, fact) -> bool:
@@ -113,6 +118,48 @@ def _wakes(ctx: _Context) -> None:
         if stopped or _idle_backlog(ctx, fact):
             _wake(ctx, entry, f"【decision-inbox 巡视】你有 {fact.waiting_count} 条消息在等，请查看收件箱后继续。",
                   stopped=stopped)
+
+
+def _offline_mail(ctx: _Context) -> None:
+    """R19: mail the hub sent that agent-relay holds as "offline" for OFFLINE_MAIL_MINUTES wakes its Claude
+    recipient over the desktop channel, whatever its presence says (#6811 slipped past presence)."""
+    if ctx.outbox is None:
+        return
+    for name in dict.fromkeys(m.recipient for m in ctx.outbox.messages
+                              if m.wake_pending == "offline" and not m.acknowledged_at and m.sent_at
+                              and (_instant(ctx.now) - _instant(m.sent_at)).total_seconds()
+                              >= OFFLINE_MAIL_MINUTES * 60):
+        entry = store.find_session(ctx.g, relay_name=name)
+        if entry is None or entry["host"] != "claude-desktop" or name in store.left_relays(ctx.g):
+            continue
+        if ctx.from_hub and entry["role"] == "hub":
+            continue
+        _wake(ctx, entry, "【decision-inbox 巡视】有消息送不进来（agent-relay 叫不醒你），请查看收件箱后继续。")
+
+
+def _not_loaded(ctx: _Context) -> None:
+    """R19: a Codex task that is not loaded cannot be woken from here; tell the user to open it."""
+    for entry in store.roster(ctx.g):
+        fact = _fact(ctx, entry["relayName"])
+        if (entry["host"] == "codex-desktop" and fact is not None and fact.waiting_count
+                and getattr(fact, "presence_raw", None) == "not-loaded"):
+            ctx.plan.live["wakes"].append(entry["relayName"])
+            ctx.notify(f"not-loaded:{entry['relayName']}",
+                       f"{entry['shortName']} 有 {fact.waiting_count} 条消息没读，Codex 任务没打开：去 Codex 打开 "
+                       f"{entry['shortName']} 的任务")
+
+
+def save_snapshot(group: str, now: str, raw: dict) -> None:
+    """Keep this round's raw agents/outbox (R19), only the latest SNAPSHOTS of each kind."""
+    folder = store.root_dir() / group / "io" / "snapshots"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = now.replace(":", "").replace("+", "p")
+    for kind, text in raw.items():
+        if text is None:
+            continue
+        (folder / f"{stamp}-{kind}.json").write_text(text, encoding="utf-8")
+        for old in sorted(folder.glob(f"*-{kind}.json"))[:-SNAPSHOTS]:
+            old.unlink()
 
 
 def _wake_hub(ctx: _Context) -> None:
@@ -202,17 +249,20 @@ def _cap(ctx: _Context) -> None:
 
 
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
-         relay_error: str | None = None, from_hub: bool = False, crews: dict | None = None) -> Plan:
+         relay_error: str | None = None, from_hub: bool = False, crews: dict | None = None,
+         outbox=None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"),
                                crews=crews)
     result = Plan(now=now, snapshot=assessment.snapshot, by="hub" if from_hub else "schedule")
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
-    ctx = _Context(g, now, relay, state, result, from_hub)
+    ctx = _Context(g, now, relay, state, result, from_hub, outbox)
     _handoffs(ctx)  # first, so its notices lead the round and survive the cap
     _user_notices(ctx, assessment.signals, relay_error)
     _wakes(ctx)
+    _offline_mail(ctx)
+    _not_loaded(ctx)
     _alerts(ctx, assessment.signals)
     _cap(ctx)
     _wake_hub(ctx)
@@ -252,10 +302,10 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
 
 PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
 
-第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}。
+第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}；再用 bridge_outbox（agent 写 {hub}，不带别的参数）读收件枢纽发出、对方还没确认的消息，把返回的 JSON 原文原样写入文件 {outbox}。
 
 第 2 步：运行
-{cli} patrol plan {group} --agents {agents} --out {plan}
+{cli} patrol plan {group} --agents {agents} --outbox {outbox} --out {plan}
 它打印本轮要做的动作（JSON 的 actions），每个动作有 id、kind、target、text。没有动作就直接到第 3 步。
 
 逐条执行：
@@ -272,12 +322,19 @@ PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 
 """
 
 
-def prompt(group: str, cli: str | None = None, workdir: str | None = None) -> str:
+def prompt(group: str, cli: str | None = None, workdir: str | None = None, hub: str | None = None) -> str:
     """The self-contained scheduled-task prompt (spec 关键决策 7); onboarding installs it.
 
     Its files live in the group's io/, the one directory the hub allowlist lets it write
     without a prompt (rehearsal2-fixes); a run stuck on a prompt blocks every later run.
     """
     workdir = workdir or str(store.root_dir() / group / "io")
+    if hub is None:  # onboard hub passes its own name: its entry is not on the roster yet
+        try:
+            roster = store.roster(store.open_group(group))
+        except (store.GroupNotFound, store.InvalidName):
+            roster = []
+        hub = next((e["relayName"] for e in roster if e["role"] == "hub"), "<收件枢纽身份名>")
     return PROMPT.format(group=group, cli=cli or install.cli(), agents=f"{workdir}/decision-inbox-{group}-agents.json",
+                         outbox=f"{workdir}/decision-inbox-{group}-outbox.json", hub=hub,
                          plan=f"{workdir}/decision-inbox-{group}-plan.json")

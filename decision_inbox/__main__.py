@@ -254,6 +254,7 @@ def _patrol(argv: list[str]) -> int:
     p = sub.add_parser("plan")
     p.add_argument("group")
     p.add_argument("--agents", required=True)
+    p.add_argument("--outbox")
     p.add_argument("--out", required=True)
     p.add_argument("--relay-version")
     p.add_argument("--from-hub", action="store_true")
@@ -281,16 +282,26 @@ def _patrol(argv: list[str]) -> int:
             # hub-patrol Task 5: a file an earlier command consumed is the hub's slip, not agent-relay down
             print(f"没有 {args.agents}：先用 bridge_agents 读状态，原样写入这个文件，再运行本命令", file=sys.stderr)
             return 2
-        agents, error = None, None
+        agents, error, outbox, raw = None, None, None, {}
         try:
-            agents = relay.parse_agents(Path(args.agents).read_text(encoding="utf-8"), relay_version=args.relay_version)
+            raw["agents"] = Path(args.agents).read_text(encoding="utf-8")
+            agents = relay.parse_agents(raw["agents"], relay_version=args.relay_version)
             _consume(args.agents)
         except (OSError, relay.RelayDataError) as e:
             error = str(e)
+        hub_name = next((e["relayName"] for e in store.roster(g) if e["role"] == "hub"), "")
+        if args.outbox:  # stall-and-patrol R19: an unreadable outbox only skips that check
+            try:
+                raw["outbox"] = Path(args.outbox).read_text(encoding="utf-8")
+                outbox = relay.parse_outbox(raw["outbox"], sender=hub_name)
+                _consume(args.outbox)
+            except (OSError, relay.RelayDataError):
+                outbox = None
+        patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
         doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error,
-                          from_hub=args.from_hub, crews=crew.crews(g)).to_json()
+                          from_hub=args.from_hub, crews=crew.crews(g), outbox=outbox).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0

@@ -1,8 +1,8 @@
 # Todo: stall-and-patrol
 
-- [ ] Task 1：R19 叫醒兜底（Spec 验收 1）
+- [x] Task 1：R19 叫醒兜底（Spec 验收 1）
   - 验证：`tests/test_patrol.py`、`tests/test_relay.py`：offline 3 分钟 wake、再一轮带链接通知、无 desktopSession 通知、Codex not-loaded、空闲 3 分钟、快照 24 份；原有巡视测试过
-- [ ] Checkpoint A（report）：R19 测试全过
+- [x] Checkpoint A（report）：R19 测试全过（759 个）
 - [ ] Task 2：R18 巡视会话（Spec 验收 2）
   - 验证：`tests/test_onboard.py`、`tests/test_doctor.py`：开巡视会话步骤、删旧定时任务步骤、record-patrol、doctor 超时与未登记
 - [ ] Task 3：R16 常规授权（Spec 验收 3）
