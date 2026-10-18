@@ -9,7 +9,7 @@
 - [x] Task 4：【等待用户】写法提示（Spec 验收 4；用户改定做法 A：插件内部检查，只给用户看，不回执）
   - 验证：`tests/test_items.py` WritingNotesTest：批 2 合批样例四条提示、契约解析结果不变、完整样例无提示、卡片显示「写法提示」；契约一致性测试不变
   - 后续：做法 B（向 session-protocol 提需求新增提示代码与回执）待另议
-- [ ] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
+- [x] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
   - 验证：`tests/test_onboard.py` 步骤含提醒；重跑 join 时规则文件 mtime 不变
 - [ ] Task 6：README、版本 0.0.20（Spec 验收 6）
   - 验证：`python3 -m unittest discover -s tests` 全部通过；两份清单都是 0.0.20
