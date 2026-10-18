@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved f1da2f85d866 -->
 
 # Spec: patrol-stop-fixes
 
