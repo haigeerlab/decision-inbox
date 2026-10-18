@@ -48,8 +48,9 @@
 | hub-cutover-settings | 换收件枢纽时的编号起点：接入收件枢纽可指定起始编号（只在还没编过号时）；核实并写明历史欠回复不进主视图与巡视 | group-store, onboarding |
 | transition-compat | 迁移期对还没接入的会话（名册标「旧格式」、只登记不写约定块）用旧编号写法收发：用户答复与多线答复写「#原消息号（hub 编号 N）」、不发答复告知、认它们用邮箱号写的取代与撤回；已退出条目不再收消息；契约钉 v1.7，负责人约定块指向【负责人转交】 | decision-queue, hub-loop, onboarding, protocol-contract-v1-4 |
 | crew-line-status | 并行开发线的线状态：协调会话那条线读 module-crew 发布的只读出口（sessions --json，按版本范围）列出各模块状态，按各模块会话的 agent-relay 忙闲判断「干活中」，消除「阻塞」「全线互等」误报，读不到写「模块状态未知」；doctor 读 module-crew 的 interface.json 核对版本、契约与出口能否读到 | relay-reader, line-health, hub-view, doctor-and-observer, crew-coordinator-seam |
+| rehearsal-fixes | 联合演练批 1 发现的四项改进：doctor 对只登记条目不报未知；leave 预览列出名下没答的事项和开着的等待单；【撤回】写成自己邮箱号被退回时点明对应事项号；doctor 核对 Claude 与 Codex 两边装的 decision-inbox 是同一版本；仓库忽略 __pycache__ | doctor-and-observer, onboarding, decision-queue, transition-compat |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings → transition-compat → crew-line-status
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings → transition-compat → crew-line-status → rehearsal-fixes
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 

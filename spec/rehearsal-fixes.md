@@ -1,4 +1,5 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved ae36cbd53ba7 -->
+
 # Spec: rehearsal-fixes
 
 > 能力图模块 `rehearsal-fixes`（2026-10-18 预览插入，排在 crew-line-status 之后）。来源：LIVE-SAAS 联合演练批 1 的发现（`livesaas-integration/REHEARSAL-LOG.md`「批 1 小结」）。用户 2026-10-18 在本会话决定：四项改进合成一个模块，先写 Spec 交审；验收合并后冻结为 0.0.19，固定副本放 `~/Documents/haigeerlab/decision-inbox-release/v0.0.19`。批 2 等两个插件都冻结成固定副本后再开。
