@@ -83,7 +83,7 @@ class FixedCliTest(TempHomeTestCase):
         project.mkdir()
         preview = onboard.hub("demo", "di-hub", HUB_DESKTOP, project, confirm=False, now=NOW)
         self.assertFalse(install.shim_path().exists())
-        self.assertIn(f"{install.cli()} onboard task demo", "\n".join(preview.steps))
+        self.assertIn(f"{install.cli()} onboard patrol-session demo", "\n".join(preview.steps))
         self.assertNotIn("python3 -m decision_inbox", "\n".join(preview.steps) + preview.patrol_prompt)
         onboard.hub("demo", "di-hub", HUB_DESKTOP, project, confirm=True, now=NOW)
         self.assertTrue(install.shim_path().is_file())

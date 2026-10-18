@@ -254,6 +254,7 @@ def _patrol(argv: list[str]) -> int:
     p = sub.add_parser("plan")
     p.add_argument("group")
     p.add_argument("--agents", required=True)
+    p.add_argument("--outbox")
     p.add_argument("--out", required=True)
     p.add_argument("--relay-version")
     p.add_argument("--from-hub", action="store_true")
@@ -281,16 +282,26 @@ def _patrol(argv: list[str]) -> int:
             # hub-patrol Task 5: a file an earlier command consumed is the hub's slip, not agent-relay down
             print(f"没有 {args.agents}：先用 bridge_agents 读状态，原样写入这个文件，再运行本命令", file=sys.stderr)
             return 2
-        agents, error = None, None
+        agents, error, outbox, raw = None, None, None, {}
         try:
-            agents = relay.parse_agents(Path(args.agents).read_text(encoding="utf-8"), relay_version=args.relay_version)
+            raw["agents"] = Path(args.agents).read_text(encoding="utf-8")
+            agents = relay.parse_agents(raw["agents"], relay_version=args.relay_version)
             _consume(args.agents)
         except (OSError, relay.RelayDataError) as e:
             error = str(e)
+        hub_name = next((e["relayName"] for e in store.roster(g) if e["role"] == "hub"), "")
+        if args.outbox:  # stall-and-patrol R19: an unreadable outbox only skips that check
+            try:
+                raw["outbox"] = Path(args.outbox).read_text(encoding="utf-8")
+                outbox = relay.parse_outbox(raw["outbox"], sender=hub_name)
+                _consume(args.outbox)
+            except (OSError, relay.RelayDataError):
+                outbox = None
+        patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
         doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error,
-                          from_hub=args.from_hub, crews=crew.crews(g)).to_json()
+                          from_hub=args.from_hub, crews=crew.crews(g), outbox=outbox).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
@@ -471,6 +482,11 @@ def _print_outcome(out, confirm: bool) -> None:
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
+    if out.permissions:
+        verb = "已加" if confirm else "要加"
+        print(f"权限规则（{out.permissions_file}）：")
+        for kind, rule in out.permissions:
+            print(f"  {verb} {'放行' if kind == 'allow' else '先问'}：{rule}")
     for line in out.written:
         print(line)
     if out.changed and not out.drops:
@@ -510,6 +526,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--checkpoint-authority", action="store_true")
     p.add_argument("--crew-coordinator", action="store_true")
     p.add_argument("--local-rules", action="store_true")
+    p.add_argument("--test-command")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("enroll")
     p.add_argument("group")
@@ -526,6 +543,9 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("task")
     p.add_argument("group")
     p.add_argument("--task-id", required=True)
+    p = sub.add_parser("patrol-session")
+    p.add_argument("group")
+    p.add_argument("--session", required=True)
     for name in ("leave", "teardown"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -547,7 +567,8 @@ def _onboard(argv: list[str]) -> int:
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
-                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules)
+                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules,
+                               test_command=args.test_command)
         elif args.command == "enroll":
             out = onboard.enroll(args.group, args.relay_name, args.short_name, args.host, args.line,
                                  args.desktop_session, args.confirm, now)
@@ -566,6 +587,10 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "task":
             onboard.record_task(args.group, args.task_id, now)
             print(f"已记下巡视任务编号：{args.task_id}")
+            return 0
+        elif args.command == "patrol-session":
+            onboard.record_patrol_session(args.group, args.session, now)
+            print(f"已记下巡视会话：{args.session}")
             return 0
         elif args.command == "leave":
             out = onboard.leave(args.group, args.relay_name, args.project, args.confirm, now)

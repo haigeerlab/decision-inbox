@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import deps, health, install, items, protocol, reviews, store, tickets, view
+from decision_inbox import deps, health, install, items, protocol, reviews, stall, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -86,6 +86,10 @@ def _receipt(g: store.Group, m, msg, r) -> tuple[int, str] | None:
     if m.sender in store.legacy_relays(g):
         return None
     notes = [text for _, text in items.writing_notes(msg)]
+    modules = [m for m in dict.fromkeys([a.module for a in msg.artifacts] +
+                                        [r.module for rs in msg.originals.values() for r in rs]) if m]
+    if len(modules) > 1:  # approval-display: one module per item (user decision 47)
+        notes.append(f"按决定 47 应各自一项（这一项合了 {'、'.join(modules)}）")
     notes += [h.text for h in r.hints if h.code == "auto-superseded"]
     return r.item, protocol.format_hub_receipt(m.id, r.item, r.superseded, notes)
 
@@ -291,10 +295,25 @@ HUB_PATROL_MINUTES = 10  # hub-patrol: the hub runs a round itself when the patr
 def patrol_due(g: store.Group, now: str) -> bool:
     """The scheduled patrol barely fires on some hosts (H24); the hub fills in (hub-patrol)."""
     onboarding = store.read_state(g, "onboarding")
-    if not onboarding.get("patrolTask"):
+    runner = _patrol_runner(onboarding)
+    if runner is None:
         return False
-    since = store.read_state(g, "patrol").get("lastRunAt") or onboarding.get("patrolTaskAt")
+    since = store.read_state(g, "patrol").get("lastRunAt") or runner[2]
     return since is not None and view._minutes(now, since) > HUB_PATROL_MINUTES
+
+
+def _patrol_runner(onboarding: dict) -> tuple[str, str, str | None] | None:
+    """What runs the patrol: the looping session (stall-and-patrol R18) or the older scheduled task."""
+    if onboarding.get("patrolSession"):
+        return "session", onboarding["patrolSession"], onboarding.get("patrolSessionAt")
+    if onboarding.get("patrolTask"):
+        return "task", onboarding["patrolTask"], onboarding.get("patrolTaskAt")
+    return None
+
+
+def patrol_session_fix(session: str) -> str:
+    return (f"打开巡视会话 claude://claude.ai/epitaxy/{session}：它停在权限确认上就批完；循环停了就在里面重新发一次"
+            "「/loop 5m」加巡视提示词；会话不在了就重跑 /decision-inbox:hub-setup")
 
 
 def patrol_fix(task: str) -> str:
@@ -311,13 +330,13 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     judged by lastRunAt alone.
     """
     onboarding = store.read_state(g, "onboarding")
-    task = onboarding.get("patrolTask")
-    if not task:
+    runner = _patrol_runner(onboarding)
+    if runner is None:
         return None
-    fix = patrol_fix(task)
+    kind, name, since = runner
+    fix = patrol_session_fix(name) if kind == "session" else patrol_fix(name)
     last = store.read_state(g, "patrol").get("lastRunAt")
     if last is None:
-        since = onboarding.get("patrolTaskAt")
         if since is not None and view._minutes(now, since) > PATROL_STALE_MINUTES:
             return deps.sourced(f"⚠ 巡视还没跑完过一轮：{fix}", HOST)
         return None
@@ -329,6 +348,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
+    head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
         head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
@@ -342,6 +362,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
+_LOOK_RE = re.compile(r"^看\s*#?(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:#\s*\d+[\s、，,]*)+)(.*)$", re.S)
@@ -387,6 +408,8 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
                      "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
     if m := _DETAIL_RE.match(said):
         return Reply(view.render_detail(g, int(m.group(1))))
+    if m := _LOOK_RE.match(said):
+        return Reply(view.render_look(g, int(m.group(1)), now))
     if m := _ORIGINAL_RE.match(said):
         return Reply(_original(g, m.group(1)))
     if said == "看等待":
@@ -440,14 +463,14 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 6. 输出 `more` 为真时，从第 1 步再读一页。
 7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
    `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
-   把输出的主视图和第 2 步输出的 `notes` 原样显示给用户：按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
+   把输出的主视图和第 2 步输出的 `notes` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对。按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
 
 ### 顺带巡视
 
 定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
 
-1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）。
-2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json。
+2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
 3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
 
 只做计划里的动作，不读也不转述别的消息正文。
@@ -463,7 +486,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 2. 用写文件工具把用户这句话一字不改地写入 {io}/said.txt。
 3. 运行 `{cli} inbox reply {group} --text-file {io}/said.txt --agents {io}/agents.json`。
 4. 输出有 `sends` 就按上面第 3、4 步发出并记账。
-5. 把输出的 `show` 原样显示给用户（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
+5. 把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
 
 ### 改规则
 

@@ -368,7 +368,7 @@ class ConventionTest(HubCase):
                        "先用一两句大白话说清为什么卡在这里",
                        # hub-patrol
                        "### 顺带巡视", "`patrolDue` 为真",
-                       "python3 -m decision_inbox patrol plan demo --agents /abs/io/patrol-agents.json --out /abs/io/plan.json --from-hub",
+                       "python3 -m decision_inbox patrol plan demo --agents /abs/io/patrol-agents.json --outbox /abs/io/patrol-outbox.json --out /abs/io/plan.json --from-hub",
                        "原样写入 /abs/io/patrol-agents.json",
                        "python3 -m decision_inbox patrol record demo --plan /abs/io/plan.json",
                        "notify 不发桌面通知", "先把用户的事处理完"):
@@ -904,3 +904,24 @@ class DecoupledTest(HubCase):
         card = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
         self.assertNotIn("要点（摘要）", card)
         self.assertNotIn("待你决定的问题", card)
+
+
+class VerbatimRuleTest(HubCase):
+    def test_hub_block_says_paste_verbatim(self):
+        """r20-fixes Task 2: the hub pastes command output word for word, never retyping a line."""
+        self.assertGreaterEqual(hub.CONVENTION.count("逐字粘贴给用户，不要手抄、不要改写其中任何一行"), 2)
+        self.assertIn("以命令输出为准", hub.CONVENTION)
+
+
+class PatrolSessionAlarmTest(HubCase):
+    """stall-and-patrol Task 2: the alarm and the hub fill-in also watch a patrol session."""
+
+    def test_session_alarm_names_the_session(self):
+        with self.g.transaction() as tx:
+            tx.write_state("onboarding", {**tx.read_state("onboarding"), "patrolSession": "local_patrol1",
+                                          "patrolSessionAt": "2026-10-16T04:00:00Z"})
+            tx.write_state("patrol", {"lastRunAt": "2026-10-16T05:10:00Z"})
+        alarm = hub.patrol_alarm(self.g, NOW)
+        self.assertIn("巡视 20 分钟没跑", alarm)
+        self.assertIn("claude://claude.ai/epitaxy/local_patrol1", alarm)
+        self.assertTrue(hub.patrol_due(self.g, NOW))

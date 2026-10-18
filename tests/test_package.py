@@ -45,7 +45,9 @@ class StaticScanTest(unittest.TestCase):
         rules file the join itself created (e2e-round1-fixes F6), and _consume drops an input file a hub or
         patrol command just read, only under the temp dirs or a group's io/ (p0-field-fixes F-P0-5)."""
         banned = {"unlink", "rmtree", "truncate", "remove", "rmdir"}
-        allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink")}
+        # stall-and-patrol R19: save_snapshot rotates its own copies under the group's io/snapshots, keeping 24
+        allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink"),
+                   ("patrol.py", "save_snapshot", "unlink")}
         seen = set()
         for path in _sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))

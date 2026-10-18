@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import protocol, reviews, store
+from decision_inbox import protocol, reviews, sources, store
 from decision_inbox.protocol import Issue
 
 DOMAIN = "items"
@@ -113,6 +113,19 @@ def writing_notes(msg) -> list[tuple[str, str]]:
     return out
 
 
+def _approval_key(msg) -> tuple[str | None, str | None]:
+    """Module and node from the 交审原文 when readable, else the 产物 module prefix (approval-display)."""
+    module = node = None
+    for ref in msg.originals.get("submission", ()):
+        got = sources.read_original(ref.path, ref.fingerprint)
+        if got.ok:
+            module, node = sources.submission_meta(got.text)
+            break
+    if module is None:
+        module = next((a.module for a in msg.artifacts if a.module), None)
+    return module, node
+
+
 def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) -> dict:
     return {
         "sender": sender,
@@ -135,6 +148,13 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "writingNotes": [text for _, text in writing_notes(msg)],
         "decisions": [{"id": d.id, "question": d.question, "options": [list(o) for o in d.options],
                        "lean": d.lean, "leanReason": d.lean_reason} for d in msg.decisions],
+        # approval-display: what to read verbatim; module and node as the submission states them
+        "project": msg.fields.get("项目", "").strip(),
+        "artifacts": [{"module": a.module, "path": a.path, "commit": a.commit, "previous": a.previous}
+                      for a in msg.artifacts],
+        "originals": {kind: [{"module": r.module, "path": r.path, "fingerprint": r.fingerprint} for r in refs]
+                      for kind, refs in msg.originals.items()},
+        **dict(zip(("approvalModule", "approvalNode"), _approval_key(msg))),
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
