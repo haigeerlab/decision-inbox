@@ -191,6 +191,8 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 0.0.24 也没改协作规则段：巡视会话的提示词加了「收到『停止巡视』就用 CronDelete 删掉循环任务」，卸载时先发「停止巡视」再归档（巡视会话里 `/loop` 的循环任务不删，宿主不让归档）。这一版之前开的巡视会话不认这句话，要重跑 `/decision-inbox:hub-setup` 才拿到新提示词；卸载旧组时，请在巡视会话里停掉循环，或从侧边栏归档它。
 
+0.0.25 也没改协作规则段，不用重新接入：只按术语表 v1.2 改了显示文字。`/decision-inbox:map` 的审查列改写「✔／待批准／改过待重审／无标记／标记无效」，和 spec-guard 的 `/map` 一致；`/decision-inbox:glossary` 显示术语表 v1.2：新叫法是批准节奏、待批准，新增「审阅」（旧称：评审节奏、待审核）。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit` 和 `--test-command` 指定的测试命令直接放行；`git push`、`git reset --hard`、`rm -rf`、`npm install`、`pip install` 设成「先问」。只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
