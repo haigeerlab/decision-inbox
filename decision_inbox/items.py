@@ -266,9 +266,13 @@ class ReplyParse:
     question: str | None = None
 
 
-_SEGMENT_RE = re.compile(r"^\s*#?(\d+)\s*(.*)$", re.S)
-_LETTER_RE = re.compile(r"^([A-Z])(?:\s+.*)?$", re.S)
+# A digit run glued to lowercase letters is a commit hash, not an item (review-nearby R6); 「12B」 still is one.
+_SEGMENT_RE = re.compile(r"^\s*#?(\d+)(?![0-9a-z])\s*(.*)$", re.S)
+# The option letter may be followed by punctuation: 「21 B，C15 退回」 (review-nearby R6).
+_LETTER_RE = re.compile(r"^([A-Z])(?:[\s，；,;、：:].*)?$", re.S)
 _SPLIT_RE = re.compile(r"[，；;,]")
+# session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
+_PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
 ANSWERED = ("forwarded", "picked", "acknowledged")
 
 
@@ -278,12 +282,26 @@ def _segments(text: str, known: dict) -> list[str]:
         m = _SEGMENT_RE.match(piece)
         return bool(m) and m.group(1) in known
 
-    lines = [line for line in text.split("\n") if line.strip()]
+    def grouped(pieces: list[str], seps: list[str]) -> list[str] | None:
+        """Numbered pieces, each carrying the prefixed pieces after it (「21 B，C15 退回」 is one answer)."""
+        if not numbered(pieces[0]) or not all(numbered(x) or _PREFIXED_RE.match(x) for x in pieces):
+            return None
+        out = [pieces[0]]
+        for sep, piece in zip(seps, pieces[1:]):
+            if numbered(piece):
+                out.append(piece)
+            else:
+                out[-1] += sep + piece
+        return out
+
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     if len(lines) > 1:
-        return [line.strip() for line in lines] if all(numbered(l) for l in lines) else [text]
-    pieces = [x.strip() for x in _SPLIT_RE.split(text) if x.strip()]
-    if len(pieces) > 1 and all(numbered(x) for x in pieces):
-        return pieces
+        return grouped(lines, ["\n"] * len(lines)) or [text]
+    pieces = [x.strip() for x in _SPLIT_RE.split(text)]
+    if len(pieces) > 1 and all(pieces):
+        out = grouped(pieces, _SPLIT_RE.findall(text))
+        if out is not None and len(out) > 1:
+            return out
     return [text]
 
 

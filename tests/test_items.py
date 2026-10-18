@@ -286,6 +286,38 @@ class InterpretTest(ItemsCase):
         self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B")])
 
 
+class PrefixTest(InterpretTest):
+    """review-nearby Task 6 (R6): only an unprefixed number is an item; C15, R-3, D1 stay in the user's words."""
+
+    def test_letter_followed_by_punctuation(self):
+        for text in (f"{self.a} B，C15 退回", f"{self.a} B；C15 退回", f"{self.a} B、C16 也退回"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual(p.answers, (items.Answer(self.a, "B", text),))
+
+    def test_prefixed_pieces_join_the_item_before_them(self):
+        for text in (f"{self.a} B，C15 退回，{self.b} A", f"{self.a} B\nC15 退回\n{self.b} A"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B"), (self.b, "A")])
+                self.assertIn("C15 退回", p.answers[0].original)
+
+    def test_prefixed_number_is_never_an_item(self):
+        for text in (f"C{self.a} A", f"#C{self.a} A", f"R-{self.a} A", f"D{self.a} A", f"4c5d6e{self.a} A"):
+            with self.subTest(text=text):
+                self.assertEqual(self.parse(text).question, items.NO_ITEM_QUESTION)
+
+    def test_old_forms_unchanged(self):
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B").answers], [(self.a, "B")])
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"#{self.a} B").answers], [(self.a, "B")])
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B，{self.b} A").answers],
+                         [(self.a, "B"), (self.b, "A")])
+        self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
+        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, None, "A"),))
+
+
 class AnswerTest(ItemsCase):
     def test_single_answer_with_option_text(self):
         no = self.receive(SINGLE).item
