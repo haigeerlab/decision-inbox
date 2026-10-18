@@ -44,8 +44,10 @@
 | p0-field-fixes | 修第 ⑥ 阶段 P0 实测发现的五个问题：取代写邮箱号被退回的约定与退回说明、巡视叫醒空闲且积压 ≥5 分钟的 Claude 会话（含收件枢纽）、巡视任务须先手动运行一次的文档、命令读完输入文件即删除以免巡视卡住；契约升到 session-protocol v1.5（2026-10-18 用户批准） | patrol, decision-queue, hub-view, hub-loop, onboarding, protocol-contract-v1-4 |
 | patrol-cadence | 让巡视没按时跑这件事被看见、被正确归因：停摆提示写明权限卡住与宿主没触发两种原因，query stats 统计巡视轮数与最长间隔，P3 指标把宿主没触发单独记录；版本 0.0.13（2026-10-18 用户批准，F-P0-6 对策 E） | p0-field-fixes, query-commands, doctor-and-observer |
 | hub-patrol | 定时任务基本不自动触发时巡视不断：收件枢纽被叫醒或用户对它说话时，巡视超过 10 分钟没跑就顺带跑一轮（不叫醒自己、通知改为显示），记录与统计巡视来源；版本 0.0.14（2026-10-18 用户批准，F-P0-6 对策 B） | patrol-cadence, hub-loop, patrol |
+| crew-coordinator-seam | 接 module-crew 协调会话的接缝：约定块可写进 CLAUDE.local.md 并核对已被忽略；「并行开发协调会话」标记只在接入时经用户确认写入，带专门一节约定；停止钩子跳过已挂起的当前模块、对协调会话不做没勾完检查 | onboarding, stop-hook, spec-guard-reader |
+| hub-cutover-settings | 换收件枢纽时的编号起点：接入收件枢纽可指定起始编号（只在还没编过号时）；核实并写明历史欠回复不进主视图与巡视 | group-store, onboarding |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
