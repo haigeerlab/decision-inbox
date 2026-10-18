@@ -261,6 +261,24 @@ PATROL_STALE_MINUTES = 15  # three missed */5 runs
 HOST = "Claude 桌面版"  # the patrol is a desktop scheduled task; a stuck run is the host waiting on a prompt
 
 
+HUB_PATROL_MINUTES = 10  # hub-patrol: the hub runs a round itself when the patrol has been quiet this long
+
+
+def patrol_due(g: store.Group, now: str) -> bool:
+    """The scheduled patrol barely fires on some hosts (H24); the hub fills in (hub-patrol)."""
+    onboarding = store.read_state(g, "onboarding")
+    if not onboarding.get("patrolTask"):
+        return False
+    since = store.read_state(g, "patrol").get("lastRunAt") or onboarding.get("patrolTaskAt")
+    return since is not None and view._minutes(now, since) > HUB_PATROL_MINUTES
+
+
+def patrol_fix(task: str) -> str:
+    """Both reasons a patrol goes quiet (patrol-cadence): a run stuck on a prompt, or the host not firing (H24)."""
+    return (f"去定时任务列表看 {task}：最近一次运行停在权限确认上，就批完；"
+            "没有在跑的运行，是宿主没按时触发（宿主差异 H24），立即运行一次")
+
+
 def patrol_alarm(g: store.Group, now: str) -> str | None:
     """A registered patrol that has not finished a run lately (e2e-round1-fixes F4).
 
@@ -272,7 +290,7 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     task = onboarding.get("patrolTask")
     if not task:
         return None
-    fix = f"去定时任务列表找 {task}，看它是否停在权限确认上，批完或立即运行一次"
+    fix = patrol_fix(task)
     last = store.read_state(g, "patrol").get("lastRunAt")
     if last is None:
         since = onboarding.get("patrolTaskAt")
@@ -399,6 +417,16 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
    `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
    把输出的主视图和第 2 步输出的 `notes` 原样显示给用户：按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
+
+### 顺带巡视
+
+定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
+
+1. 用 `bridge_agents`（不带参数）读状态，原样写入 {io}/agents.json。
+2. 运行 `{cli} patrol plan {group} --agents {io}/agents.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
+
+只做计划里的动作，不读也不转述别的消息正文。
 
 ### 先判断是不是用户亲手输入
 

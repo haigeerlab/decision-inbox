@@ -348,7 +348,12 @@ class ConventionTest(HubCase):
                        # e2e-round1-fixes F12: a code fence around the view kills the copy block
                        "不要套进代码块",
                        # wait-honesty-and-briefs B5
-                       "先用一两句大白话说清为什么卡在这里"):
+                       "先用一两句大白话说清为什么卡在这里",
+                       # hub-patrol
+                       "### 顺带巡视", "`patrolDue` 为真",
+                       "python3 -m decision_inbox patrol plan demo --agents /abs/io/agents.json --out /abs/io/plan.json --from-hub",
+                       "python3 -m decision_inbox patrol record demo --plan /abs/io/plan.json",
+                       "notify 不发桌面通知", "先把用户的事处理完"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
@@ -590,7 +595,7 @@ class PatrolAlarmTest(HubCase):
             if last_run:
                 tx.write_state("patrol", {"lastRunAt": last_run})
 
-    FIX = "去定时任务列表找 decision-inbox-patrol-demo，看它是否停在权限确认上，批完或立即运行一次"
+    FIX = "去定时任务列表看 decision-inbox-patrol-demo：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发（宿主差异 H24），立即运行一次"
 
     def test_never_ran_after_fifteen_minutes(self):
         self.patrol(task_at="2026-10-16T05:14:00Z")
@@ -617,6 +622,21 @@ class PatrolAlarmTest(HubCase):
         self.patrol(last_run="2026-10-16T05:00:00Z")
         self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
+
+    def test_patrol_due_after_ten_minutes(self):
+        """hub-patrol: the hub runs a round itself when the patrol has been quiet over 10 minutes."""
+        self.patrol(task_at="2026-10-16T05:19:00Z")
+        self.assertTrue(hub.patrol_due(self.g, NOW))          # never ran, registered 11 minutes ago
+        self.patrol(task_at="2026-10-16T05:21:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:19:00Z")
+        self.assertTrue(hub.patrol_due(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:21:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
+
+    def test_no_patrol_task_not_due(self):
+        self.patrol(task=None, last_run="2026-10-16T01:00:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
 
 class EndLineRelayIdTest(HubCase):
     """e2e-round1-fixes F10 regression: dev-a waits on the hub (#4544), then raises #4610 with 结束：#4544."""

@@ -42,8 +42,10 @@
 | protocol-contract-v1-3 | 契约升到 session-protocol v1.3：复制 v1.3 样例替换 v1.0 副本，一致性测试跳过本插件不解析的三种新消息（交审、公共变更请求、协调通知），三个过简词各有一份样例能被变异检查抓到；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1 |
 | protocol-contract-v1-4 | 契约升到 session-protocol v1.4：复制 v1.4 样例替换 v1.3 副本，审查行取值与用户原话首行空白读法有样例保护，计数调为解析 52、生成 6；登记契约仓库的接入现状；行为不变（2026-10-18 用户批准） | protocol-contract-v1-3 |
 | p0-field-fixes | 修第 ⑥ 阶段 P0 实测发现的五个问题：取代写邮箱号被退回的约定与退回说明、巡视叫醒空闲且积压 ≥5 分钟的 Claude 会话（含收件枢纽）、巡视任务须先手动运行一次的文档、命令读完输入文件即删除以免巡视卡住；契约升到 session-protocol v1.5（2026-10-18 用户批准） | patrol, decision-queue, hub-view, hub-loop, onboarding, protocol-contract-v1-4 |
+| patrol-cadence | 让巡视没按时跑这件事被看见、被正确归因：停摆提示写明权限卡住与宿主没触发两种原因，query stats 统计巡视轮数与最长间隔，P3 指标把宿主没触发单独记录；版本 0.0.13（2026-10-18 用户批准，F-P0-6 对策 E） | p0-field-fixes, query-commands, doctor-and-observer |
+| hub-patrol | 定时任务基本不自动触发时巡视不断：收件枢纽被叫醒或用户对它说话时，巡视超过 10 分钟没跑就顺带跑一轮（不叫醒自己、通知改为显示），记录与统计巡视来源；版本 0.0.14（2026-10-18 用户批准，F-P0-6 对策 B） | patrol-cadence, hub-loop, patrol |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 

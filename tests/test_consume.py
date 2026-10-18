@@ -113,6 +113,24 @@ class CommandsConsumeTest(TempHomeTestCase):
         self.assertFalse(agents.exists())
         self.assertFalse(outbox.exists())
 
+    def test_hub_commands_say_whether_a_patrol_is_due(self):
+        """hub-patrol: inbox receive / reply tell the hub to run a round itself."""
+        from decision_inbox import onboard
+        inbox = self.write("inbox.json", json.dumps({"agent": "hub", "messages": [], "hasMore": False}))
+        self.assertIs(json.loads(run_cli("inbox", "receive", "demo", "--inbox", str(inbox))[1])["patrolDue"], False)
+        onboard.record_task("demo", "decision-inbox-patrol-demo", "2026-01-01T00:00:00+08:00")
+        inbox = self.write("inbox.json", json.dumps({"agent": "hub", "messages": [], "hasMore": False}))
+        self.assertIs(json.loads(run_cli("inbox", "receive", "demo", "--inbox", str(inbox))[1])["patrolDue"], True)
+        said = self.write("said.txt", "看等待")
+        self.assertIs(json.loads(run_cli("inbox", "reply", "demo", "--text-file", str(said))[1])["patrolDue"], True)
+
+    def test_patrol_plan_from_hub(self):
+        agents = self.write("agents.json", agents_json())
+        plan = self.home / "plan.json"
+        self.assertEqual(run_cli("patrol", "plan", "demo", "--agents", str(agents), "--out", str(plan),
+                                 "--from-hub")[0], 0)
+        self.assertEqual(json.loads(plan.read_text(encoding="utf-8"))["by"], "hub")
+
     def test_read_only_query_keeps_its_input(self):
         agents = self.write("agents.json", agents_json())
         run_cli("query", "lines", "demo", "--agents", str(agents))

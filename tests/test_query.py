@@ -381,7 +381,7 @@ class CommandLineTest(QueryCase):
                                          "real-wake-jobs.json").read_text(encoding="utf-8"))
         code, out, _ = self.run_cli("query", "flow", "demo", "--agents", agents, "--wakes", wakes)
         self.assertEqual(code, 0)
-        self.assertRegex(out.split("\n")[0], r"^⚠ 巡视 \d+ 分钟没跑：去定时任务列表找 decision-inbox-patrol-demo")
+        self.assertRegex(out.split("\n")[0], r"^⚠ 巡视 \d+ 分钟没跑：去定时任务列表看 decision-inbox-patrol-demo")
 
     def test_errors(self):
         agents = self.file("bad.json", "not json")

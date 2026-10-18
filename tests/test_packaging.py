@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.12")
+        self.assertEqual(claude["version"], "0.0.14")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -197,7 +197,11 @@ class ReadmeTest(unittest.TestCase):
                        "送达存疑", "收件枢纽欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
                        "session-protocol` v1.5", "不解析【交审】【公共变更请求】【协调通知】",
-                       "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上"):
+                       "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
+                       # patrol-cadence
+                       "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
+                       # hub-patrol
+                       "收件枢纽会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

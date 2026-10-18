@@ -152,6 +152,29 @@ class IdleWakeTest(PatrolCase):
         self.assertEqual(self.ids(p).count("wake:hub"), 1)
 
 
+class FromHubTest(PatrolCase):
+    """hub-patrol: a round the hub runs itself never wakes the hub."""
+
+    def test_hub_round_skips_waking_the_hub(self):
+        agents = [idle("hub", (1, ["fe"], 10)), agent("api-owner", **STOPPED_OWNER),
+                  agent("fe-owner", **STOPPED_OWNER)]
+        p = patrol.plan(self.g, now=later(0), relay=snapshot(*agents), maps={}, from_hub=True)
+        ids = [a.id for a in p.actions]
+        self.assertNotIn("wake:hub", ids)
+        self.assertIn("wake:fe-owner", ids)
+        self.assertEqual(p.to_json()["by"], "hub")
+        self.assertEqual(patrol.plan(self.g, now=later(0), relay=snapshot(*agents), maps={}).to_json()["by"],
+                         "schedule")
+
+    def test_record_keeps_who_ran_the_round(self):
+        p = patrol.plan(self.g, now=later(0), relay=snapshot(), maps={}, from_hub=True)
+        patrol.record(self.g, p.to_json(), now=later(0))
+        old = dict(p.to_json())
+        old.pop("by")  # a plan written before hub-patrol
+        patrol.record(self.g, old, now=later(1))
+        runs = [e for e in store.read_events(self.g) if e["type"] == "patrol.run"]
+        self.assertEqual([e["data"]["by"] for e in runs], ["hub", "schedule"])
+
 class RecordTest(PatrolCase):
     def test_plan_is_read_only_and_record_writes_patrol_only(self):
         owner = agent("fe-owner", **STOPPED_OWNER)

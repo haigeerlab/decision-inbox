@@ -117,8 +117,7 @@ def _query(argv: list[str]) -> int:
         p = sub.add_parser(name)
         p.add_argument("group")
         p.add_argument("--since")
-        if name == "events":
-            p.add_argument("--json", action="store_true", required=True)
+        p.add_argument("--json", action="store_true", required=name == "events")
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -141,7 +140,11 @@ def _query(argv: list[str]) -> int:
                 print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
         elif args.command == "stats":
-            print(query.render_stats(query.stats(g, args.since), args.group, args.since))
+            s = query.stats(g, args.since)
+            if args.json:
+                print(json.dumps(query.stats_json(s), ensure_ascii=False, indent=1))
+            else:
+                print(query.render_stats(s, args.group, args.since))
         elif args.command == "events":
             print(json.dumps(query.events(g, args.since), ensure_ascii=False, indent=1))
         elif args.command == "item-ids":
@@ -231,6 +234,7 @@ def _patrol(argv: list[str]) -> int:
     p.add_argument("--agents", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--relay-version")
+    p.add_argument("--from-hub", action="store_true")
     p = sub.add_parser("record")
     p.add_argument("group")
     p.add_argument("--plan", required=True)
@@ -259,7 +263,8 @@ def _patrol(argv: list[str]) -> int:
             error = str(e)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
-        doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error).to_json()
+        doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error,
+                          from_hub=args.from_hub).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
@@ -343,7 +348,8 @@ def _inbox(argv: list[str]) -> int:
             return 3
         r = hub.receive(g, page, now=now)
         _consume(args.inbox)
-        _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more})
+        _print_json({"sends": r.sends, "notes": r.notes, "ack": r.ack, "unread": r.unread, "more": r.more,
+                     "patrolDue": hub.patrol_due(g, now)})
     elif args.command == "reply":
         text = Path(args.text_file).read_text(encoding="utf-8")
         agents = _relay_or_none(args.agents, args.relay_version)
@@ -351,7 +357,7 @@ def _inbox(argv: list[str]) -> int:
         _consume(args.text_file)
         if agents is not None:
             _consume(args.agents)
-        _print_json({"show": r.show, "sends": r.sends})
+        _print_json({"show": r.show, "sends": r.sends, "patrolDue": hub.patrol_due(g, now)})
     elif args.command == "sent":
         done = {}
         for pair in args.done:

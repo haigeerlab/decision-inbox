@@ -36,9 +36,10 @@ class Plan:
     snapshot: dict = field(default_factory=dict)
     live: dict = field(default_factory=lambda: {"signals": [], "wakes": [], "notices": []})
     merged: list = field(default_factory=list)   # notice keys folded into notify:more
+    by: str = "schedule"                          # hub-patrol: "hub" when the hub ran the round itself
 
     def to_json(self) -> dict:
-        return {"version": 1, "now": self.now,
+        return {"version": 1, "now": self.now, "by": self.by,
                 "actions": [a.__dict__ for a in self.actions],
                 "snapshot": self.snapshot, "live": self.live, "merged": self.merged}
 
@@ -63,6 +64,7 @@ class _Context:
     relay: object | None
     state: dict
     plan: Plan
+    from_hub: bool = False
 
     def notify(self, key: str, text: str) -> None:
         """Queue a user notice once per live episode of `key`."""
@@ -105,6 +107,8 @@ def _wakes(ctx: _Context) -> None:
         fact = _fact(ctx, entry["relayName"])
         if entry["host"] != "claude-desktop" or fact is None or not fact.waiting_count:
             continue
+        if ctx.from_hub and entry["role"] == "hub":
+            continue  # the hub is the one running this round
         stopped = fact.presence in OFFLINE
         if stopped or _idle_backlog(ctx, fact):
             _wake(ctx, entry, f"【decision-inbox 巡视】你有 {fact.waiting_count} 条消息在等，请查看收件箱后继续。",
@@ -113,6 +117,8 @@ def _wakes(ctx: _Context) -> None:
 
 def _wake_hub(ctx: _Context) -> None:
     """Spec 关键决策 3: wake the hub too when the user is about to be notified and it is stopped."""
+    if ctx.from_hub:
+        return
     hub = next((e for e in store.roster(ctx.g) if e["role"] == "hub"), None)
     fact = _fact(ctx, hub["relayName"]) if hub else None
     if hub is None or fact is None or fact.presence not in OFFLINE or hub["relayName"] in ctx.plan.live["wakes"]:
@@ -196,13 +202,13 @@ def _cap(ctx: _Context) -> None:
 
 
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
-         relay_error: str | None = None) -> Plan:
+         relay_error: str | None = None, from_hub: bool = False) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"))
-    result = Plan(now=now, snapshot=assessment.snapshot)
+    result = Plan(now=now, snapshot=assessment.snapshot, by="hub" if from_hub else "schedule")
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
-    ctx = _Context(g, now, relay, state, result)
+    ctx = _Context(g, now, relay, state, result, from_hub)
     _handoffs(ctx)  # first, so its notices lead the round and survive the cap
     _user_notices(ctx, assessment.signals, relay_error)
     _wakes(ctx)
@@ -239,7 +245,8 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
         state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at)
         tx.write_state(DOMAIN, state)
         tx.append_event("patrol.run", ref=None, actor="patrol",
-                        data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed})
+                        data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed,
+                              "by": plan_doc.get("by", "schedule")})
 
 
 PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
