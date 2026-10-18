@@ -17,9 +17,10 @@
   - 文件：`decision_inbox/hub.py`、`tests/test_hub.py`
   - 记录（2026-10-18）：先加断言（「### 顺带巡视」「`patrolDue` 为真」、`--from-hub` 的 plan 命令、record 命令、「notify 不发桌面通知」「先把用户的事处理完」），1 失败；约定块在「先判断是不是用户亲手输入」前加一节三步。Ran 592 tests, OK
 
-- [ ] Task 4：文档与版本 0.0.14
+- [x] Task 4：文档与版本 0.0.14
   - 验收：Spec 验收 5
   - 文件：`README.md`、`docs/host-differences.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：先改打包测试（0.0.14、「收件枢纽会顺带巡视」「重跑一次 `/decision-inbox:hub-setup`」），2 失败；README 巡视介绍与升级一节、H24 补「已采用对策 B」后通过。Ran 592 tests, OK
 
 - [ ] Checkpoint（gate）：实测，开始前另问用户
 
