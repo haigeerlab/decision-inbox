@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 862d5d2c0e8a -->
 
 # Spec: glossary-v12
 
