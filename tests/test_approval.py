@@ -115,3 +115,98 @@ class BackgroundTest(ApprovalCase):
         self.assertEqual(bg.round, 2)
         self.assertEqual(bg.last_answer, f"{first} B 验收标准太含糊")
         self.assertEqual(bg.related, [f"#{first}（10-19）你答：{first} B 验收标准太含糊"])
+
+
+from decision_inbox import health, hub, relay, view  # noqa: E402
+
+NOW = "2026-10-19T12:00:00+08:00"
+
+
+class DisplayTest(ApprovalCase):
+    """Tasks 4, 5: the approval card in order, originals verbatim, recommendation last; one card open."""
+
+    def render(self, no):
+        return view.render_approval(self.g, items.get(self.g, no), NOW, read_map=fake_map(module("alpha", 1)))
+
+    def test_sections_in_order_verbatim_and_no_copy_block(self):
+        no = self.ask()
+        text = self.render(no)
+        heads = [line for line in text.split("\n") if line.startswith("━━")]
+        self.assertTrue(heads[0].startswith(f"━━ #{no} · crew-rehearsal · 模块 alpha · 审 Spec"))
+        self.assertEqual([h.split("【")[-1] for h in heads[1:]],
+                         ["原文】", "原文】", "决策收件箱补充】", "决策收件箱补充】"])
+        self.assertIn("开发会话的交审原文", heads[1])
+        self.assertIn(f"spec/alpha.md @ {self.commit}", heads[2])
+        self.assertIn("【交审】\n结束：无\n模块：alpha\n节点：Spec\n要点：x\n", text)  # verbatim
+        self.assertIn("# alpha\n", text)
+        self.assertTrue(heads[-1].startswith("━━ 选项与推荐"))
+        self.assertNotIn("```", text)
+        self.assertIn("Spec 批准后，授权写 Plan", text)
+        self.assertIn("开始写计划", text)  # the proposer's own consequence
+        self.assertTrue(text.rstrip().endswith(f"答复写法示例：{no} A"))
+
+    def test_unreadable_original_says_why_not_brief(self):
+        no = self.ask()
+        Path(items.get(self.g, no)["originals"]["submission"][0]["path"]).write_text("改过了", encoding="utf-8")
+        text = self.render(no)
+        self.assertIn("原文取不到", text)
+        self.assertIn("指纹对不上", text)
+        self.assertNotIn("第二行", text)  # never the brief instead
+
+    def test_main_view_opens_first_only_and_look_command(self):
+        a = self.ask(at=T1)
+        b = self.ask(node="Plan", at=T2)
+        with self.g.transaction() as tx:  # a second sender so b does not supersede a
+            tx.add_session({"relayName": "coord2", "shortName": "后台", "role": "dev", "line": ["后台"],
+                            "host": "claude-desktop", "repo": "/tmp/c2"})
+        doc = store.read_state(self.g, "items")
+        doc["items"][str(b)]["sender"] = "coord2"
+        doc["items"][str(a)]["status"] = "pending"
+        with self.g.transaction() as tx:
+            tx.write_state("items", doc)
+        out = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
+        self.assertEqual(out.count("━━ 开发会话的交审原文"), 1)
+        self.assertIn(f"回「看 {b}」看全文", out)
+        look = hub.reply(self.g, f"看 {b}", now=NOW).show
+        self.assertIn("━━ 开发会话的交审原文", look)
+        self.assertIn(f"#{b} 详情", hub.reply(self.g, f"{b} 详情", now=NOW).show)
+
+
+class SplitAndEvidenceTest(ApprovalCase):
+    """Tasks 6, 7: several modules in one item; final acceptance criteria against evidence."""
+
+    def test_two_modules_split_and_receipt_hint(self):
+        sub_a = self.original("a.txt", "【交审】\n模块：alpha\n节点：Spec\n")
+        sub_b = self.original("b.txt", "【交审】\n模块：beta\n节点：Spec\n")
+        text = (f"【等待用户】\n结束：无\n来自：门店\n项目：p\n要你决定：两个 Spec\n要点：a\nb\n"
+                f"产物：\nalpha：{self.repo}/spec/alpha.md ＠ {self.commit}\nbeta：{self.repo}/spec/alpha.md ＠ {self.commit}\n"
+                f"交审原文：\nalpha：{sub_a}\nbeta：{sub_b}\n选项与我的建议：\n推荐 A：批准\n  选了会怎样：开工\n"
+                "是否完全停住：否\n")
+        r = hub.receive(self.g, relay.Inbox(agent="hub", messages=(relay.InboxMessage(**{
+            **{f: None for f in relay.InboxMessage.__dataclass_fields__}, "id": 801, "sender": "coord",
+            "body": text, "created_at": T1, "truncated": False, "expects_reply": True}),), has_more=False), now=NOW)
+        receipt = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
+        self.assertIn("按决定 47 应各自一项（这一项合了 alpha、beta）", receipt)
+        out = view.render_approval(self.g, items.get(self.g, 1), NOW, read_map=fake_map())
+        self.assertIn("━━ 模块 alpha", out)
+        self.assertIn("━━ 模块 beta", out)
+        self.assertLess(out.index("模块：alpha"), out.index("━━ 模块 beta"))
+
+    def test_final_acceptance_evidence_first(self):
+        spec = self.repo / "spec" / "alpha.md"
+        spec.write_text("# alpha\n\n## 验收标准\n\n1. 能登录\n2. 令牌会刷新\n3. 出错有提示\n\n## 假设\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qam", "spec"], check=True)
+        self.commit = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "--short=7", "HEAD"], check=True,
+                                     capture_output=True, text=True).stdout.strip()
+        sub = self.original("final.txt", "【交审】\n模块：alpha\n节点：最终验收\n验收标准与证据：\n1：test_login 通过\n2：无\n")
+        text = (f"【等待用户】\n结束：无\n来自：门店\n项目：p\n要你决定：alpha 最终验收\n要点：a\nb\n"
+                f"产物：\n{self.repo}/spec/alpha.md ＠ {self.commit}\n交审原文：\n{sub}\n"
+                "选项与我的建议：\n推荐 A：批准\n  选了会怎样：合并\n是否完全停住：否\n")
+        no = items.receive(self.g, text, sender="coord", relay_id=900, received_at=T1).item
+        out = view.render_approval(self.g, items.get(self.g, no), NOW, read_map=fake_map())
+        table = out.split("━━ 验收标准与证据")[1].split("━━")[0]
+        self.assertIn("1. 能登录 —— test_login 通过", table)
+        self.assertIn("2. 令牌会刷新 —— ⚠ 缺证据（写的是「无」）", table)
+        self.assertIn("3. 出错有提示 —— ⚠ 缺证据", table)
+        self.assertLess(out.index("━━ 验收标准与证据"), out.index("━━ 开发会话的交审原文"))
+        self.assertIn("合并进集成分支", out)

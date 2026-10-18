@@ -5,9 +5,10 @@ Read-only; the originals themselves are read by `sources`, at display time.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
-from decision_inbox import items, mapview, sources, specguard
+from decision_inbox import items, sources, specguard
 
 RELATED_LIMIT = 5
 ANSWERED = ("forwarded", "picked", "acknowledged", "closed")
@@ -37,6 +38,7 @@ def _same(it: dict, other: dict, node: bool = True) -> bool:
 
 
 def _map_lines(read, module: str | None) -> tuple[list[str], str | None, str | None]:
+    from decision_inbox import mapview  # mapview imports view, which imports this module
     if read.status != "ok" or read.map is None:
         return [], read.reason or read.status, None
     modules = sorted(read.map.modules, key=lambda m: m.position)
@@ -69,3 +71,65 @@ def background(g, it: dict, read_map=specguard.read_line) -> Background:
     return Background(project=it.get("project") or title or "（没写项目）", repo=repo,
                       module=it.get("approvalModule"), node=it.get("approvalNode"), round=len(earlier) + 1,
                       last_answer=last_answer, related=related, map_lines=lines, map_error=error)
+
+
+FINAL_NODES = ("最终验收", "final")
+
+
+def modules_of(it: dict) -> list[str | None]:
+    """Distinct module prefixes named in 产物／原文, in writing order (approval-display, decision 47)."""
+    refs = list(it.get("artifacts") or ()) + [r for rs in (it.get("originals") or {}).values() for r in rs]
+    return [m for m in dict.fromkeys(ref.get("module") for ref in refs) if m]
+
+
+def _section(text: str, title_re) -> list[str] | None:
+    """Lines under a heading or a 「标题：」 line, up to the next heading or field; None when absent."""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if title_re.match(line.strip()):
+            out = []
+            for later in lines[i + 1:]:
+                bare = later.strip()
+                if bare.startswith("#") or (bare and not _NUMBERED_RE.match(bare)):
+                    break
+                out.append(later)
+            return out
+    return None
+
+
+_NUMBERED_RE = re.compile(r"^-?\s*(\d+)\s*[.．、：:]\s*(.*)$")
+_CRITERIA_TITLE = re.compile(r"^#+\s*验收标准\s*$")
+_EVIDENCE_TITLE = re.compile(r"^验收标准与证据\s*[：:]?\s*$")
+
+
+def evidence_table(it: dict, submission_text: str | None) -> list[str]:
+    """R17: each acceptance criterion of the module's Spec against the evidence the submission gives."""
+    module = it.get("approvalModule")
+    first = next(iter(it.get("artifacts") or ()), None)
+    repo = sources.repo_root(first["path"]) if first else None
+    if not (module and first and repo):
+        return ["Spec 取不到：不知道模块或仓库，没法对照验收标准"]
+    spec = sources.read_artifact(f"{repo}/spec/{module}.md", first["commit"])
+    if not spec.ok:
+        return [f"Spec 取不到：{spec.reason}"]
+    criteria = _section(spec.text, _CRITERIA_TITLE)
+    if not criteria:
+        return [f"spec/{module}.md 里没有「验收标准」一节"]
+    given = {}
+    evidence = _section(submission_text or "", _EVIDENCE_TITLE)
+    for line in evidence or ():
+        if m := _NUMBERED_RE.match(line.strip()):
+            given[m.group(1)] = m.group(2).strip()
+    out = [] if evidence is not None else ["（交审原文里没有「验收标准与证据」一节）"]
+    for line in criteria:
+        if not (m := _NUMBERED_RE.match(line.strip())):
+            continue
+        no, text = m.groups()
+        proof = given.get(no)
+        if proof is None:
+            out.append(f"{no}. {text} —— ⚠ 缺证据")
+        elif proof in ("无", "没有"):
+            out.append(f"{no}. {text} —— ⚠ 缺证据（写的是「无」）")
+        else:
+            out.append(f"{no}. {text} —— {proof}")
+    return out
