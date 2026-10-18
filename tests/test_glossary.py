@@ -1,4 +1,4 @@
-"""Glossary v1.1 (spec/glossary-rename.md): no old name in anything shown to people.
+"""Glossary v1.2 (spec/glossary-rename.md, spec/glossary-v12.md): no old name in anything shown to people.
 
 Contract message tags (【…】) and contract field names stay as the contract writes them, so they are
 stripped before looking; everything else that still says an old name is a failure, unless listed in
@@ -15,12 +15,12 @@ from decision_inbox import protocol
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = ROOT / "decision_inbox"
 
-# Old name -> new name (术语表 v1.1). 事项 is handled separately: compounds that are glossary terms pass.
+# Old name -> new name (术语表 v1.2). 事项 is handled separately: compounds that are glossary terms pass.
 OLD = {
     "收件枢纽": "决策收件箱", "总协调": "跨线协调", "负责人": "审查者", "短名": "线名", "身份名": "邮箱名",
     "身份": "邮箱名", "协调会话": "模块协调", "并行协调": "模块协调", "适用会话": "适用的线", "等待单": "等待记录",
     "已恢复": "已结项", "约定块": "协作规则段", "用户答复": "你的答复", "待用户决定": "待你决定",
-    "审批": "批准", "评审": "审查",
+    "审批": "批准", "评审": "审查", "待审核": "待批准", "待审": "待批准",
 }
 _ITEM = re.compile(r"(?<!待决)(?<!多线)(?<!单线)(?<!注意)事项")
 _FIELD_NAMES = {name for names in protocol.FIELDS.values() for name in names}
@@ -156,7 +156,7 @@ class GlossaryPageTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         copy = (ROOT / "docs" / "glossary.md").read_text(encoding="utf-8")
         self.assertEqual(done.stdout, copy)
-        self.assertIn("术语表（v1.1", copy)
+        self.assertIn("术语表（v1.2", copy)
         self.assertIn("来源：", copy.splitlines()[0] + copy.splitlines()[1] + copy.splitlines()[2])
 
 

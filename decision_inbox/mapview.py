@@ -13,8 +13,9 @@ from decision_inbox import items, protocol, reviews, store, tickets
 from decision_inbox.view import clip, waited
 
 _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
-# spec-guard review values -> words shown here; this mapping is ours (spec/doctor-and-observer.md decision 3).
-_REVIEW_MARKS = {"approved": "通过", "pending": "待审", "revised": "改后待复审", "invalid": "异常", "none": "不适用"}
+# spec-guard review values -> words shown here; this mapping is ours (spec/doctor-and-observer.md decision 3),
+# worded as spec-guard 0.75.0's REVIEW_WORDS (spec/glossary-v12.md).
+_REVIEW_MARKS = {"approved": "✔", "pending": "待批准", "revised": "改过待重审", "invalid": "标记无效", "none": "无标记"}
 _STEPS = {"spec": "写 Spec", "plan": "写 Plan"}
 
 
