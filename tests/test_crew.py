@@ -75,6 +75,21 @@ class ReadModulesTest(CrewCase):
         r = self.read(out=out)
         self.assertEqual((r.status, r.modules[0].stage), ("ok", "review"))
 
+    def test_review_field(self):
+        """review-nearby Task 3 (R1): module-crew 0.3.0's optional review field; anything odd is None."""
+        row = SESSIONS["sessions"][0]
+        cases = [({"state": "rework", "round": 2}, ("rework", 2)),
+                 ({"state": "reviewing", "round": 0}, ("reviewing", 0)),
+                 (None, None), ("rework", None), ({"state": "done", "round": 1}, None),
+                 ({"state": "rework", "round": -1}, None), ({"state": "rework", "round": True}, None)]
+        for value, want in cases:
+            with self.subTest(value=value):
+                shutil.rmtree(self.tmp / "module-crew", ignore_errors=True)
+                r = self.read(out={"schemaVersion": 1, "sessions": [dict(row, review=value)]})
+                self.assertEqual((r.status, r.modules[0].review), ("ok", want))
+        shutil.rmtree(self.tmp / "module-crew", ignore_errors=True)
+        self.assertIsNone(self.read().modules[0].review)
+
     def assertUnknown(self, r, words):
         self.assertEqual(r.status, "unknown")
         self.assertEqual(r.modules, ())

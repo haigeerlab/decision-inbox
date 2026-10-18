@@ -107,6 +107,14 @@ class ReceiveDispatchTest(HubCase):
         self.assertTrue(body.startswith("退回：你的【审查结论】没有处理"))
         self.assertIn("不是 前端 登记的审查者", body)
 
+    def test_changes_required_conclusion_makes_no_item(self):
+        """review-nearby Task 3 (R1): a 有须修改项 conclusion only counts a round, never an item."""
+        r = self.receive(message(1013, "fe-owner", conclusion("有须修改项")))
+        self.assertEqual(r.sends, [])
+        self.assertEqual(items.pending(self.g), [])
+        rounds = store.read_state(self.g, "reviews")["reviews"]["R-1"]["rounds"]
+        self.assertEqual([x["verdict"] for x in rounds], ["changes-required"])
+
     def test_wait_session_missing_field_is_returned_without_ticket(self):
         r = self.receive(message(1012, "api-codex", "【等待其他会话】\n结束：无\n在等谁：前端\n"))
         self.assertEqual(self.tickets(), {})
