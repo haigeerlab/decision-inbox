@@ -187,6 +187,8 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 0.0.22 改了协作规则段（stall-and-patrol 加「停滞询问与常规授权」一节）、巡视改由巡视会话跑；approval-display 加「只在决策收件箱问」一节，r20-fixes 写明多线事项的适用线不发【已恢复】，决策收件箱的规则段改为「逐字粘贴命令输出」；glossary-rename 按术语表 v1.1 统一了名称（旧称：收件枢纽、约定块、负责人、总协调、短名、身份名、等待单、事项），等待记录改用 W 编号，规则段里的契约标签照旧；契约改钉 v2.1。升级后决策收件箱重跑 `/decision-inbox:hub-setup`（以前建过巡视定时任务的，它会请你确认删掉），各工作会话重跑接入，拿到新规则段，然后各自新开会话；module-crew 一起换成 0.3.0（契约 v2.1）。
 
+0.0.23 没改协作规则段，不用重新接入：只修了 `/decision-inbox:teardown`，卸载时会归档巡视会话（以前只删巡视定时任务）。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit` 和 `--test-command` 指定的测试命令直接放行；`git push`、`git reset --hard`、`rm -rf`、`npm install`、`pip install` 设成「先问」。只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
