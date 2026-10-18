@@ -28,18 +28,18 @@
 
 ## Task List
 
-- [ ] Task 1：契约升到 v1.7（Spec 验收 6）
-- [ ] Task 2：`legacyFormat` 字段、`onboard enroll`、leave 只登记的条目（Spec 验收 1、5 的 leave 部分）
-- [ ] Task 3：给旧格式会话输出旧写法；答复告知跳过旧格式和已退出的会话；多线事项跳过、退回已退出的会话（Spec 验收 2、3、5）
-- [ ] Task 4：认旧格式会话写的旧编号；退回说明写双编号（Spec 验收 4）
-- [ ] Task 5：约定块写明【负责人转交】（Spec 验收 7）
-- [ ] Task 6：文档和版本 0.0.17（Spec 验收 8）
+- [x] Task 1：契约升到 v1.7（Spec 验收 6）
+- [x] Task 2：`legacyFormat` 字段、`onboard enroll`、leave 只登记的条目（Spec 验收 1、5 的 leave 部分）
+- [x] Task 3：给旧格式会话输出旧写法；答复告知跳过旧格式和已退出的会话；多线事项跳过、退回已退出的会话（Spec 验收 2、3、5）
+- [x] Task 4：认旧格式会话写的旧编号；退回说明写双编号（Spec 验收 4）
+- [x] Task 5：约定块写明【负责人转交】（Spec 验收 7）
+- [x] Task 6：文档和版本 0.0.17（Spec 验收 8）
 
 ### Checkpoint（gate）：模块最终验收
 
-- [ ] 全部测试通过；每条验收标准都有证据；列出实际改动的文件
-- [ ] 授权：Task 1–6 的代码、测试和文档；每个任务做完都提交，并推送 `claude/transition-compat`
-- [ ] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS、改契约仓库
+- [x] 全部测试通过；每条验收标准都有证据；列出实际改动的文件
+- [x] 授权：Task 1–6 的代码、测试和文档；每个任务做完都提交，并推送 `claude/transition-compat`
+- [x] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS、改契约仓库
 - [ ] 实测（Spec 验收 9）放到联合演练，开始前另问用户
 
 ## Risks
