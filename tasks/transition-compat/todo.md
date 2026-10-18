@@ -68,9 +68,17 @@
     - 「每个角色该有的规则」清单（`ONLY`）同步换成【负责人转交】。
     - 结果：Ran 633 tests, OK
 
-- [ ] Task 6：文档和版本 0.0.17
+- [x] Task 6：文档和版本 0.0.17
   - 验收：Spec 验收 8
-  - 文件：`README.md`、`commands/leave.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 文件：`README.md`、`commands/leave.md`、`docs/stage6-field-acceptance.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：
+    - 先改打包测试：版本改为 0.0.17，README 必须包含「### 迁移期：还没接入的会话」「onboard enroll」「hub 编号」「0.0.17」；之后补文档：
+      - README：新增迁移期一节，写明 enroll、旧编号写法、不发【答复告知】、认旧编号、正式接入后自动切换、用 leave 移出收件范围；升级一节写明 0.0.17 要重跑接入；
+      - `commands/leave.md`：只登记的条目也用 leave 移出；
+      - 验收方案 P2：补一句，分批切换时用 enroll；
+      - 两份清单改为 0.0.17。
+    - 中途出过一个错：插入新小节时把「## 日常使用」标题也替换掉了，打包测试报了出来，已补回。
+    - 结果：Ran 633 tests, OK
 
 ### Checkpoint（gate）：模块最终验收
 
