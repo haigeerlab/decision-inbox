@@ -246,3 +246,77 @@ class ModuleCrewTest(DoctorCase):
         out = self.check("module-crew 出口：并行")
         self.assertEqual((out.state, out.evidence), ("bad", "状态库坏了"))
         self.assertIn("模块状态未知", out.fix)
+
+
+class EnrolledEntryTest(DoctorCase):
+    """rehearsal-fixes Task 2: an enrolled entry has no block by design."""
+
+    def test_enrolled_entry_is_ok(self):
+        onboard.enroll("g", "g-legacy", "旧格式", "claude-desktop", ["web"], None, True, NOW)
+        c = self.check("约定块：旧格式")
+        self.assertEqual((c.state, c.evidence), ("ok", "只登记，不写约定块（迁移期旧格式会话）"))
+        self.assertEqual(self.check("约定块：开发").state, "ok")
+
+
+class HostVersionsTest(DoctorCase):
+    """rehearsal-fixes Task 4: Claude and Codex should run the same decision-inbox."""
+
+    NAME = "Claude、Codex 两边的版本"
+
+    def claude(self, version):
+        self.write_records({"decision-inbox@m": [self.plugin("decision-inbox", version)]})
+        root = self.home / "plugins" / "decision-inbox" / version / ".claude-plugin"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "plugin.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+
+    def set_codex(self, *versions, enabled=True, market="mk"):
+        self.codex.write_text(f'[plugins."decision-inbox@{market}"]\nenabled = {str(enabled).lower()}\n',
+                              encoding="utf-8")
+        for v in versions:
+            d = self.home / "plugins" / "cache" / market / "decision-inbox" / v / ".codex-plugin"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "plugin.json").write_text(json.dumps({"version": v}), encoding="utf-8")
+
+    def test_same_version_is_ok(self):
+        self.claude("0.0.19")
+        self.set_codex("0.0.19")
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "ok")
+        self.assertIn("Claude 0.0.19", c.evidence)
+        self.assertIn("Codex 0.0.19", c.evidence)
+
+    def test_mismatch_is_bad_with_commands(self):
+        self.claude("0.0.19")
+        self.set_codex("0.0.15")
+        c = self.check(self.NAME)
+        self.assertEqual((c.state, c.source), ("bad", "Claude Code／Codex 安装"))
+        self.assertIn("codex plugin remove decision-inbox@mk", c.fix)
+        self.assertIn("codex plugin add decision-inbox@mk", c.fix)
+
+    def test_two_cached_versions_is_bad(self):
+        self.claude("0.0.19")
+        self.set_codex("0.0.15", "0.0.19")
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "bad")
+        self.assertIn("0.0.15、0.0.19", c.evidence)
+
+    def test_one_side_only_is_ok(self):
+        self.claude("0.0.19")
+        self.set_codex("0.0.19", enabled=False)
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "ok")
+        self.assertIn("Codex 没装", c.evidence)
+        self.codex.unlink()
+        self.assertIn("Codex 没装", self.check(self.NAME).evidence)
+        self.write_records({})
+        self.set_codex("0.0.19")
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "ok")
+        self.assertIn("Claude 没装", c.evidence)
+
+    def test_unreadable_codex_cache_is_unknown(self):
+        self.claude("0.0.19")
+        self.set_codex()
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "unknown")
+        self.assertIn(str(self.home / "plugins" / "cache" / "mk" / "decision-inbox"), c.evidence)

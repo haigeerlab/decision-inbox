@@ -25,6 +25,18 @@
 
 装好后开一个新会话，插件的命令、技能和钩子才会生效。
 
+### 固定副本安装（演练与接入用）
+
+从开发目录安装时，开发目录一变，装好的插件就跟着变。演练和正式接入要用一个不会再变的副本，两个宿主都从它安装：
+
+1. 在仓库里给要冻结的提交打标签，再检出一个独立副本：`git tag v<版本>`，`git worktree add --detach <副本目录>/v<版本> v<版本>`。
+2. 两个宿主都把 `decision-inbox-marketplace` 指向这个副本目录，再重装插件：
+   - Claude Code：`claude plugin marketplace remove decision-inbox-marketplace`，`claude plugin marketplace add <副本目录>/v<版本>`，`claude plugin install decision-inbox@decision-inbox-marketplace`；
+   - Codex：`codex plugin marketplace remove decision-inbox-marketplace`，`codex plugin marketplace add <副本目录>/v<版本>`，`codex plugin remove decision-inbox@decision-inbox-marketplace`，`codex plugin add decision-inbox@decision-inbox-marketplace`。
+3. 重开会话，在不属于任何插件仓库的目录里运行 `doctor`：「Claude、Codex 两边的版本」应为同一个版本，「转发脚本」指向副本目录。
+
+Codex 会把装好的副本缓存在自己的目录里，只改市场不重装，Codex 会话仍跑旧版；启动时它还会把转发脚本切到自己那一份。所以两边一定都要重装，并用 doctor 核对。
+
 ## 接入
 
 已经在项目规则文件里手贴过收件枢纽规则的，接入前先删掉手贴的旧收件枢纽规则，只保留约定块这一份来源。
@@ -68,7 +80,7 @@
 - 不给它发【答复告知】（旧规则里没有这种消息），负责人的决定仍按旧路线转交给它；
 - 它用自己的邮箱号写的【取代】【撤回】，收件枢纽也认（只限它自己还没结束的事项）。
 
-它以后用 `/decision-inbox:join` 正式接入时，「旧格式」标记自动去掉，从此用正式写法。要把它移出收件范围，就用 `onboard leave`：名册条目保留，收件枢纽不再给它发任何消息。
+它以后用 `/decision-inbox:join` 正式接入时，「旧格式」标记自动去掉，从此用正式写法。要把它移出收件范围，就用 `onboard leave`：名册条目保留，收件枢纽不再给它发任何消息。leave 的预览会列出它名下还没结束的事项和开着的等待单。doctor 对这类条目报「只登记，不写约定块」，属正常。
 
 ## 日常使用
 
@@ -143,7 +155,7 @@
 
 升级后开一个新会话即可。约定块和巡视任务调用的是固定路径 `~/.decision-inbox/bin/decision-inbox`，插件在会话开始时会自动把它指向新版本，不用重新接入。
 
-例外：约定块本身改了的版本，要在收件枢纽里重跑一次 `/decision-inbox:hub-setup`、各工作会话重跑接入，拿到新约定块（`doctor` 会提示「约定块不是当前版本」）。0.0.14 的收件枢纽约定块加了「顺带巡视」，0.0.15 改用单独的 `patrol-agents.json`。0.0.16 只给加了 `--crew-coordinator` 的会话多出一节，已经接入的会话不用重跑。0.0.17 改了负责人、开发线、总协调的约定块（写明【负责人转交】），已经接入的会话都要重跑接入。0.0.18 没改约定块，不用重跑。
+例外：约定块本身改了的版本，要在收件枢纽里重跑一次 `/decision-inbox:hub-setup`、各工作会话重跑接入，拿到新约定块（`doctor` 会提示「约定块不是当前版本」）。0.0.14 的收件枢纽约定块加了「顺带巡视」，0.0.15 改用单独的 `patrol-agents.json`。0.0.16 只给加了 `--crew-coordinator` 的会话多出一节，已经接入的会话不用重跑。0.0.17 改了负责人、开发线、总协调的约定块（写明【负责人转交】），已经接入的会话都要重跑接入。0.0.18 没改约定块，不用重跑。0.0.19 也没改约定块，不用重跑。
 
 ## 卸载
 
@@ -158,6 +170,8 @@
 | 现象 | 先看 |
 |---|---|
 | 收件枢纽欠回复越来越多（`bridge_agents` 里 `owesReplies` 只增不减） | 被取代、被撤回的【等待用户】没人回。0.0.9 起收件枢纽答复时用 `alsoAnswers` 一并关掉，开发线取代或撤回时用 `withdraws`；已接入的会话要重跑接入命令拿到新约定块（agent-relay 0.8.0 起支持） |
+| doctor 报「Claude、Codex 两边的版本」异常 | 两个宿主各自装了一份 decision-inbox，版本不同，或 Codex 缓存里留着旧版本：按这一项的「怎么做」两边重装，再重开会话。转发脚本跟着最后启动的那个宿主走，版本不一致时两边会来回切换 |
+| leave 预览写「还有没了结的事」 | 这个会话抛出的事项还没结束，或它还开着等待单。leave 照常执行，但这些事项会留在主视图里：事项最好在 leave 前由它自己发【撤回】，等待单你可以在收件枢纽说「关掉 #编号」 |
 | 不确定装对没有 | 运行 `~/.decision-inbox/bin/decision-inbox doctor`，按每项的「怎么做」处理 |
 | 停止钩子不拦 | 在那个会话的工作目录运行 `~/.decision-inbox/bin/decision-inbox whoami`：退出码 4 是没接入，5 是同一个目录对上了多个协作组；钩子出任何问题都会放行，不会卡住会话 |
 | 主视图第一行写「巡视还没跑完过一轮」或「巡视 N 分钟没跑」 | 在定时任务列表里打开这个任务：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发，立即运行一次。`query stats` 能看到这段时间巡视实际跑了几轮、最长隔多久 |

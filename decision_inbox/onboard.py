@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from decision_inbox import hub as hub_loop
-from decision_inbox import install, patrol, reviews, store
+from decision_inbox import install, items, patrol, reviews, store
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
 
@@ -576,6 +576,21 @@ def record_task(group: str, task_id: str, now: str) -> None:
         tx.append_event("onboarding.task", ref=None, actor="hub", data={"taskId": task_id, "at": now})
 
 
+def _unfinished(g: store.Group, entry: dict) -> list[str]:
+    """What the leaving session still has open; leave only says so, it does not stop (rehearsal-fixes)."""
+    name = entry["relayName"]
+    rows = [f"事项 #{it['no']}：{it.get('decide') or '（没写要你决定）'}"
+            for it in items.pending(g) if it["sender"] == name]
+    waits = store.read_state(g, "tickets").get("tickets", {})
+    rows += [f"等待单 #{k}：在等 {t['target']}" for k, t in sorted(waits.items(), key=lambda kv: int(kv[0]))
+             if t["status"] == "open" and t["waiter"] == name]
+    if not rows:
+        return []
+    return [f"{entry['shortName']} 还有没了结的事，leave 后它们继续留在主视图，收件枢纽不再给它发任何消息：",
+            *(f"  {row}" for row in rows),
+            "处理办法：事项请在 leave 前由它自己发【撤回】；等待单你可以在收件枢纽说「关掉 #编号」"]
+
+
 def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Outcome:
     """Strip the block from the rules file; the roster and every state file stay (spec 已定事项 2)."""
     recorded = store.read_state(g, DOMAIN).get("files", {}).get(entry["relayName"])
@@ -590,7 +605,8 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
     before = _read(rules)
     after, changed = strip(before)
     created = str(rules) in store.read_state(g, DOMAIN).get("created", {})
-    out = Outcome(rules, before, after, changed, entry, drops=changed and created and not after.strip())
+    out = Outcome(rules, before, after, changed, entry, drops=changed and created and not after.strip(),
+                  warnings=_unfinished(g, entry))
     if confirm:
         if out.drops:
             _drop_created_rules(rules)
@@ -610,7 +626,8 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
 
 def _leave_enrolled(g: store.Group, entry: dict, confirm: bool, now: str) -> Outcome:
     """An enrolled entry has no block: only mark it left so the hub stops sending to it."""
-    out = Outcome(None, "", "", False, entry, ["这个会话没有约定块，只从收件范围里移除（名册条目保留）"])
+    out = Outcome(None, "", "", False, entry, ["这个会话没有约定块，只从收件范围里移除（名册条目保留）"],
+                  warnings=_unfinished(g, entry))
     if confirm:
         with g.transaction() as tx:
             doc = tx.read_state(DOMAIN)

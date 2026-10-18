@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.18")
+        self.assertEqual(claude["version"], "0.0.19")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -210,7 +210,7 @@ class ReadmeTest(unittest.TestCase):
                        # hub-cutover-settings
                        "### 替换已有的收件枢纽", "--start-number", "本插件不读",
                        # transition-compat
-                       "### 迁移期：还没接入的会话", "onboard enroll", "hub 编号", "0.0.18"):
+                       "### 迁移期：还没接入的会话", "onboard enroll", "hub 编号", "0.0.19"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

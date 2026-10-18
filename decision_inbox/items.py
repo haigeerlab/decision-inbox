@@ -36,11 +36,13 @@ def _instant(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _not_owner(no, doc: dict | None = None, sender: str | None = None) -> Issue:
-    """A mail id of one's own pending item gets named (p0-field-fixes F-P0-1); the code stays not-owner."""
+def _not_owner(no, doc: dict | None = None, sender: str | None = None, kind: str = "supersede") -> Issue:
+    """A mail id of one's own pending item gets named (p0-field-fixes F-P0-1, rehearsal-fixes); the code stays not-owner."""
     if doc is not None:
         mine = next((k for k, it in doc["items"].items()
                      if it["sender"] == sender and it["relayId"] == no and it["status"] not in FINAL), None)
+        if mine is not None and kind == "withdraw":
+            return Issue("not-owner", f"#{no} 是邮箱号，对应事项 #{mine}；改写「事项：#{mine}」重发【撤回】")
         if mine is not None:
             return Issue("not-owner", f"#{no} 是邮箱号，对应事项 #{mine}；去掉【取代】靠默认取代，或改写【取代 #{mine}】")
     return Issue("not-owner", f"#{no} 不存在，或不是你抛出的事项")
@@ -178,7 +180,7 @@ def _receive_withdraw(g, msg, sender, relay_id, received_at) -> ReceiveResult:
         doc = _doc(tx)
         own = None if problems else _resolve_own(doc, msg.item, sender, legacy)
         if not problems and own is None:
-            problems.append(_not_owner(msg.item))
+            problems.append(_not_owner(msg.item, doc, sender, kind="withdraw"))
         if problems:
             tx.append_event("items.returned", ref=None, actor=sender,
                             data={"relayId": relay_id, "codes": [p.code for p in problems]})

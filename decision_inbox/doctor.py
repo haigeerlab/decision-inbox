@@ -70,6 +70,9 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
         name = f"约定块：{entry['shortName']}"
         if entry["relayName"] in left:
             continue
+        if entry.get("legacyFormat"):
+            out.append(Check(name, "ok", "本插件", "只登记，不写约定块（迁移期旧格式会话）"))
+            continue
         rules = files.get(entry["relayName"])
         if rules is None:
             out.append(Check(name, "unknown", "本插件", "接入记录里没有它的规则文件"))
@@ -164,6 +167,72 @@ def _codex_trust() -> Check:
     return Check("Codex 钩子信任", "ok", "Codex", f"{len(sections)} 个钩子已信任")
 
 
+_PLUGIN_SECTION = re.compile(r'^\[plugins\."decision-inbox@([^"]+)"\]\s*$')
+INSTALL_SOURCE = "Claude Code／Codex 安装"
+
+
+def _cached_version(path: Path) -> str:
+    for manifest in (".codex-plugin", ".claude-plugin"):
+        version = _plugin_version_in(path / manifest / "plugin.json")
+        if version:
+            return version
+    return path.name
+
+
+def _plugin_version_in(manifest: Path) -> str | None:
+    try:
+        return json.loads(manifest.read_text(encoding="utf-8")).get("version")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+
+
+def _codex_install():
+    """(market, versions) from Codex's config and plugin cache; None when Codex has it off; str when unreadable."""
+    path = codex_config()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        return f"读不到 {path}（{e}）"
+    market, enabled = None, True
+    for line in lines:
+        m = _PLUGIN_SECTION.match(line)
+        if m:
+            market, enabled = m.group(1), True
+        elif market is not None and line.startswith("["):
+            break
+        elif market is not None and "=" in line:
+            key, value = (x.strip() for x in line.split("=", 1))
+            if key == "enabled":
+                enabled = value != "false"
+    if market is None or not enabled:
+        return None
+    cache = path.parent / "plugins" / "cache" / market / "decision-inbox"
+    versions = sorted(_cached_version(d) for d in cache.iterdir() if d.is_dir()) if cache.is_dir() else []
+    if not versions:
+        return f"Codex 启用了 decision-inbox@{market}，但 {cache} 里没有可读的版本"
+    return market, versions
+
+
+def _host_versions() -> Check:
+    """Claude and Codex each load their own installed copy; they should be the same version (rehearsal-fixes)."""
+    name = "Claude、Codex 两边的版本"
+    codex = _codex_install()
+    if isinstance(codex, str):
+        return Check(name, "unknown", INSTALL_SOURCE, codex)
+    found = deps.find("decision-inbox")
+    claude = None if isinstance(found, deps.NotFound) else found.version
+    codex_versions = codex[1] if codex else []
+    evidence = f"Claude {claude or '没装'}；Codex {'、'.join(codex_versions) or '没装'}"
+    if len(codex_versions) > 1 or (claude and codex_versions and codex_versions != [claude]):
+        market = codex[0]
+        return Check(name, "bad", INSTALL_SOURCE, evidence,
+                     f"在终端运行 codex plugin remove decision-inbox@{market}，再 codex plugin add decision-inbox@{market}；"
+                     "Claude 侧在插件管理里更新 decision-inbox，或按 README「固定副本安装」重装；装好后重开会话")
+    return Check(name, "ok", INSTALL_SOURCE, evidence)
+
+
 _OPTIONAL = {"spec-guard", "delegate"}
 
 
@@ -235,6 +304,7 @@ def run(groups=None, now: str | None = None) -> list[Check]:
         codex |= any(e.get("host") == "codex-desktop" and e["relayName"] not in left for e in store.roster(g))
     if codex:
         out.append(_codex_trust())
+    out.append(_host_versions())
     out += [_dependency(n) for n in ("agent-relay", "spec-guard", "delegate")]
     out.append(_dependency("module-crew", required=bool(coordinators)))
     out += [_crew_output(e) for e in coordinators]

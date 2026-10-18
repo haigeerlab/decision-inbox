@@ -931,3 +931,53 @@ class WithdrawsRuleTest(unittest.TestCase):
         for role in ("dev", "owner", "coordinator"):
             with self.subTest(role=role):
                 self.assertIn("`withdraws: [旧那条的邮箱号]`", onboard.block(role, "g", "g-hub"))
+
+
+class UnfinishedLeaveTest(TempHomeTestCase):
+    """rehearsal-fixes Task 3: leave lists what the session still has open, and still leaves."""
+
+    def setUp(self):
+        super().setUp()
+        from pathlib import Path
+        self.project = self.home / "projects"
+        for name in ("hub", "fe"):
+            (self.project / name).mkdir(parents=True)
+        onboard.hub("demo", "di-hub", "local_1", self.project / "hub", True, NOW)
+        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.project / "fe", reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        onboard.enroll("demo", "old-fe", "旧前端", "codex-desktop", ["前端"], None, True, NOW)
+        self.g = store.open_group("demo")
+        self.wait_user = (Path(__file__).resolve().parent / "fixtures" / "protocol" / "wait-user.txt").read_text(
+            encoding="utf-8")
+
+    def open_work(self, sender):
+        from decision_inbox import items, tickets
+        item = items.receive(self.g, self.wait_user, sender=sender, relay_id=6001, received_at=NOW).item
+        ticket = tickets.receive(self.g, "【等待其他会话】\n结束：无\n在等谁：API\n等什么：接口\n", sender=sender,
+                                 relay_id=6002, sent_at=NOW).opened
+        return item, ticket
+
+    def check(self, relay_name):
+        item, ticket = self.open_work(relay_name)
+        out = onboard.leave("demo", relay_name, project=None, confirm=False, now=NOW)
+        text = "\n".join(out.warnings)
+        self.assertIn("leave 后它们继续留在主视图，收件枢纽不再给它发任何消息", text)
+        self.assertIn(f"事项 #{item}：支付页先接哪种支付方式", text)
+        self.assertIn(f"等待单 #{ticket}：在等 API", text)
+        self.assertIn("发【撤回】", text)
+        self.assertIn("关掉 #编号", text)
+        onboard.leave("demo", relay_name, project=None, confirm=True, now=NOW)
+        self.assertIn(relay_name, store.read_state(self.g, onboard.DOMAIN)["left"])
+
+    def test_joined_entry(self):
+        self.check("fe-codex")
+
+    def test_enrolled_entry(self):
+        self.check("old-fe")
+
+    def test_nothing_open_adds_nothing(self):
+        out = onboard.leave("demo", "fe-codex", project=None, confirm=False, now=NOW)
+        self.assertEqual(out.warnings, [])
+        out = onboard.leave("demo", "old-fe", project=None, confirm=False, now=NOW)
+        self.assertEqual(out.warnings, [])
