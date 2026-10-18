@@ -142,3 +142,7 @@
 | 主视图写「有 N 条消息没发出去」 | 对收件枢纽说「重发」 |
 | 命令提示找不到 `~/.decision-inbox/bin/decision-inbox` | 收件枢纽还没接入；或开一个新会话，让插件重新写一次 |
 | 状态文件出问题 | 运行 `~/.decision-inbox/bin/decision-inbox store show <协作组>` 看一致性检查 |
+
+## 许可证
+
+[MIT](LICENSE)

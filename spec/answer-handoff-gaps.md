@@ -1,8 +1,8 @@
-<!-- spec-guard: review approved 76d536a68049 -->
+<!-- spec-guard: review approved 548dc39d48db -->
 # Spec: answer-handoff-gaps
 
 > 能力图模块 `answer-handoff-gaps`（2026-10-17 用 add-module 插入）。需求来源：`docs/requirements-record.md` 第 12 节第 17 项「答复卡在离线的负责人那里」；`docs/host-differences.md` H17「自动压缩后容易抓最近一条人工输入当任务」。
-> 提出者与渠道：会话「Codex LIVE-SAAS 前端基础架构监测」（spec-guard-monitor）经本机会话消息转来，2026-10-17，注明经用户同意；用户在本会话决定纳入并确认了下面四项。
+> 提出者与渠道：会话「Codex 前端基础架构监测」（spec-guard-monitor）经本机会话消息转来，2026-10-17，注明经用户同意；用户在本会话决定纳入并确认了下面四项。
 
 ## 目标
 
@@ -155,4 +155,4 @@ README「日常使用」补一句：负责人抛的事项被答复后，线上�
 
 ## 拟回告
 
-对象：会话「Codex LIVE-SAAS 前端基础架构监测」。渠道：本机会话消息。内容：第 17 项和 H17 已在 decision-inbox 的 `answer-handoff-gaps` 模块里实现，附提交号和版本 0.0.3，以及三处做法（已答未恢复拦一次、离线负责人当轮叫醒并通知、【答复告知】抄送）。对方说过「处理完不必回我」，所以只在插件发版时回告一次。
+对象：会话「Codex 前端基础架构监测」。渠道：本机会话消息。内容：第 17 项和 H17 已在 decision-inbox 的 `answer-handoff-gaps` 模块里实现，附提交号和版本 0.0.3，以及三处做法（已答未恢复拦一次、离线负责人当轮叫醒并通知、【答复告知】抄送）。对方说过「处理完不必回我」，所以只在插件发版时回告一次。
