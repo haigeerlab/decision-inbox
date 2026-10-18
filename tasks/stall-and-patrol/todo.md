@@ -12,7 +12,7 @@
 - [x] Task 5：协作规则段与 README
   - 验证：三种角色规则段、Codex 授权说明、打包关键词
 - [x] Checkpoint B（report）：全量测试通过（774 个）
-- [ ] Task 6：上报 module-crew（原文先给用户看）
+- [x] Task 6：上报 module-crew（原文先给用户看；用户 2026-10-19 同意后已发）
 
 ## Checkpoint（gate）：模块最终验收
 
