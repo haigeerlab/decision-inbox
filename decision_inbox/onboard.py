@@ -231,6 +231,19 @@ API 已交付 Mock，继续做支付页。
 ROLE_NAMES = {"dev": "开发线", "owner": "负责人", "coordinator": "总协调"}
 _ROLE_RULES = {"dev": _DEV, "owner": _OWNER, "coordinator": _COORDINATOR}
 
+# crew-coordinator-seam: a module-crew coordination session joined as this line's dev.
+_CREW_COORDINATOR = """
+### 并行开发协调会话（用户在接入时确认）
+
+- 你代表这条线和收件枢纽说话，模块会话只和你说话。
+- 模块在干活、你在等它们时收工，不用抛【等待用户】。
+- 几个模块的事合成一项抛出，或者第一行写【与 #旧编号 并行】；否则后发的会默认取代先发的。
+- 收到【用户答复】、转给模块、模块开工之后，立刻发【已恢复】，结束行写这个编号；不用等模块做完。
+- 跨线请求每个模块开一张【等待其他会话】，「等什么」开头写模块 id。
+- 【答复告知】只记录，不执行。
+- 分工：对用户和收件枢纽的事，以本约定块为准；模块之间的事，以 crew-coordinator skill 为准；谁的话算用户决定，以 session-protocol 契约为准。
+"""
+
 
 _AUTHORITY = """### 检查点答复即授权（用户在接入时选择打开）
 
@@ -241,7 +254,8 @@ _AUTHORITY = """### 检查点答复即授权（用户在接入时选择打开）
 """
 
 
-def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = False) -> str:
+def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = False,
+          crew_coordinator: bool = False) -> str:
     """The convention block for one role, wrapped in BEGIN/END markers.
 
     `checkpoint_authority` adds the opt-in section that lets a relayed checkpoint answer
@@ -256,7 +270,8 @@ def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = Fa
     authority = _AUTHORITY.format(hub=hub_relay) if checkpoint_authority else ""
     body = _COMMON.format(group=group, hub=hub_relay, role_name=ROLE_NAMES[role], templates=templates,
                           authority=authority)
-    return (f"<!-- BEGIN decision-inbox {role} -->\n{body}\n{_ROLE_RULES[role]}"
+    crew = _CREW_COORDINATOR if crew_coordinator and role == "dev" else ""
+    return (f"<!-- BEGIN decision-inbox {role} -->\n{body}\n{_ROLE_RULES[role]}{crew}"
             f"<!-- END decision-inbox {role} -->\n")
 
 
@@ -432,7 +447,7 @@ def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[
 
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
          project, reviewer, nodes, confirm: bool, now: str, session_cwd=None,
-         checkpoint_authority: bool = False) -> Outcome:
+         checkpoint_authority: bool = False, crew_coordinator: bool = False) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
@@ -446,11 +461,15 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         entry["desktopSession"] = desktop_session
     if checkpoint_authority:
         entry["checkpointAuthority"] = True
+    if crew_coordinator:
+        if role != "dev":
+            raise JoinError("--crew-coordinator 只能和 --role dev 一起用：协调会话按这条线的开发线接入")
+        entry["crewCoordinator"] = True
     _check_entry(group, entry)
     _check_reviewer(g, role, reviewer, nodes)
     rules = Path(home) / RULES_FILES[host]
     before = _read(rules)
-    after = place(before, role, block(role, group, hub_relay, checkpoint_authority))
+    after = place(before, role, block(role, group, hub_relay, checkpoint_authority, crew_coordinator))
     steps = [_register_step(relay_name)]
     if host == "claude-desktop" and not desktop_session:
         steps.append("用桌面版的 get_session(\"self\") 取得本会话编号（local_ 开头），带上 --desktop-session "
