@@ -3,7 +3,7 @@
 # Implementation Plan: review-nearby
 
 > 依据：`spec/review-nearby.md`（用户 2026-10-19 批准）。任务清单：`tasks/review-nearby/todo.md`。分支 `claude/review-nearby-1b7fdb`。
-> 契约：session-protocol v2.0 工作稿（契约仓库未提交，契约 Spec 已批准，等它的最终验收）。module-crew：0.3.0 的 `review` 字段与合批摘要格式（2026-10-19 来信定稿）。
+> 契约：session-protocol v2.0 已冻结（c5a0944），「取代」多项的补丁记作 v2.0.1（在等契约用户验收，提交号到了再钉）。本模块钉 v2.0.1。module-crew：0.3.0 的 `review` 字段与合批摘要格式（2026-10-19 来信定稿）。
 
 ## Overview
 
@@ -15,7 +15,7 @@
 2. 编号前缀：契约写明 C、R、D 编号前后不能紧挨英文字母或数字（所以 `4c5d6e7` 这类提交号不算）。回复解读照这个规则认前缀编号。
 3. 【用户答复】「事项」以 C 编号开头时，`item` 为 null，另有 `localItem`。收件枢纽本来就不处理收到的【用户答复】，只是解析要跟契约一致。
 4. 【审查结论】新增：「有须修改项N条」带条数，「须修改」「待用户决定」字段，`change-count-mismatch`、`change-count-missing`、`bad-decision-item`、`duplicate-decision`。收件枢纽解析【审查结论】，所以这些都要跟上。数轮次的逻辑不变（Spec 第 5 条）。
-5. 【登记回执】的「取代」在契约里只有一个号。一次取代多项时怎么写，已于 2026-10-19 问契约负责人（建议改成列表）。Task 7 按回复实现；如果答复改了行为，回来改 Spec 并复审。
+5. 【登记回执】一次取代多项时写「取代：#21、#23」（按出现顺序列全部），`receipt.supersedes` 为列表（v2.0.1，契约用户已选定）。
 
 ## Architecture Decisions
 
@@ -31,7 +31,7 @@
   - 单项卡片逐字不变，用现有卡片测试加一份快照对比来保证。
   - 事项记录里本来没存要点，`_record` 加存 `brief`（要点原文）。旧记录没有这个字段时，卡片照旧显示。
 - **Task 5 契约 v2.0**（`protocol.py`、`tests/test_contract.py`）：
-  - 复制契约 v2.0 的 `fixtures/` 到 `tests/fixtures/session-protocol/v2.0/`，删掉 v1.7 副本，`CONTRACT_VERSION = "2.0"`，核对 SHA256SUMS。
+  - 复制契约 v2.0.1 的 `fixtures/` 到 `tests/fixtures/session-protocol/v2.0.1/`，删掉 v1.7 副本，`CONTRACT_VERSION = "2.0.1"`，核对 SHA256SUMS。
   - 解析新增：类型 `hub-receipt`（字段原消息、事项、状态，选填取代、写法提示；`receipt` 键）；【等待用户】与【审查结论】的「待用户决定」（`decisions`，各条 id、question、options、lean、leanReason，以及两个问题代码）；【审查结论】「有须修改项N条」与「须修改」（`changeCount`、`changes`，以及两个代码）；【用户答复】的 C 编号事项（`item` null，`localItem`）。
   - 生成新增：`format_hub_receipt(original, item, supersedes, notes)`。契约没有回执的生成样例，测试改为「生成后再解析，结果和输入一致」。
   - `to_contract` 只在期望结果里有这些键时比较（契约规定的比较方式）。`NOT_PARSED` 照旧跳过 review-request、shared-change-request、coordination-notice、owner-handoff、`user-reply/relay-*`，跳过数写进测试。
@@ -67,7 +67,7 @@ Task 1 R11 ─┐
 Task 2 doctor ─┤（互不依赖，先做）
 Task 3 R1 ───┤
 Task 4 R8 ───┘
-Task 5 契约 v2.0 ── 要等契约发布提交
+Task 5 契约 v2.0.1 ── 要等 v2.0.1 提交号
    ├── Task 6 R6 ── Task 7 R2（拆段规则先定）
    └── Task 8 R10
 Task 9 解耦、文档、版本 ── 依赖全部
@@ -124,5 +124,4 @@ Task 9 解耦、文档、版本 ── 依赖全部
 
 ## Open Questions
 
-1. 回执「取代」一次写多项的写法（已问契约负责人）。
-2. 契约 v2.0 的发布提交号（等契约负责人通知）。
+1. 契约 v2.0.1 的提交号（等契约负责人通知；v2.0 为 c5a0944，只有 hub-receipt 4 份期望结果会变）。
