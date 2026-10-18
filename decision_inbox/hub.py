@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import deps, health, install, items, protocol, reviews, store, tickets, view
+from decision_inbox import deps, health, install, items, protocol, reviews, stall, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -348,6 +348,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
+    head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
         head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")

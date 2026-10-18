@@ -7,7 +7,7 @@
   - 验证：`tests/test_onboard.py`、`tests/test_doctor.py`：开巡视会话步骤、删旧定时任务步骤、record-patrol、doctor 超时与未登记
 - [x] Task 3：R16 常规授权（Spec 验收 3）
   - 验证：`tests/test_onboard.py`、`tests/test_view.py`：settings 规则预览与写入（保留已有、不变不写）、Codex 信任步骤、确认卡片链接
-- [ ] Task 4：R14 停滞提问（Spec 验收 4）
+- [x] Task 4：R14 停滞提问（Spec 验收 4）
   - 验证：`tests/test_health.py`、`tests/test_patrol.py`、`tests/test_view.py`：三种触发、stall-ask 正文、30 分钟后主视图列选项、12 小时不重问、阈值可配
 - [ ] Task 5：协作规则段与 README
   - 验证：三种角色规则段、Codex 授权说明、打包关键词

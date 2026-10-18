@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, install, items, store, view
+from decision_inbox import health, install, items, stall, store, view
 
 DOMAIN = "patrol"
 OFFLINE = ("offline", "unreachable")
@@ -263,6 +263,8 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     _wakes(ctx)
     _offline_mail(ctx)
     _not_loaded(ctx)
+    for ask in stall.asks(g, now, assessment.lines, maps or {}, state):  # R14: the line raises it itself
+        result.actions.append(Action(f"stall:{ask.key}", ask.kind, ask.target, ask.text))
     _alerts(ctx, assessment.signals)
     _cap(ctx)
     _wake_hub(ctx)
@@ -281,6 +283,9 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
             signals.setdefault(key, {"firstSeen": at})
         wakes = {k: v for k, v in state.get("wakes", {}).items() if k in live["wakes"]}
         notices = {k: v for k, v in state.get("notices", {}).items() if k in live["notices"]}
+        keep_hours = stall.settings(g)["askAgainHours"]
+        stall_asks = {k: v for k, v in state.get("stallAsks", {}).items()
+                      if (_instant(at) - _instant(v)).total_seconds() < keep_hours * 3600}
         for action_id in done + failed:
             kind, _, key = action_id.partition(":")
             if kind == "wake":
@@ -293,7 +298,10 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
                 notices.update({merged: at for merged in plan_doc.get("merged", []) if merged in live["notices"]})
             elif kind == "notify" and action_id in done:
                 notices[key] = at
-        state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at)
+            elif kind == "stall" and action_id in done:
+                stall_asks[key] = at
+        state.update(snapshot=plan_doc["snapshot"], signals=signals, wakes=wakes, notices=notices, lastRunAt=at,
+                     stallAsks=stall_asks)
         tx.write_state(DOMAIN, state)
         tx.append_event("patrol.run", ref=None, actor="patrol",
                         data={"now": at, "recordedAt": now or store.now(), "done": done, "failed": failed,
