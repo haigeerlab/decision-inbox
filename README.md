@@ -194,7 +194,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 ## 卸载
 
 1. 在各工作会话里运行 `/decision-inbox:leave`（Codex 会话说「退出 decision-inbox 协作组」），删掉规则文件里的协作规则段。
-2. 在决策收件箱里运行 `/decision-inbox:teardown`，删掉它的协作规则段和巡视定时任务。
+2. 在决策收件箱里运行 `/decision-inbox:teardown`，删掉它的协作规则段、归档巡视会话（以前建过巡视定时任务的也删掉）。
 3. 卸载插件：Claude Code 用 `claude plugin uninstall decision-inbox@decision-inbox-marketplace`；Codex 用 `codex plugin remove decision-inbox@decision-inbox-marketplace`。
 
 `~/.decision-inbox` 下的状态目录（名册、待决事项、等待记录、事件日志）**保留**，不会被删除；确实不要了再自己处理。
