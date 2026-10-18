@@ -76,7 +76,7 @@ ONLY = {
             "手上没有已批准、还没做完的下一步，就必须抛一项【等待用户】"),  # B1: dev lines only
     "owner": ("【讨论】", "【审查结论】", "【进度】", "【提案已抛】", "审查编号", "模块：", "送审方",
               "就这么定了", "【进度预警】", "各线范围", "适用会话", "适用于你的范围", "登记了审查者时",
-              "【答复告知】", "你仍要按原来的路线转交"),
+              "【答复告知】", "【负责人转交】"),
     "coordinator": ("各线范围", "适用会话", "核对不是审查", "不批任何东西", "登记了审查者时"),
 }
 KINDS = {
@@ -750,6 +750,26 @@ class EnrollTest(OnboardCase):
         self.assertIn("old-fe", store.read_state(store.open_group("demo"), onboard.DOMAIN)["left"])
         rules = {k for k, v in self.files().items() if before.get(k) != v and k.startswith("projects/")}
         self.assertEqual(rules, set())
+
+
+class OwnerHandoffTest(unittest.TestCase):
+    """transition-compat: the owner hands decisions on with 【负责人转交】 (session-protocol v1.6)."""
+
+    def test_owner_block_gives_the_format(self):
+        text = onboard.block("owner", "demo", "di-hub")
+        self.assertNotIn("你仍要按原来的路线转交", text)
+        for needle in ("【负责人转交】", "事项：#H（由<你的短名>抛出，原消息 #M）", "来自：", "用户原话：", "答复时间：",
+                       "转交范围："):
+            self.assertIn(needle, text)
+
+    def test_receivers_check(self):
+        text = onboard.block("dev", "demo", "di-hub")
+        for needle in ("收到【负责人转交】", "已登记的负责人", "逐字一致", "不超出"):
+            self.assertIn(needle, text, needle)
+        # the coordinator never gets 【答复告知】, so it checks the sender and the scope only
+        text = onboard.block("coordinator", "demo", "di-hub")
+        for needle in ("收到【负责人转交】", "已登记的负责人", "不超出"):
+            self.assertIn(needle, text, needle)
 
 
 AUTONOMY = """### 检查点之间自主处理
