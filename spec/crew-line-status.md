@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 5bf804930b8e -->
 # Spec: crew-line-status
 
 > 能力图模块 `crew-line-status`（2026-10-18 预览插入，排在 transition-compat 之后）。来源：LIVE-SAAS 联合接入「插件补改」阶段，接入方案 D5、D6；接缝分析 JOINT-SEAM-CHECK 的 S6、S7、S10、S11 与第六节；联合测试 T3a、T7、T10、T12。用户 2026-10-18 在本会话直接同意插入。module-crew 的只读出口已由它的 crew-hub-bridge 模块发布（10-18 验收）。

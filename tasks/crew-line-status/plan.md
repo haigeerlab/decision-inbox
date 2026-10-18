@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved -->
+<!-- spec-guard: review pending -->
 # Implementation Plan: crew-line-status
 
 > 依据：`spec/crew-line-status.md`（用户 2026-10-18 批准，doctor 实际运行出口命令）。任务清单：`tasks/crew-line-status/todo.md`。分支 `claude/crew-line-status`。
@@ -53,3 +53,34 @@
 | 改 `assess` 签名牵连巡视、收件枢纽的现有调用 | 新参数默认 None；验收 7 用现有测试全部通过来证明不变 |
 | 「在忙」盖过「阻塞」后，真阻塞被藏住 | 等待单在括号里全部列出；所有模块都停着时照常阻塞、照常参与全线互等（验收 3 的测试） |
 | 测试依赖本机装的 module-crew | 全部用假插件目录和假安装记录 |
+
+## 修订 1：Task 6（Spec 修订 1，用户 2026-10-18 批准）
+
+### Architecture Decisions
+
+- **`tickets.stale_tickets`**：读发件人的同时读出每条收件的 `kind`（`received` 状态与 `hub.received` 事件都有；两处都没有时视为未知，照旧计入）。
+  - 判定「之后又有消息」时跳过 `kind == "wait-session"` 的消息。
+  - 等待单的 `waiter` 在名册里带 `crewCoordinator` 时，不判可能已失效（直接跳过这张单）。
+  - 这个函数现在只被 `open_tickets` 和 `health.assess` 用，改它一处，「看等待」、计数行、信号 1、推送行、`_state` 的阻塞判断会一起跟着变，不用逐处改。
+- **信号 9**（`health._progress_signals`）：等待单的 `waiter` 是协调会话时跳过；普通会话不变。
+- **README**：「日常使用」表里「关掉 #5」那一行和「排查」表里「全线停住」那一行，补一句「新开的【等待其他会话】不算；协调会话的单不做这个判断」。
+- 版本仍 0.0.18；不改约定块。
+
+### Task List
+
+- [ ] Task 6：同一会话的多张等待单不互判失效；协调会话不做失效推断、不报信号 9（Spec 验收 11–15）
+
+### Checkpoint（gate）：修订 1 验收
+
+- [ ] 全部测试通过；验收 11–14 各有测试证据；列出 Task 6 实际改动的文件
+- [ ] 授权：Task 6 的代码、测试和 README；做完提交并推送 `claude/crew-line-status`
+- [ ] 不授权：开 PR 或合并 PR、改契约、碰 LIVE-SAAS
+- [ ] 实测（验收 15，T4）放到联合演练，开始前另问用户
+
+### Risks
+
+| 风险 | 预防 |
+|---|---|
+| 放过【等待其他会话】后，普通会话真忘了关的单少被标出 | 只放过这一种；【等待用户】【已恢复】等照旧计入；A2 原有测试全部保留 |
+| 协调会话真忘了关的单不再被标出 | 「看等待」照样显示等待时长；协调会话醒来先跑 `status` 核对（module-crew 规则）；在 README 写明 |
+
