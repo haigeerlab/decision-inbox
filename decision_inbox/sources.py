@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -32,13 +33,10 @@ def _git(root: str, *args: str) -> subprocess.CompletedProcess:
 
 def read_artifact(path: str, commit: str, previous: str | None = None) -> Source:
     """The file at `path` as of `commit`, plus the diff from `previous` when given."""
-    folder = os.path.dirname(path)
+    root = repo_root(path)
+    if root is None:
+        return _fail(f"{path} 所在目录不存在或不在 git 仓库里")
     try:
-        top = subprocess.run(["git", "-C", folder, "rev-parse", "--show-toplevel"], capture_output=True,
-                             text=True, timeout=TIMEOUT) if os.path.isdir(folder) else None
-        if top is None or top.returncode != 0:
-            return _fail(f"{path} 所在目录不存在或不在 git 仓库里")
-        root = top.stdout.strip()
         rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
         if _git(root, "cat-file", "-e", f"{commit}^{{commit}}").returncode != 0:
             return _fail(f"提交 {commit} 不存在（仓库 {root}）")
@@ -73,3 +71,26 @@ def read_original(path: str, fingerprint: str) -> Source:
         return Source(True, text=data.decode("utf-8"))
     except UnicodeDecodeError:
         return _fail(f"{path} 不是 UTF-8 文本")
+
+
+def repo_root(path: str) -> str | None:
+    """The git top level holding `path`, or None."""
+    folder = os.path.dirname(path)
+    if not os.path.isdir(folder):
+        return None
+    try:
+        top = subprocess.run(["git", "-C", folder, "rev-parse", "--show-toplevel"], capture_output=True,
+                             text=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None
+    return top.stdout.strip() if top.returncode == 0 else None
+
+
+_META_RE = {"module": re.compile(r"^\s*模块\s*[：:]\s*(.+?)\s*$", re.M),
+            "node": re.compile(r"^\s*节点\s*[：:]\s*(.+?)\s*$", re.M)}
+
+
+def submission_meta(text: str) -> tuple[str | None, str | None]:
+    """模块 and 节点 as written in a 【交审】's text; this plugin still does not parse 【交审】 itself."""
+    found = [(m.group(1) if (m := pattern.search(text)) else None) for pattern in _META_RE.values()]
+    return found[0], found[1]
