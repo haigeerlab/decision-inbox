@@ -72,6 +72,14 @@
 - **Claude 对照**：观测期内未见 Claude 会话出现此提示（**未验证**是否不会发生）。
 - **状态**：agent-relay 0.7.1 起有引导式恢复：读收件箱时提示会话用原名重新登记，登记后可再读一次；完全自动恢复不可行（会话得自己重新登记，旁人替它登记会被身份校验拒绝）。
 
+#### H25 Codex 每一轮按需重启 MCP 服务器：两轮之间结束 bridge 会自动重连
+
+- **现象**：Codex 每一轮开始时按需启动 MCP 服务器。在两轮之间结束 agent-relay 的 bridge 进程，下一轮会起新的 bridge，不留断掉的连接。
+- **证据（实测）**：2026-10-18 agent-relay 0.8.2 真实宿主验收（agent-relay 消息 #5835）：测试任务被点开后 3 秒内，codex app-server 下起了两个 bridge 进程；用 SIGTERM 结束它们后再发一条带唤醒的消息，ChatGPT 回 `Codex confirmed a new turn`，又起了两个新的 bridge 进程，任务 16 秒后读到并确认了这条消息。
+- **对照**：agent-relay 0.8.0 升级时用 pkill 结束所有 bridge，正开着的 Codex 任务一直报 `Transport closed`，直到 ⌘Q 重启 ChatGPT 才恢复。两者不矛盾。
+- **推测（未验证，待复核）**：只有 bridge 在某一轮进行中断掉，或 Codex 启动 bridge 时运行时目录正被替换，那一轮才会留下坏连接。
+- **影响**：agent-relay 0.8.2 的「送达存疑」提醒针对「已送达、但这一轮读不到信箱」，两轮之间结束 bridge 不会触发它。H2 的对策（重启后逐个点开 Codex 会话）不变；升级 agent-relay 后，只有正在运行的那一轮报 `Transport closed` 才需要重启 ChatGPT（待复核）。
+
 #### H4 谁能叫醒已停止的 Claude 会话
 
 - **结论**：agent-relay 叫不醒已停止的 Claude 会话；Claude 桌面版自带的会话消息工具可以叫醒，但它只能在 Claude 会话内部调用，外部进程（包括 agent-relay）调不到。
@@ -252,6 +260,7 @@ ChatGPT 应用内置一份 codex（0.162.0-alpha.17.2），命令行另装一份
 4. Codex 桌面版是否有可用于巡视的定时任务（H15）。
 5. Codex 压缩后抓最近人工输入的机制（H17），以及 Claude 侧是否同样发生
 6. agent-relay 0.7.1 起的引导式恢复在 H2、H3 场景下的实际效果。
+7. bridge 在一轮进行中断掉、或启动时运行时目录正被替换，是否就是留下 `Transport closed` 坏连接的条件（H25）。
 
 ## 6. 复核方法
 
@@ -276,3 +285,4 @@ defaults read /Applications/ChatGPT.app/Contents/Info.plist CFBundleShortVersion
 | 2026-10-16 | 初版：16 条差异，基于 2026-10-13 至 10-16 的实测与两个插件仓库的文档 |
 | 2026-10-17 | 新增 H17（Codex 自动压缩后抓最近人工输入当任务，待复核） |
 | 2026-10-17 | H3 改为 agent-relay 0.7.1 起有引导式恢复；H10 补守卫对邮箱转来任务的判断；新增 H18（Codex 会话目录决定加载哪份 AGENTS.md）、H19（Claude 自动模式拦命令）、H20（定时任务不继承权限）、H21（目录型插件市场读源目录） |
+| 2026-10-18 | 新增 H25（Codex 每一轮按需重启 MCP 服务器，两轮之间结束 bridge 会自动重连；一轮中途断掉才需重启 ChatGPT，待复核），来源 agent-relay 负责人 |
