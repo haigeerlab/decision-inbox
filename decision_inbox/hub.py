@@ -72,6 +72,8 @@ def _send_view(g: store.Group, out_id: str, entry: dict) -> dict:
              "replyTo": entry["replyTo"], "kind": entry["kind"]}
     if entry.get("alsoAnswers"):
         view_["alsoAnswers"] = entry["alsoAnswers"]
+    if entry.get("wake") is False:
+        view_["wake"] = False
     return view_
 
 
@@ -79,35 +81,49 @@ def _hints(g: store.Group, sender: str, hints) -> list[str]:
     return [f"{_short(g, sender)}：{h.text}" for h in hints]
 
 
-def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | None]:
-    """Hand one message to its module. Returns (kind, return problems or text, notes, unknown record)."""
+def _receipt(g: store.Group, m, msg, r) -> tuple[int, str] | None:
+    """【登记回执】 for an accepted 【等待用户】 (session-protocol v2.0); lines not migrated yet get none."""
+    if m.sender in store.legacy_relays(g):
+        return None
+    notes = [text for _, text in items.writing_notes(msg)]
+    notes += [h.text for h in r.hints if h.code == "auto-superseded"]
+    return r.item, protocol.format_hub_receipt(m.id, r.item, r.superseded, notes)
+
+
+def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | None, tuple | None]:
+    """Hand one message to its module.
+
+    Returns (kind, return problems or text, notes, unknown record, (item, receipt text) or None).
+    """
     if m.sender == BRIDGE:
-        return "bridge", [], [f"agent-relay 通知：{_first_line(m.body)}"], None
+        return "bridge", [], [f"agent-relay 通知：{_first_line(m.body)}"], None, None
     msg = protocol.parse(m.body)
     short = _short(g, m.sender)
     if msg.kind in ("wait-user", "withdraw"):
         r = items.receive(g, m.body, sender=m.sender, relay_id=m.id, received_at=at)
         notes = _hints(g, m.sender, r.hints)
+        receipt = None
         if msg.kind == "wait-user" and r.accepted:
             notes += _hints(g, m.sender, tickets.receive(g, m.body, sender=m.sender, relay_id=m.id, sent_at=at).hints)
-        return msg.kind, [r.return_text] if r.return_text else [], notes, None
+            receipt = _receipt(g, m, msg, r)
+        return msg.kind, [r.return_text] if r.return_text else [], notes, None, receipt
     if msg.kind in ("wait-session", "resumed"):
         r = tickets.receive(g, m.body, sender=m.sender, relay_id=m.id, sent_at=at)
         if r.problems:
-            return msg.kind, [_return_text(KIND_LABELS[msg.kind], r.problems)], [], None
+            return msg.kind, [_return_text(KIND_LABELS[msg.kind], r.problems)], [], None, None
         if msg.kind == "resumed":
             items.on_resumed(g, msg, sender=m.sender, at=at)
-        return msg.kind, [], _hints(g, m.sender, r.hints), None
+        return msg.kind, [], _hints(g, m.sender, r.hints), None, None
     if msg.kind == "review-conclusion":
         r = reviews.record_conclusion(g, msg, sender=m.sender, at=at)
         texts = [_return_text(KIND_LABELS[msg.kind], r.problems)] if r.problems else []
-        return msg.kind, texts, _hints(g, m.sender, r.hints), None
+        return msg.kind, texts, _hints(g, m.sender, r.hints), None, None
     if msg.kind == "user-reply":
-        return msg.kind, [], [f"{short} 发来一条【用户答复】，收件枢纽不处理"], None
+        return msg.kind, [], [f"{short} 发来一条【用户答复】，收件枢纽不处理"], None, None
     note = f"{short} 称：{_first_line(m.body)}（说「{m.id} 原文」看全文）"
     question = _question_return(g, m)
     record = {"sender": m.sender, "text": m.body, "at": at, "returned": question is not None}
-    return "unknown", [question] if question else [], [note], record
+    return "unknown", [question] if question else [], [note], record, None
 
 
 def _question_return(g: store.Group, m) -> str | None:
@@ -154,12 +170,17 @@ def receive(g: store.Group, inbox, now: str) -> Receipt:
         if str(m.id) in store.read_state(g, DOMAIN).get("received", {}):
             continue
         at = m.created_at or now
-        kind, texts, notes, unknown = _dispatch(g, m, at)
+        kind, texts, notes, unknown, receipt = _dispatch(g, m, at)
         result.notes += list(dict.fromkeys(notes))  # two modules may report the same protocol hint
         with g.transaction() as tx:
             doc = _doc(tx)
             for text in texts:
                 result.sends.append(_queue(g, tx, doc, m.sender, text, m.id, "return", None, now))
+            if receipt is not None:  # silent and never a reply: the request stays open for the user's answer
+                out = _queue(g, tx, doc, m.sender, receipt[1], None, "receipt", receipt[0], now)
+                doc["outgoing"][out["id"]]["wake"] = False
+                out["wake"] = False
+                result.sends.append(out)
             if unknown is not None:
                 doc["unknown"][str(m.id)] = unknown
             doc["received"][str(m.id)] = {"at": now, "kind": kind, "returned": bool(texts), "sender": m.sender}
@@ -413,7 +434,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 
 1. 用 `bridge_inbox` 读自己的收件箱，把返回的 JSON 原样写入 {io}/inbox.json。
 2. 运行 `{cli} inbox receive {group} --inbox {io}/inbox.json`。
-3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填；有 `alsoAnswers` 就照填（一次关掉这个会话已被取代或撤回、还没回复过的旧请求），不要求回复。
+3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填，没有就不填；有 `alsoAnswers` 就照填（一次关掉这个会话已被取代或撤回、还没回复过的旧请求）；有 `wake` 就照填（false 是静默送达，例如【登记回执】）；不要求回复。
 4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N …`，发成的写在 --done 后，失败的写在 --failed 后。
 5. 对输出 `ack` 里的每个编号调用 `bridge_ack`。`unread` 里的消息正文没读全：用 `bridge_inbox` 把 maxChars 调大（最多 400000）重读，再从第 1 步做。
 6. 输出 `more` 为真时，从第 1 步再读一页。

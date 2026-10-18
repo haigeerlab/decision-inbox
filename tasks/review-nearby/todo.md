@@ -15,9 +15,9 @@
   - 验证：`tests/test_items.py`：「21 B，C15 退回」；C15、#C15、R-3、D1、4c5d6e7 不当事项号；四种老写法不变
 - [x] Task 7：待用户决定（Spec 验收 2）
   - 验证：`tests/test_items.py`、`tests/test_view.py`：缺 Dn、只答一半、错字母、重复、没答主选项都追问；答全转发原话；卡片列 Dn；一次答完跳过
-- [ ] Task 8：登记回执（Spec 验收 4）
+- [x] Task 8：登记回执（Spec 验收 4）
   - 验证：`tests/test_hub.py`：receipt 无 replyTo、wake false、能解析为合格回执；取代、写法提示；旧格式、退回、撤回不发
-- [ ] Checkpoint B（report）：Phase 3 测试全过
+- [x] Checkpoint B（report）：Phase 3 测试全过（733 个）
 - [ ] Task 9：解耦、约定块、README、版本 0.0.21（Spec 验收 9、10）
   - 验证：解耦对比测试只多 receipt；`python3 -m unittest discover -s tests` 全过；两份清单 0.0.21
 

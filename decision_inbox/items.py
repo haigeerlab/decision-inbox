@@ -27,6 +27,7 @@ class ReceiveResult:
     problems: tuple[Issue, ...] = ()
     hints: tuple[Issue, ...] = ()
     return_text: str | None = None
+    superseded: tuple[int, ...] = ()  # explicit and default, for the 【登记回执】 (review-nearby R10)
 
 
 FINAL = ("superseded", "withdrawn", "closed")
@@ -198,7 +199,7 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
             _set_status(doc, old, "superseded", received_at)
             tx.append_event("items.superseded", ref=old, actor=sender, data={"by": no, "auto": True})
         tx.write_state(DOMAIN, doc)
-    return ReceiveResult(True, True, no, (), tuple(hints))
+    return ReceiveResult(True, True, no, (), tuple(hints), superseded=tuple(superseded + auto))
 
 
 def _set_status(doc: dict, no, status: str, at: str) -> None:
