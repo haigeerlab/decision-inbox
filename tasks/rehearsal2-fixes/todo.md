@@ -4,7 +4,7 @@
   - 验证：`tests/test_health.py` 新用例：left 条目不在 lines、信号里；现有旧格式、leave 测试通过
 - [x] Task 2：stopped 能叫醒时不写「掉线」，模块写「停着」（Spec 验收 2）
   - 验证：`tests/test_health.py` 新用例：Claude stopped+desktopSession、stopped+wake 绑定、stopped 叫不醒、unreachable、Codex stopped 五种；模块 stopped 写「停着」；`tests/test_patrol.py` 现有测试通过
-- [ ] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
+- [x] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
   - 验证：`tests/test_patrol.py` 提示词断言 io 目录与 notify 命令；`tests/test_cli.py`（或对应文件）notify 子命令用假 osascript 验证传参；`tests/test_onboard.py` allow 预览含 Edit 规则
 - [ ] Task 4：【等待用户】写法提示与收件提示（Spec 验收 4）
   - 验证：`tests/test_protocol.py` 用 bodies/8.txt 样例出四条提示、完整样例无提示；`tests/test_hub.py` 收下并给发件人发收件提示；退回测试不变

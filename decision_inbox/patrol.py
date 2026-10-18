@@ -261,8 +261,8 @@ PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 
 逐条执行：
 - kind 为 wake：用桌面版的会话消息工具 send_message，把 text 原样发给会话 target（桌面版会话编号）。
 - kind 为 owner-alert：用 agent-relay 的 bridge_send，把 text 原样发给身份 target，不要求回复。
-- kind 为 notify：用 Bash 发桌面通知（文字作为参数传入，不要拼进脚本）：
-  osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "decision-inbox"' -e 'end run' "<text>"
+- kind 为 notify：运行下面这条命令发桌面通知，把 text 原样作为一个参数传入：
+  {cli} notify "<text>"
 
 第 3 步：运行
 {cli} patrol record {group} --plan {plan} --done <做成的动作 id…> --failed <失败的动作 id…>
@@ -272,7 +272,12 @@ PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 
 """
 
 
-def prompt(group: str, cli: str | None = None, workdir: str = "$TMPDIR") -> str:
-    """The self-contained scheduled-task prompt (spec 关键决策 7); onboarding installs it."""
+def prompt(group: str, cli: str | None = None, workdir: str | None = None) -> str:
+    """The self-contained scheduled-task prompt (spec 关键决策 7); onboarding installs it.
+
+    Its files live in the group's io/, the one directory the hub allowlist lets it write
+    without a prompt (rehearsal2-fixes); a run stuck on a prompt blocks every later run.
+    """
+    workdir = workdir or str(store.root_dir() / group / "io")
     return PROMPT.format(group=group, cli=cli or install.cli(), agents=f"{workdir}/decision-inbox-{group}-agents.json",
                          plan=f"{workdir}/decision-inbox-{group}-plan.json")

@@ -44,7 +44,7 @@
 
 - [x] Task 1：已退出条目不进线状态（Spec 验收 1）
 - [x] Task 2：stopped 能叫醒时不写「掉线」，模块写「停着」（Spec 验收 2）
-- [ ] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
+- [x] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
 - [ ] Task 4：【等待用户】写法提示与收件提示（Spec 验收 4）
 - [ ] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
 - [ ] Task 6：README、版本 0.0.20（Spec 验收 6）

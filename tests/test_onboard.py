@@ -981,3 +981,16 @@ class UnfinishedLeaveTest(TempHomeTestCase):
         self.assertEqual(out.warnings, [])
         out = onboard.leave("demo", "old-fe", project=None, confirm=False, now=NOW)
         self.assertEqual(out.warnings, [])
+
+
+class AllowIoTest(TempHomeTestCase):
+    """rehearsal2-fixes Task 3: the allowlist also lets the patrol write into the group's io/ (Edit rule)."""
+
+    def test_allow_adds_edit_rule_for_io(self):
+        hub_dir = self.home / "hubdir"
+        hub_dir.mkdir()
+        onboard.hub("g", "g-hub", "local_1", hub_dir, True, "2026-10-17T22:00:00+08:00")
+        out = onboard.allow("g", hub_dir, confirm=False)
+        rule = "Edit(/" + str(store.root_dir() / "g" / "io") + "/**)"
+        self.assertTrue(rule.startswith("Edit(//"))
+        self.assertIn(rule, out.added)

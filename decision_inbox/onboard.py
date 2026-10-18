@@ -739,8 +739,10 @@ class Allow:
     present: tuple[str, ...]
 
 
-def allow_entries() -> list[str]:
-    return [f"Bash({install.cli()}:*)", *(f"mcp__agent-relay__{t}" for t in RELAY_TOOLS), *DESKTOP_TOOLS]
+def allow_entries(group: str) -> list[str]:
+    # Edit rules cover file writes; "//" anchors an absolute path (Claude Code permissions docs).
+    io = "Edit(/" + str(store.root_dir() / group / "io") + "/**)"
+    return [f"Bash({install.cli()}:*)", *(f"mcp__agent-relay__{t}" for t in RELAY_TOOLS), *DESKTOP_TOOLS, io]
 
 
 def allow(group: str, project, confirm: bool) -> Allow:
@@ -755,7 +757,7 @@ def allow(group: str, project, confirm: bool) -> Allow:
             or not isinstance(doc.get("permissions", {}).get("allow", []), list):
         raise JoinError(f"{path} 的格式不是预期的设置文件，没有改它")
     current = list(doc.get("permissions", {}).get("allow", []))
-    wanted = allow_entries()
+    wanted = allow_entries(group)
     added = tuple(e for e in wanted if e not in current)
     out = Allow(path, added, tuple(e for e in wanted if e in current))
     if confirm and added:
