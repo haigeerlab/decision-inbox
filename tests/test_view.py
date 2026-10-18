@@ -97,7 +97,7 @@ class EmptyAndHeaderTest(ViewCase):
         self.assertEqual(text, "前端 干活中 · API 干活中 · 后台 已结项（空闲）\n"
                                "等你决定 0 项 · 异常 0\n"
                                "\n"
-                               "等待中 0 单 · 已失效 0 项 · 今天已关 0 单")
+                               "等待中 0 条 · 已失效 0 项 · 今天已关 0 条")
 
     def test_lines_row_order_and_blocked_spacing(self):
         lines = {"bg-codex": LineState("blocked", "阻塞：等 API", target="API"),
@@ -133,7 +133,7 @@ class EmptyAndHeaderTest(ViewCase):
         tickets.close_by_user(self.g, closed, None, at=at(5))
         gone = self.ask()
         items.receive(self.g, f"【撤回】\n事项：#{gone}\n", sender="fe-codex", relay_id=900, received_at=at(1))
-        self.assertTrue(self.render().endswith("等待中 1 单 · 已失效 1 项 · 今天已关 1 单"))
+        self.assertTrue(self.render().endswith("等待中 1 条 · 已失效 1 项 · 今天已关 1 条"))
 
 
 class PushLineTest(ViewCase):
@@ -335,12 +335,13 @@ def spec_sample() -> str:
     """The 主视图样例 block of the spec, with its code-block placeholder made a real code block.
 
     e2e-round1-fixes F12 reworks hub-view (the accepted spec stays as written): the copy block
-    now has a 「推荐回复」 line above it.
+    now has a 「推荐回复」 line above it. glossary-rename counts wait records in 条, not 单 (等待单 → 等待记录).
     """
     text = SPEC.read_text(encoding="utf-8")
     body = text.split("## 主视图样例", 1)[1].split("```text\n", 1)[1].split("\n```", 1)[0]
     return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）",
-                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```")
+                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```").replace(
+        "等待中 1 单 · 已失效 0 项 · 今天已关 3 单", "等待中 1 条 · 已失效 0 项 · 今天已关 3 条")
 
 
 class AnomalyTest(ViewCase):

@@ -734,7 +734,7 @@ class StaleTicketTest(HubCase):
         self.assertEqual(views[no].maybe_stale, 4610)
         waits = view.render_waits(self.g, NOW)
         self.assertIn(f"（可能已失效：之后又发过 #4610，回『关掉 W{no}』）", waits)
-        self.assertIn("等待中 1 单（其中 1 单可能已失效）", hub.main_view(self.g, now=NOW))
+        self.assertIn("等待中 1 条（其中 1 条可能已失效）", hub.main_view(self.g, now=NOW))
 
     def test_not_counted_as_all_waiting(self):
         self.stale_setup()

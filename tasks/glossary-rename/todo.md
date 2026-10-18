@@ -11,9 +11,9 @@
   - 验证：规则段扫描过；契约标签原文仍在；契约 v2.1 样例全过
 - [x] Task 5：命令说明、SKILL、README、术语表帮助页（Spec 验收 1、4）
   - 验证：扫描过；`glossary` 输出与副本逐字一致；打包测试含新文件
-- [ ] Task 6：全量收尾与 UI 自验（Spec 验收 1、6）
+- [x] Task 6：全量收尾与 UI 自验（Spec 验收 1、6）
   - 验证：无 expectedFailure；例外都有原因；全量测试通过；渲染主视图、「看 W3」、规则段对照
-- [ ] Checkpoint B（report）：全量测试通过
+- [x] Checkpoint B（report）：全量测试通过（818 个）
 
 ## Checkpoint（gate）：模块最终验收
 

@@ -377,11 +377,11 @@ def _ticket_timeline(g: store.Group, number: int, t: dict) -> list[str]:
     from decision_inbox.view import CLOSE_REASONS
     waiter = _short(g, t["waiter"])
     head = f"W{number} · 等待记录 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
-    rows = [f"{_clock(t['sentAt'])} {waiter} 开单：等 {t['target']} 的「{_one_line(t['what'])}」"
+    rows = [f"{_clock(t['sentAt'])} {waiter} 开始等待：等 {t['target']} 的「{_one_line(t['what'])}」"
             f"（agent-relay #{t['relayId']}）"]
     if t.get("close"):
         c = t["close"]
-        rows.append(f"{_clock(c['at'])} 关单：{CLOSE_REASONS.get(c['reason'], c['reason'])}，依据：{c['basis']}")
+        rows.append(f"{_clock(c['at'])} 关掉：{CLOSE_REASONS.get(c['reason'], c['reason'])}，依据：{c['basis']}")
     return [head] + rows
 
 
@@ -490,7 +490,7 @@ def _span_text(label: str, s: Span) -> str:
 
 def render_stats(s: Stats, group: str, since: str | None) -> str:
     bypassed = f"{len(s.bypassed)} 项" + (f"（{'、'.join(f'#{n}' for n in s.bypassed)}）" if s.bypassed else "")
-    stale = f"（其中 {s.stale_tickets} 单可能已失效）" if s.stale_tickets else ""
+    stale = f"（其中 {s.stale_tickets} 条可能已失效）" if s.stale_tickets else ""
     return "\n".join([
         f"统计（协作组 {group}，{f'自 {since} 起' if since else '全部记录'}）",
         f"待决事项：抛出 {s.raised} 项，已答 {s.answered} 项，已结束 {s.closed} 项",

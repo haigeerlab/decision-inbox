@@ -135,30 +135,16 @@ def _file_test(rel):
     return test
 
 
-# Areas still being renamed are marked expectedFailure; each task removes its own (plan Task 1).
-PENDING = {
-    "__main__.py", "doctor.py", "health.py", "hub.py", "items.py", "onboard.py", "patrol.py", "protocol.py",
-    "query.py", "stall.py", "stophook.py", "tickets.py", "view.py", "approval.py", "mapview.py", "crew.py",
-    "install.py", "store.py", "reviews.py", "relay.py", "specguard.py", "sources.py", "deps.py", "consume.py",
-    "README.md", "skills/decision-inbox-join/SKILL.md",
-    *(f"commands/{p.name}" for p in (ROOT / "commands").glob("*.md")),
-}
-
-
 class ScanTest(unittest.TestCase):
     pass
 
 
 for _path in sorted(PACKAGE.glob("*.py")):
-    _t = _module_test(_path.name)
-    setattr(ScanTest, f"test_module_{_path.stem}", unittest.expectedFailure(_t) if _path.name in PENDING
-            and literal_hits(_path) else _t)
+    setattr(ScanTest, f"test_module_{_path.stem}", _module_test(_path.name))
 
 for _rel in ["README.md", "skills/decision-inbox-join/SKILL.md",
              *sorted(f"commands/{p.name}" for p in (ROOT / "commands").glob("*.md"))]:
-    _t = _file_test(_rel)
-    _name = "test_file_" + re.sub(r"\W", "_", _rel)
-    setattr(ScanTest, _name, unittest.expectedFailure(_t) if _rel in PENDING and file_hits(_rel) else _t)
+    setattr(ScanTest, "test_file_" + re.sub(r"\W", "_", _rel), _file_test(_rel))
 
 
 class GlossaryPageTest(unittest.TestCase):

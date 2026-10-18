@@ -159,8 +159,8 @@ def _footer(g: store.Group, now: str) -> str:
     count = tickets.counts(g, _today(now))
     invalid = len(items.by_status(g, *INVALIDATED))
     stale = len(tickets.stale_tickets(g))
-    waiting = f"等待中 {count['open']} 单" + (f"（其中 {stale} 单可能已失效）" if stale else "")
-    return f"{waiting} · 已失效 {invalid} 项 · 今天已关 {count['closed_today']} 单"
+    waiting = f"等待中 {count['open']} 条" + (f"（其中 {stale} 条可能已失效）" if stale else "")
+    return f"{waiting} · 已失效 {invalid} 项 · 今天已关 {count['closed_today']} 条"
 
 
 def _confirm_card(g: store.Group, now: str, relay_name: str, relay) -> str:
