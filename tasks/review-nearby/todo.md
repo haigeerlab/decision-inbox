@@ -18,7 +18,7 @@
 - [x] Task 8：登记回执（Spec 验收 4）
   - 验证：`tests/test_hub.py`：receipt 无 replyTo、wake false、能解析为合格回执；取代、写法提示；旧格式、退回、撤回不发
 - [x] Checkpoint B（report）：Phase 3 测试全过（733 个）
-- [ ] Task 9：解耦、约定块、README、版本 0.0.21（Spec 验收 9、10）
+- [x] Task 9：解耦、约定块、README、版本 0.0.21（Spec 验收 9、10）
   - 验证：解耦对比测试只多 receipt；`python3 -m unittest discover -s tests` 全过；两份清单 0.0.21
 
 ## Checkpoint（gate）：模块最终验收

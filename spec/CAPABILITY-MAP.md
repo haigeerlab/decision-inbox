@@ -69,7 +69,8 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 | spec-guard-reader | spec-guard | 状态查询：`lastTickAt`、`firstTickAt`、`tickCommits`、`suspendedAt`、顶层 `history`（stall-signals） | 已发布（0.63.0，见 spec-guard 仓库 `spec/stall-signals.md` 的 Contract；审查轮数已去掉；`tickCommits` 小于 2 的模块算不出平均间隔） |
 | patrol | Claude 桌面版 | 会话消息工具（叫醒已停止的 Claude 会话） | 已验证可用；需求 13.2 的例外 |
 | patrol | Claude 桌面版 | 定时任务 | 已验证可用；周期 5 分钟实测稳定、延迟约 38 秒；补跑未验证，设计上不依赖（2026-10-16） |
-| protocol-contract-v1 | session-protocol（本地契约仓库 `~/Documents/haigeerlab/session-protocol`） | 契约 v1.5 的样例与期望结果（2026-10-18 由 protocol-contract-v1-3 从 v1.0 升到 v1.3，protocol-contract-v1-4 升到 v1.4，p0-field-fixes 升到 v1.5），副本在 `tests/fixtures/session-protocol/v1.5/`，跳过本插件不解析的三种 v1.1 新消息，由 `tests/test_contract.py` 跑通；协议改动先改契约再改实现 | 已钉住 v1.5（提交 246e138） |
+| protocol-contract-v1 | session-protocol（本地契约仓库 `~/Documents/haigeerlab/session-protocol`） | 契约样例与期望结果，副本在 `tests/fixtures/session-protocol/v2.0.1/`，由 `tests/test_contract.py` 跑通，跳过本插件不解析的【交审】【公共变更请求】【协调通知】【负责人转交】与 `user-reply/relay-*`；协议改动先改契约再改实现（v1.0→v1.3→v1.4→v1.5→v1.7 见各模块；review-nearby 2026-10-19 升到 v2.0.1） | 已钉住 v2.0.1（契约提交 a17f3b0） |
+| crew-line-status、review-nearby | module-crew | `sessions --json` 每行选填 `review`（`state` 为 reviewing／rework，`round` 为返工通知条数），schemaVersion 仍为 1 | module-crew 0.3.0 提供（2026-10-19 来信定稿）；旧版本没有这个字段，照旧显示 |
 | stop-hook | Codex、Claude 桌面版 | `Stop` 钩子 | Codex 已验证；Claude 桌面版未验证（第 12 节第 5 项） |
 
 ## 范围对照（需求 11.1 → 模块）

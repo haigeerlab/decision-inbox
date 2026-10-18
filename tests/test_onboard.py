@@ -1054,3 +1054,18 @@ class JoinWriteEchoTest(OnboardCase):
         with contextlib.redirect_stdout(buf):
             cli._print_outcome(out, True)
         self.assertIn("已写入：名册（前端，dev）", buf.getvalue())
+
+
+class ReviewNearbyBlockTest(unittest.TestCase):
+    """review-nearby Task 9: the working blocks name the receipt, 「待用户决定」 and prefixed numbers."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("【登记回执】", "事项号以回执为准", "待用户决定", "倾向：字母", "交审 C15"):
+                    self.assertIn(words, text)
+
+    def test_hub_block_sends_wake(self):
+        from decision_inbox import hub
+        self.assertIn("有 `wake` 就照填", hub.CONVENTION)

@@ -888,3 +888,19 @@ class HubReceiptTest(HubCase):
         hub.sent(self.g, done={r.sends[0]["id"]: 5001}, failed=[], at=NOW)
         self.assertEqual(store.read_state(self.g, "hub")["outgoing"][r.sends[0]["id"]]["relayId"], 5001)
         self.assertEqual(items.get(self.g, 1)["sent"], [])  # a receipt is not an answer
+
+
+class DecoupledTest(HubCase):
+    """review-nearby Task 9 (decoupling): without module-crew an ordinary line behaves as in 0.0.20,
+    except that each accepted 【等待用户】 now also queues one silent 【登记回执】."""
+
+    def test_plain_line_round_trip(self):
+        r = self.receive(message(1601, "fe-codex", WAIT_USER), message(1602, "api-codex", wait_session()))
+        self.assertEqual([(s["kind"], s["to"]) for s in r.sends], [("receipt", "fe-codex")])
+        self.assertEqual([it["no"] for it in items.pending(self.g)], [1])
+        out = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual([(s["kind"], s["to"], s["replyTo"]) for s in out.sends], [("answer", "fe-codex", 1601)])
+        self.assertIn("用户原话：1 A", Path(out.sends[0]["bodyFile"]).read_text(encoding="utf-8"))
+        card = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
+        self.assertNotIn("要点（摘要）", card)
+        self.assertNotIn("待你决定的问题", card)
