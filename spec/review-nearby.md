@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 7bb16715a491 -->
+<!-- spec-guard: review approved 496004d23ecb -->
 
 # Spec: review-nearby
 
