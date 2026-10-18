@@ -543,3 +543,32 @@ class DecisionCardTest(ViewCase):
         out = self.render()
         self.assertIn(f"{a} A，{b} A", out)
         self.assertIn(f"#{d} 带待你决定的问题，要单独回", out)
+
+
+import re  # noqa: E402
+
+_OPTION_LINE = re.compile(r"^(?:推荐 )?([A-Z])：")
+_ANSWER_LINE = re.compile(r"^\s*回 #?\d+ ([A-Z])\s*$")
+
+
+def assert_letters_match(test, text):
+    """r20-fixes Task 2 (O-hub-option-typo): every 「回 N X」 names the option right above it."""
+    last, seen = None, 0
+    for line in text.split("\n"):
+        if m := _OPTION_LINE.match(line):
+            last = m.group(1)
+        elif m := _ANSWER_LINE.match(line):
+            seen += 1
+            test.assertEqual(m.group(1), last, f"「{line.strip()}」写在选项 {last} 下面")
+    return seen
+
+
+class LetterSelfCheckTest(ViewCase):
+    def test_main_view_look_and_detail(self):
+        text = SINGLE.replace("推荐 A：先接微信支付", "A：先接微信支付").replace("B. 先接支付宝", "推荐 B：先接支付宝")
+        no = self.ask(text.replace("你该回：A 先接微信支付", "你该回：B"))
+        other = self.ask(SINGLE, sender="api-codex")
+        from decision_inbox import hub
+        self.assertGreaterEqual(assert_letters_match(self, self.render()), 3)
+        self.assertGreaterEqual(assert_letters_match(self, hub.reply(self.g, f"看 {no}", now=NOW).show), 2)
+        assert_letters_match(self, view.render_detail(self.g, other))
