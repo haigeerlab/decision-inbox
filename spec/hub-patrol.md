@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved c3a93b79129c -->
 # Spec: hub-patrol
 
 > 能力图模块 `hub-patrol`（2026-10-18 用 add-module 插入，排在 patrol-cadence 之后）。来源：F-P0-6 对策 B。一小时观察（宿主差异 H24）显示 Claude 桌面版的周期定时任务在这台机器上基本不自动触发，与锁屏、前台无关；巡视只靠定时任务等于没有巡视。用户 2026-10-18 同意启动 B。
