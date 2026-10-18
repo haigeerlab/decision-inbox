@@ -1,6 +1,6 @@
 # Todo: rehearsal-fixes
 
-- [ ] Task 1：【撤回】写成自己邮箱号时点明事项号（Spec 验收 3）
+- [x] Task 1：【撤回】写成自己邮箱号时点明事项号（Spec 验收 3）
   - 验证：`tests/test_items.py` 新用例：正式会话【撤回】写自己没结束事项的邮箱号被退回且说明点明「对应事项 #M」和改写；写不存在的号说明照旧；【取代】原断言不变；旧格式会话写邮箱号照旧生效
 - [ ] Task 2：doctor 对只登记条目报 ok（Spec 验收 1）
   - 验证：`tests/test_doctor.py` 新用例：enroll 后该项为 ok，写「只登记，不写约定块」；正式条目照旧

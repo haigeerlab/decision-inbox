@@ -157,6 +157,18 @@ class ValidityAndOrderTest(ItemsCase):
         self.assertIn("#5538 不存在，或不是你抛出的事项", r.return_text)
         self.assertNotIn("邮箱号", r.return_text)
 
+    def test_withdraw_by_mail_id_names_the_item(self):
+        """rehearsal-fixes: a mail id in 【撤回】 is still returned, but the text says which item to write."""
+        old = self.receive(SINGLE, relay_id=5538).item
+        r = self.receive("【撤回】\n事项：#5538\n原因：需求取消\n", relay_id=5539, at=T2)
+        self.assertFalse(r.accepted)
+        self.assertEqual(codes(r.problems), {"not-owner"})
+        self.assertIn(f"#5538 是邮箱号，对应事项 #{old}；改写「事项：#{old}」重发【撤回】", r.return_text)
+        self.assertNotIn("【取代", r.return_text)
+        self.assertEqual(self.item(old)["status"], "pending")
+        r = self.receive("【撤回】\n事项：#9999\n", relay_id=5540, at=T2)
+        self.assertIn("#9999 不存在，或不是你抛出的事项", r.return_text)
+
     def test_new_item_supersedes_own_pending_by_default(self):
         """wait-honesty-and-briefs A7: no marker means the new item replaces this session's unanswered one."""
         old = self.receive(SINGLE).item

@@ -1,4 +1,5 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
+
 # Implementation Plan: rehearsal-fixes
 
 > 依据：`spec/rehearsal-fixes.md`（用户 2026-10-18 批准）。任务清单：`tasks/rehearsal-fixes/todo.md`。分支 `claude/rehearsal-fixes`。
@@ -26,7 +27,7 @@
 
 ## Task List
 
-- [ ] Task 1：【撤回】写成自己邮箱号时点明事项号（Spec 验收 3）
+- [x] Task 1：【撤回】写成自己邮箱号时点明事项号（Spec 验收 3）
 - [ ] Task 2：doctor 对只登记条目报 ok（Spec 验收 1）
 - [ ] Task 3：leave 预览列出没了结的事项和等待单（Spec 验收 2）
 - [ ] Task 4：doctor 核对 Claude、Codex 两边的版本（Spec 验收 4）
