@@ -199,7 +199,9 @@ class ReadmeTest(unittest.TestCase):
                        # relay-presence-and-doubt
                        "送达存疑", "收件枢纽欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
-                       "session-protocol` v2.0.1",
+                       "session-protocol` v2.1",
+                       # approval-display
+                       "### 审批项怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
                        # review-nearby
                        "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了约定块", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",

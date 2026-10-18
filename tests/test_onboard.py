@@ -1069,3 +1069,14 @@ class ReviewNearbyBlockTest(unittest.TestCase):
     def test_hub_block_sends_wake(self):
         from decision_inbox import hub
         self.assertIn("有 `wake` 就照填", hub.CONVENTION)
+
+
+class OneAskPlaceTest(unittest.TestCase):
+    """approval-display Task 8 (R15): working roles ask only through the hub, and withdraw stale questions."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("只在收件枢纽问", "不放可以点的决定按钮", "去收件枢纽答 #事项号", "收回本会话里还没答的旧提问"):
+                    self.assertIn(words, text)

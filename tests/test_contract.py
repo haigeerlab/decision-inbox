@@ -60,6 +60,10 @@ def to_contract(m: protocol.Message) -> dict:
                        "options": [{"letter": letter, "text": text} for letter, text in d.options],
                        "lean": d.lean, "leanReason": d.lean_reason} for d in m.decisions],
         "localItem": m.local_item,
+        "artifacts": [{"module": a.module, "path": a.path, "commit": a.commit, "previousCommit": a.previous}
+                      for a in m.artifacts],
+        "originals": {kind: [{"module": r.module, "path": r.path, "fingerprint": r.fingerprint}
+                             for r in m.originals.get(kind, ())] for kind in ("submission", "conclusion")},
         "receipt": None if m.receipt is None else {
             "original": m.receipt.original, "status": m.receipt.status,
             "supersedes": list(m.receipt.supersedes)},
@@ -100,7 +104,7 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "a17f3b0"])
+                         ["session-protocol", VERSION, "c251e94"])
 
 
 class ConformanceTest(unittest.TestCase):
@@ -108,7 +112,7 @@ class ConformanceTest(unittest.TestCase):
         docs = [json.loads(p.read_text(encoding="utf-8")) for p in cases()]
         # v2.0 (review-nearby): 90 parse samples; 40 skipped = coordination-notice 20, review-request 8,
         # user-reply/relay-* 5, shared-change-request 4, owner-handoff 3.
-        self.assertEqual(sum("parse" in d for d in docs), 90)
+        self.assertEqual(sum("parse" in d for d in docs), 93)  # v2.1: + wait-user originals, two bad lines
         self.assertEqual(sum("generate" in d for d in docs), 6)
         self.assertEqual(len([p for p in cases() if skipped(p)]), 40,
                          "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")

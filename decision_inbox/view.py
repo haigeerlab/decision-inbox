@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from decision_inbox import items, store, tickets
+from decision_inbox import approval, items, sources, specguard, store, tickets
 
 RECENT_MINUTES = 10
 COPY_LABEL = "推荐回复（点代码块右上角复制，发给我）："  # says what the copy block is even when it is not rendered
@@ -235,7 +235,7 @@ def _combined(g: store.Group) -> str | None:
     """One copy block answering every recommended card at once (relay-checkpoint-authority R4)."""
     pending = items.pending(g)
     asks = [it for it in pending if it.get("decisions")]  # answered on their own (review-nearby R2)
-    pending = [it for it in pending if not it.get("decisions")]
+    pending = [it for it in pending if not it.get("decisions") and not approval.is_approval(it)]
     picks = [f"{it['no']} {it['recommended']}" for it in pending if it["recommended"]]
     if len(picks) < 2:
         return None
@@ -245,9 +245,132 @@ def _combined(g: store.Group) -> str | None:
     return "\n".join(out)
 
 
+ADDED = "【决策收件箱补充】"
+ORIGINAL = "【原文】"
+NODE_EFFECTS = {"Spec": "Spec 批准后，授权写 Plan；不授权开始实现。",
+                "Plan": "Plan 批准后，授权按 Plan 开始实现；最终验收另审。",
+                "最终验收": "最终验收批准后，授权合并进集成分支；合并后撤不回。",
+                "接口提案": "接口提案批准后，授权按提案改接口；用到它的模块要跟着改。"}
+
+
+def _verbatim(text: str, path: str) -> list[str]:
+    """Markdown files render as they do in their project; anything else is fenced so every line shows as is.
+
+    The fence is longer than any backtick run inside, so the original can never close it early.
+    """
+    body = text.rstrip("\n")
+    if path.endswith(".md"):
+        return [body]
+    longest = max((len(run) for run in re.findall(r"`+", body)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [fence + "text", body, fence]
+
+
+def _original_lines(kind: str, ref: dict) -> list[str]:
+    title = {"submission": "开发会话的交审原文", "conclusion": "审查结论原文"}[kind]
+    got = sources.read_original(ref["path"], ref["fingerprint"])
+    head = f"━━ {title}（{ref['path']}）{ORIGINAL}"
+    if not got.ok:
+        return [head, f"原文取不到：{ref['path']} {ref['fingerprint']} —— {got.reason}"]
+    return [head, *_verbatim(got.text, ref["path"])]
+
+
+def _artifact_lines(a: dict) -> list[str]:
+    got = sources.read_artifact(a["path"], a["commit"], a.get("previous"))
+    head = f"━━ {a['path']} @ {a['commit']}{ORIGINAL}"
+    if not got.ok:
+        return [head, f"原文取不到：{a['path']} ＠ {a['commit']} —— {got.reason}"]
+    out = [head]
+    if got.diff is not None:
+        out += [f"与上一版 {a['previous']} 的差异：", *_verbatim(got.diff, "diff"), "全文："]
+    return out + _verbatim(got.text, a["path"])
+
+
+def _module_sources(it: dict, keep) -> list[str]:
+    """Submission, artifacts, conclusion — in that order — for the refs `keep` selects."""
+    originals = it.get("originals") or {}
+    out = []
+    for ref in originals.get("submission", ()):
+        out += _original_lines("submission", ref) if keep(ref) else []
+    for a in it.get("artifacts") or ():
+        out += _artifact_lines(a) if keep(a) else []
+    for ref in originals.get("conclusion", ()):
+        out += _original_lines("conclusion", ref) if keep(ref) else []
+    return out
+
+
+def _submission_text(it: dict) -> str | None:
+    for ref in (it.get("originals") or {}).get("submission", ()):
+        got = sources.read_original(ref["path"], ref["fingerprint"])
+        if got.ok:
+            return got.text
+    return None
+
+
+def render_approval(g: store.Group, it: dict, now: str, read_map=specguard.read_line) -> str:
+    """An approval item in full (approval-display): background, originals verbatim, recommendation last."""
+    no = it["no"]
+    bg = approval.background(g, it, read_map=read_map)
+    node = bg.node or "未知节点"
+    out = [f"━━ #{no} · {bg.project} · 模块 {bg.module or '未知'} · 审 {node} · {ago(now, it['receivedAt'])}{ADDED}",
+           f"项目：{bg.project}（{bg.repo or '仓库未知'}）· 线：{_short(g, it['sender'])}"]
+    out += ["能力图：", *(f"  {line}" for line in bg.map_lines)] if bg.map_lines else [f"能力图读不到：{bg.map_error}"]
+    round_ = f"本项：{node}，第 {bg.round} 次交审"
+    out.append(round_ + (f"（上次你答：{bg.last_answer}）" if bg.last_answer else ""))
+    out.append("相关决定：" + ("；".join(bg.related) if bg.related else "无"))
+    if bg.node in approval.FINAL_NODES:
+        out += [f"━━ 验收标准与证据【对照】", *approval.evidence_table(it, _submission_text(it))]
+    modules = approval.modules_of(it)
+    if len(modules) > 1:  # several modules in one item: one section each (decision 47)
+        for module in modules:
+            out += [f"━━ 模块 {module}", *_module_sources(it, lambda ref, m=module: ref.get("module") == m)]
+        if rest := _module_sources(it, lambda ref: not ref.get("module")):
+            out += ["━━ 没写模块的原文", *rest]
+    else:
+        out += _module_sources(it, lambda ref: True)
+    rec = next((o for o in it["options"] if o["letter"] == it["recommended"]), None)
+    out += [f"━━ 批准会发生什么{ADDED}", NODE_EFFECTS.get(bg.node, "节点未知，以提出方写的后果为准。")]
+    if rec is not None and rec["consequence"]:
+        out.append(f"提出方写的推荐选项 {rec['letter']} 的后果：{rec['consequence']}")
+    if it.get("decisions"):
+        out += [f"━━ 待你决定{ADDED}", *_decision_lines(it)[1:]]
+    out.append(f"━━ 选项与推荐（放最后，只作参考）{ADDED}")
+    for o in it["options"]:
+        out += [f"{o['letter']}：{o['text']}", f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}"]
+    example = " ".join([str(no), rec["letter"] if rec else it["options"][0]["letter"]])
+    example += "".join(f"；{d['id']} {d['lean'] or d['options'][0][0]}" for d in it.get("decisions") or ())
+    if rec is not None:
+        out.append(f"推荐 {rec['letter']}：{rec['text']}；答复写法示例：{example}")
+    else:
+        out.append(f"提出方没写推荐；答复写法示例：{example}")
+    return "\n".join(out)
+
+
+def _approval_line(g: store.Group, now: str, it: dict) -> str:
+    return (f"━━ #{it['no']} · {it.get('project') or _short(g, it['sender'])} · 模块 {it.get('approvalModule') or '未知'}"
+            f" · 审 {it.get('approvalNode') or '未知节点'} · {ago(now, it['receivedAt'])} · 回「看 {it['no']}」看全文")
+
+
+def render_look(g: store.Group, no: int, now: str) -> str:
+    """「看 N」: one pending item in full."""
+    it = next((x for x in items.pending(g) if x["no"] == no), None)
+    if it is None:
+        return f"#{no} 不在待答表里"
+    return render_approval(g, it, now) if approval.is_approval(it) else _item_card(g, now, it)
+
+
 def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
     confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment)]
-    return confirms + [_item_card(g, now, it) for it in items.pending(g)]
+    cards, opened = [], False
+    for it in items.pending(g):
+        if not approval.is_approval(it):
+            cards.append(_item_card(g, now, it))
+        elif not opened:  # only the first approval opens in full (approval-display decision 1)
+            cards.append(render_approval(g, it, now))
+            opened = True
+        else:
+            cards.append(_approval_line(g, now, it))
+    return confirms + cards
 
 
 def render(g: store.Group, now: str, assessment, relay=None, extra=()) -> str:

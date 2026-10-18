@@ -86,6 +86,10 @@ def _receipt(g: store.Group, m, msg, r) -> tuple[int, str] | None:
     if m.sender in store.legacy_relays(g):
         return None
     notes = [text for _, text in items.writing_notes(msg)]
+    modules = [m for m in dict.fromkeys([a.module for a in msg.artifacts] +
+                                        [r.module for rs in msg.originals.values() for r in rs]) if m]
+    if len(modules) > 1:  # approval-display: one module per item (user decision 47)
+        notes.append(f"按决定 47 应各自一项（这一项合了 {'、'.join(modules)}）")
     notes += [h.text for h in r.hints if h.code == "auto-superseded"]
     return r.item, protocol.format_hub_receipt(m.id, r.item, r.superseded, notes)
 
@@ -342,6 +346,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
+_LOOK_RE = re.compile(r"^看\s*#?(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:#\s*\d+[\s、，,]*)+)(.*)$", re.S)
@@ -387,6 +392,8 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
                      "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
     if m := _DETAIL_RE.match(said):
         return Reply(view.render_detail(g, int(m.group(1))))
+    if m := _LOOK_RE.match(said):
+        return Reply(view.render_look(g, int(m.group(1)), now))
     if m := _ORIGINAL_RE.match(said):
         return Reply(_original(g, m.group(1)))
     if said == "看等待":
