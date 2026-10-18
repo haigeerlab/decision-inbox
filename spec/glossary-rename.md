@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved d64659442fb1 -->
 
 # Spec: glossary-rename
 
