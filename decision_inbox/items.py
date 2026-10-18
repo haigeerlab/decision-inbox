@@ -51,6 +51,22 @@ def _owned(doc: dict, no, sender: str) -> dict | None:
     return it if it is not None and it["sender"] == sender and it["status"] not in FINAL else None
 
 
+def _resolve_own(doc: dict, no, sender: str, legacy: bool) -> int | None:
+    """The sender's own open item that `no` names: the hub's number, or for a line not migrated
+    yet its own message id, which is what the old hand-written hub echoed (transition-compat)."""
+    if _owned(doc, no, sender) is not None:
+        return int(no)
+    if legacy and no is not None:
+        return next((int(k) for k, it in doc["items"].items()
+                     if it["sender"] == sender and it["relayId"] == no and it["status"] not in FINAL), None)
+    return None
+
+
+def _label(it: dict, no: int, legacy: bool) -> str:
+    """How an item is named back to its sender: old lines know their message id first."""
+    return f"#{it['relayId']}（hub 编号 {no}）" if legacy and it.get("relayId") is not None else f"#{no}"
+
+
 def _doc(tx) -> dict:
     doc = tx.read_state(DOMAIN)
     doc.setdefault("items", {})
@@ -100,18 +116,22 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
         problems = [p for p in problems if not p.code.startswith(_SCOPE_CODES)]
         hints.append(Issue("multiline-not-allowed", "只有总协调和负责人能抛多线事项，已按普通事项处理"))
     if multi:
+        left = store.left_relays(g)
         for name in msg.lines_in_scope:
-            if store.find_session(g, short_name=name) is None:
+            named = store.find_session(g, short_name=name)
+            if named is None or named["relayName"] in left:
                 problems.append(Issue(f"scope-session-unknown:{name}", f"适用会话里的 {name} 不在会话名册里"))
+    legacy = sender in store.legacy_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
         superseded = []
         for kind, no in msg.markers:
             if kind == "supersede":
-                if _owned(doc, no, sender) is None:
+                own = _resolve_own(doc, no, sender, legacy)
+                if own is None:
                     problems.append(_not_owner(no, doc, sender))
                 else:
-                    superseded.append(no)
+                    superseded.append(own)
         if problems:
             tx.append_event("items.returned", ref=None, actor=sender,
                             data={"relayId": relay_id, "codes": [p.code for p in problems]})
@@ -123,8 +143,11 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
             # replaced by default (wait-honesty-and-briefs A7).
             auto = sorted(int(k) for k, it in doc["items"].items()
                           if it["sender"] == sender and it["status"] == "pending" and it["multi"] == multi)
-            hints += [Issue("auto-superseded", f"#{old} 已被新事项自动取代；确实要两项都答，请写【与 #{old} 并行】重发")
-                      for old in auto]
+            for old in auto:
+                it = doc["items"][str(old)]
+                ref = f"#{it['relayId']}" if legacy and it.get("relayId") is not None else f"#{old}"
+                hints.append(Issue("auto-superseded", f"{_label(it, old, legacy)} 已被新事项自动取代；"
+                                                      f"确实要两项都答，请写【与 {ref} 并行】重发"))
         no = tx.allocate_number()
         label = reviews.display_label(g, session=sender, message=msg, received_at=received_at)
         record = _record(msg, sender, relay_id, received_at, multi, label)
@@ -150,20 +173,22 @@ def _set_status(doc: dict, no, status: str, at: str) -> None:
 
 def _receive_withdraw(g, msg, sender, relay_id, received_at) -> ReceiveResult:
     problems = list(msg.problems)
+    legacy = sender in store.legacy_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
-        if not problems and _owned(doc, msg.item, sender) is None:
+        own = None if problems else _resolve_own(doc, msg.item, sender, legacy)
+        if not problems and own is None:
             problems.append(_not_owner(msg.item))
         if problems:
             tx.append_event("items.returned", ref=None, actor=sender,
                             data={"relayId": relay_id, "codes": [p.code for p in problems]})
             tx.write_state(DOMAIN, doc)
             return ReceiveResult(True, False, None, tuple(problems), (), _return_text(problems))
-        _set_status(doc, msg.item, "withdrawn", received_at)
-        tx.append_event("items.withdrawn", ref=msg.item, actor=sender,
+        _set_status(doc, own, "withdrawn", received_at)
+        tx.append_event("items.withdrawn", ref=own, actor=sender,
                         data={"relayId": relay_id, "reason": msg.fields.get("原因", "").strip()})
         tx.write_state(DOMAIN, doc)
-    return ReceiveResult(True, True, msg.item)
+    return ReceiveResult(True, True, own)
 
 
 def _blocks(it: dict) -> int:
@@ -277,6 +302,7 @@ class Outgoing:
 def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
     """Record the user's answers and build the 【用户答复】 texts; the hub sends them."""
     out: list[Outgoing] = []
+    legacy, left = store.legacy_relays(g), store.left_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
         for a in answers:
@@ -288,13 +314,20 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
             batch = [Outgoing(it["sender"], protocol.format_user_reply(
                 item=a.item, original=a.original, answered_at=answered_at, option_text=option_text,
                 source_relay_id=it["relayId"]), a.item)]
+            if it["sender"] in legacy and it["relayId"] is not None:
+                batch[0] = Outgoing(batch[0].to, protocol.legacy_head(batch[0].text, a.item, it["relayId"]), a.item)
             if it["multi"]:
                 sender = (store.find_session(g, relay_name=it["sender"]) or {}).get("shortName", it["sender"])
                 texts = protocol.format_multiline_replies(item=a.item, sender=sender, original=a.original,
                                                           answered_at=answered_at, wait_user_text=it["text"],
                                                           source_relay_id=it["relayId"])
                 for short, text in texts.items():
-                    batch.append(Outgoing(store.find_session(g, short_name=short)["relayName"], text, a.item))
+                    to = store.find_session(g, short_name=short)["relayName"]
+                    if to in left:
+                        continue
+                    if to in legacy and it["relayId"] is not None:
+                        text = protocol.legacy_head(text, a.item, it["relayId"], multi_sender=it["sender"])
+                    batch.append(Outgoing(to, text, a.item))
             it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at})
             it["recipients"] = [o.to for o in batch]
             _set_status(doc, a.item, "forwarded", answered_at)

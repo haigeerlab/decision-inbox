@@ -173,6 +173,7 @@ _DEV = """### 开发线
 - 一轮结束时，手上没有已批准、还没做完的下一步，就必须抛一项【等待用户】说明要用户定什么；不能写一句「无待决事项」就停下。装了 spec-guard 时，停止钩子会在当前模块还有没勾的任务、你却什么都没报时拦一次。
 - 收到写明「多线事项」的【用户答复】时，只做「适用于你的范围」那一条，看不清就抛一项问清楚，不要扩大。
 - 【答复告知】只是告知，不是批准：负责人抛的事项被用户答复时你会收到它，但不按它执行；等负责人转交后，按转交的范围执行。
+- 收到【负责人转交】时先核对：发件人是本线已登记的负责人；收到过同一个 #H 的【答复告知】的，「用户原话」要和它逐字一致；「转交范围」不超出用户原话。三项都对才执行，有一项不对就抛一项【等待用户】问清楚。
 """
 
 _OWNER = """### 负责人
@@ -197,7 +198,12 @@ _OWNER = """### 负责人
 - 登记了审查者时，每项【等待用户】在「要点」后、「选项与我的建议」前写一行「架构审查：…」，只能写：通过 / 通过，附建议N条（…）/ 进行中，请勿先批 / 不适用（不属于审查节点）/ 用户豁免。没有审查者就删掉这一行。
 - 多线事项：写「适用会话」一行列出涉及的会话；「各线范围」逐条写出每条线批准后能做什么、不能做什么，不能只写「各线按方案执行」。缺了会在抛出时被退回。
 - 收到写明「多线事项」的【用户答复】时，只做「适用于你的范围」那一条，不要扩大。
-- 你抛的单线事项被用户答复后，收件枢纽会给你线上的开发线发【答复告知】（仅告知）；你仍要按原来的路线转交。
+- 你抛的单线事项被用户答复后，收件枢纽会给你线上的开发线发【答复告知】（仅告知）。要哪条线执行，由你用【负责人转交】发给它（session-protocol v1.6），只转用户原话允许的范围。第一行写【负责人转交】，下面依次是：
+  - 事项：#H（由<你的短名>抛出，原消息 #M）
+  - 来自：<你的短名>
+  - 用户原话：<收件枢纽转给你的原话，一字不改>
+  - 答复时间：<收件枢纽写的答复时间>
+  - 转交范围：<这条线照原话可以做什么、不能做什么>
 """
 
 _COORDINATOR = """### 总协调
@@ -206,6 +212,7 @@ _COORDINATOR = """### 总协调
 - 核对不是审查：核对指纹、范围、审查结论有没有说过头、有没有拿旧批准顶替，但不出「通过／须修改」结论，不批任何东西；凡要用户决定的，一律抛给收件枢纽。
 - 跨线的事才由你抛：多线事项写「适用会话」一行列出涉及的会话；「各线范围」逐条写出每条线批准后能做什么、不能做什么，不能只写「各线按方案执行」。缺了会在抛出时被退回。
 - 用户答复多线事项后，收件枢纽会分别转给各适用会话，你不用再转一遍。
+- 收到【负责人转交】时先核对：发件人是已登记的负责人；「转交范围」不超出用户原话。都对才执行，有一项不对就抛一项【等待用户】问清楚。
 - 登记了审查者时，每项【等待用户】在「要点」后、「选项与我的建议」前写一行「架构审查：…」，只能写：通过 / 通过，附建议N条（…）/ 进行中，请勿先批 / 不适用（不属于审查节点）/ 用户豁免。没有审查者就删掉这一行。
 """
 
@@ -312,7 +319,7 @@ PATROL_CRON = "*/5 * * * *"
 
 @dataclass
 class Outcome:
-    file: Path
+    file: Path | None  # None: an enrolled entry has no rules file (transition-compat)
     before: str
     after: str
     changed: bool
@@ -576,6 +583,8 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
         rules = rules_path(entry, project)
     elif recorded:
         rules = Path(recorded)
+    elif entry.get("legacyFormat"):
+        return _leave_enrolled(g, entry, confirm, now)
     else:
         raise JoinError(f"没有记下 {entry['relayName']} 的规则文件，请用 --project 指出项目目录")
     before = _read(rules)
@@ -596,6 +605,18 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
             tx.write_state(DOMAIN, doc)
             tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
         _drop_exclude(g, entry["relayName"])
+    return out
+
+
+def _leave_enrolled(g: store.Group, entry: dict, confirm: bool, now: str) -> Outcome:
+    """An enrolled entry has no block: only mark it left so the hub stops sending to it."""
+    out = Outcome(None, "", "", False, entry, ["这个会话没有约定块，只从收件范围里移除（名册条目保留）"])
+    if confirm:
+        with g.transaction() as tx:
+            doc = tx.read_state(DOMAIN)
+            doc.setdefault("left", {})[entry["relayName"]] = now
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": None, "at": now})
     return out
 
 
@@ -634,6 +655,34 @@ def _drop_created_rules(rules: Path) -> None:
     Group state is never deleted; files the user had before joining are never deleted.
     """
     rules.unlink()
+
+
+def enroll(group: str, relay_name: str, short_name: str, host: str, lines, desktop_session, confirm: bool,
+           now: str, role: str = "dev") -> Outcome:
+    """transition-compat: a line not migrated yet goes into the roster only, marked legacy, no rules file."""
+    if role != "dev":
+        raise JoinError("onboard enroll 只用于开发线：负责人、总协调要正式接入")
+    g = store.open_group(group)
+    _hub_relay(g)
+    entry = {"relayName": relay_name, "shortName": short_name, "role": "dev", "line": list(lines), "host": host,
+             "legacyFormat": True}
+    if desktop_session:
+        entry["desktopSession"] = desktop_session
+    _check_entry(group, entry)
+    out = Outcome(None, "", "", False, entry,
+                  ["这条线还按旧规则工作：收件枢纽发给它的答复用旧编号写法，不发【答复告知】；"
+                   "它以后用 onboard join 正式接入时，旧格式标记自动去掉"])
+    if confirm:
+        with g.transaction() as tx:
+            if store.find_session(g, relay_name=relay_name) is None:
+                tx.add_session(entry)
+            else:
+                tx.replace_session(entry)
+            doc = tx.read_state(DOMAIN)
+            doc.get("left", {}).pop(relay_name, None)
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.enrolled", ref=None, actor=relay_name, data={"at": now})
+    return out
 
 
 def leave(group: str, relay_name: str, project, confirm: bool, now: str) -> Outcome:

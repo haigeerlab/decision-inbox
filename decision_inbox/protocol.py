@@ -398,6 +398,18 @@ def format_user_reply(item: int, original: str, answered_at: str, option_text: s
     return "\n".join(lines) + "\n"
 
 
+def legacy_head(text: str, item: int, relay_id, multi_sender: str | None = None) -> str:
+    """Swap the 事项 line for the numbering the old hand-written hub used (transition-compat).
+
+    Lines not migrated yet only check the first number against their own message id.
+    """
+    origin = f"多线事项，发起方 {multi_sender}；hub 编号 {item}" if multi_sender else f"hub 编号 {item}"
+    lines = text.split("\n")
+    at = next(i for i, line in enumerate(lines) if line.startswith("事项："))
+    lines[at] = f"事项：#{relay_id}（{origin}）"
+    return "\n".join(lines)
+
+
 def format_answer_notice(item: int, owner_short: str, original: str, answered_at: str,
                          source_relay_id=None) -> str:
     """【答复告知】 to an owner's dev lines: information only, never an approval (answer-handoff-gaps)."""

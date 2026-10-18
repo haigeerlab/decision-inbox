@@ -76,7 +76,7 @@ ONLY = {
             "手上没有已批准、还没做完的下一步，就必须抛一项【等待用户】"),  # B1: dev lines only
     "owner": ("【讨论】", "【审查结论】", "【进度】", "【提案已抛】", "审查编号", "模块：", "送审方",
               "就这么定了", "【进度预警】", "各线范围", "适用会话", "适用于你的范围", "登记了审查者时",
-              "【答复告知】", "你仍要按原来的路线转交"),
+              "【答复告知】", "【负责人转交】"),
     "coordinator": ("各线范围", "适用会话", "核对不是审查", "不批任何东西", "登记了审查者时"),
 }
 KINDS = {
@@ -699,6 +699,77 @@ class LocalRulesTest(OnboardCase):
         (path / "AGENTS.md").write_text("# 规则\n", encoding="utf-8")
         out = self.join_local(path, confirm=False)
         self.assertTrue(any("不再读 AGENTS.md" in w for w in out.warnings), out.warnings)
+
+
+class EnrollTest(OnboardCase):
+    """transition-compat: roster only, no rules file, marked legacy; a later join drops the mark."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    def enroll(self, role="dev", confirm=True):
+        return onboard.enroll("demo", relay_name="old-fe", short_name="旧前端", host="codex-desktop",
+                              lines=["前端"], desktop_session=None, confirm=confirm, now=NOW, role=role)
+
+    def entry(self):
+        return store.find_session(store.open_group("demo"), relay_name="old-fe")
+
+    def test_preview_then_confirm_writes_only_the_roster(self):
+        before = self.files()
+        out = self.enroll(confirm=False)
+        self.assertEqual(self.files(), before)
+        self.assertIsNone(out.file)
+        self.enroll()
+        entry = self.entry()
+        self.assertTrue(entry["legacyFormat"])
+        self.assertEqual((entry["role"], entry["line"]), ("dev", ["前端"]))
+        changed = {k for k, v in self.files().items() if before.get(k) != v}
+        self.assertTrue(changed)
+        self.assertFalse([k for k in changed if k.startswith("projects/")], changed)
+
+    def test_dev_only(self):
+        for role in ("owner", "coordinator"):
+            with self.subTest(role=role):
+                with self.assertRaises(onboard.JoinError):
+                    self.enroll(role=role)
+
+    def test_join_later_drops_the_mark(self):
+        self.enroll()
+        onboard.join("demo", role="dev", relay_name="old-fe", short_name="旧前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        self.assertNotIn("legacyFormat", self.entry())
+
+    def test_leave_an_enrolled_entry(self):
+        self.enroll()
+        before = self.files()
+        out = onboard.leave("demo", "old-fe", project=None, confirm=True, now=NOW)
+        self.assertIsNone(out.file)
+        self.assertTrue(any("没有约定块" in s for s in out.steps), out.steps)
+        self.assertIn("old-fe", store.read_state(store.open_group("demo"), onboard.DOMAIN)["left"])
+        rules = {k for k, v in self.files().items() if before.get(k) != v and k.startswith("projects/")}
+        self.assertEqual(rules, set())
+
+
+class OwnerHandoffTest(unittest.TestCase):
+    """transition-compat: the owner hands decisions on with 【负责人转交】 (session-protocol v1.6)."""
+
+    def test_owner_block_gives_the_format(self):
+        text = onboard.block("owner", "demo", "di-hub")
+        self.assertNotIn("你仍要按原来的路线转交", text)
+        for needle in ("【负责人转交】", "事项：#H（由<你的短名>抛出，原消息 #M）", "来自：", "用户原话：", "答复时间：",
+                       "转交范围："):
+            self.assertIn(needle, text)
+
+    def test_receivers_check(self):
+        text = onboard.block("dev", "demo", "di-hub")
+        for needle in ("收到【负责人转交】", "已登记的负责人", "逐字一致", "不超出"):
+            self.assertIn(needle, text, needle)
+        # the coordinator never gets 【答复告知】, so it checks the sender and the scope only
+        text = onboard.block("coordinator", "demo", "di-hub")
+        for needle in ("收到【负责人转交】", "已登记的负责人", "不超出"):
+            self.assertIn(needle, text, needle)
 
 
 AUTONOMY = """### 检查点之间自主处理

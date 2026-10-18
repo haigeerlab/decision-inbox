@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.16")
+        self.assertEqual(claude["version"], "0.0.17")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -199,7 +199,7 @@ class ReadmeTest(unittest.TestCase):
                        # relay-presence-and-doubt
                        "送达存疑", "收件枢纽欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
-                       "session-protocol` v1.5", "不解析【交审】【公共变更请求】【协调通知】",
+                       "session-protocol` v1.7", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
                        # patrol-cadence
                        "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
@@ -208,7 +208,9 @@ class ReadmeTest(unittest.TestCase):
                        # crew-coordinator-seam
                        "--crew-coordinator", "--local-rules", "CLAUDE.local.md", "不再读 AGENTS.md",
                        # hub-cutover-settings
-                       "### 替换已有的收件枢纽", "--start-number", "本插件不读"):
+                       "### 替换已有的收件枢纽", "--start-number", "本插件不读",
+                       # transition-compat
+                       "### 迁移期：还没接入的会话", "onboard enroll", "hub 编号", "0.0.17"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

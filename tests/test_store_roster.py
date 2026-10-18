@@ -59,6 +59,18 @@ class RosterTest(TempHomeTestCase):
                     with self.g.transaction() as tx:
                         tx.add_session(bad)
 
+    def test_legacy_format_flag(self):
+        """transition-compat: booleans only, dev lines only."""
+        with self.g.transaction() as tx:
+            tx.add_session(dict(DEV, relayName="old-fe", shortName="旧前端", legacyFormat=True))
+        self.assertTrue(store.find_session(self.g, relay_name="old-fe")["legacyFormat"])
+        for bad in (dict(DEV, relayName="b1", shortName="b1", legacyFormat="yes"),
+                    dict(OWNER, relayName="b2", shortName="b2", legacyFormat=True)):
+            with self.subTest(bad=bad["relayName"]):
+                with self.assertRaises(store.InvalidSession):
+                    with self.g.transaction() as tx:
+                        tx.add_session(bad)
+
     def test_replace_existing_entry(self):
         with self.g.transaction() as tx:
             tx.replace_session(dict(DEV, repo="/tmp/shop-fe-2"))

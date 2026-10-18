@@ -46,8 +46,9 @@
 | hub-patrol | 定时任务基本不自动触发时巡视不断：收件枢纽被叫醒或用户对它说话时，巡视超过 10 分钟没跑就顺带跑一轮（不叫醒自己、通知改为显示），记录与统计巡视来源；版本 0.0.14（2026-10-18 用户批准，F-P0-6 对策 B） | patrol-cadence, hub-loop, patrol |
 | crew-coordinator-seam | 接 module-crew 协调会话的接缝：约定块可写进 CLAUDE.local.md 并核对已被忽略；「并行开发协调会话」标记只在接入时经用户确认写入，带专门一节约定；停止钩子跳过已挂起的当前模块、对协调会话不做没勾完检查 | onboarding, stop-hook, spec-guard-reader |
 | hub-cutover-settings | 换收件枢纽时的编号起点：接入收件枢纽可指定起始编号（只在还没编过号时）；核实并写明历史欠回复不进主视图与巡视 | group-store, onboarding |
+| transition-compat | 迁移期对还没接入的会话（名册标「旧格式」、只登记不写约定块）用旧编号写法收发：用户答复与多线答复写「#原消息号（hub 编号 N）」、不发答复告知、认它们用邮箱号写的取代与撤回；已退出条目不再收消息；契约钉 v1.7，负责人约定块指向【负责人转交】 | decision-queue, hub-loop, onboarding, protocol-contract-v1-4 |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings → transition-compat
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 

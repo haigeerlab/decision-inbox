@@ -442,7 +442,10 @@ def _print_outcome(out, confirm: bool) -> None:
         state = "没有变化"
     else:
         state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
-    print(f"规则文件：{out.file}（{state}）")
+    if out.file is None:
+        print("规则文件：无（只登记进名册，不写约定块）")
+    else:
+        print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
     if out.changed and not out.drops:
         print("改动后的规则文件全文：")
@@ -482,6 +485,14 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--crew-coordinator", action="store_true")
     p.add_argument("--local-rules", action="store_true")
     p.add_argument("--confirm", action="store_true")
+    p = sub.add_parser("enroll")
+    p.add_argument("group")
+    p.add_argument("--relay-name", required=True)
+    p.add_argument("--short-name", required=True)
+    p.add_argument("--host", required=True, choices=list(onboard.RULES_FILES))
+    p.add_argument("--line", action="append", default=[])
+    p.add_argument("--desktop-session")
+    p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("allow")
     p.add_argument("group")
     p.add_argument("--project", default=".")
@@ -511,6 +522,9 @@ def _onboard(argv: list[str]) -> int:
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
                                crew_coordinator=args.crew_coordinator, local_rules=args.local_rules)
+        elif args.command == "enroll":
+            out = onboard.enroll(args.group, args.relay_name, args.short_name, args.host, args.line,
+                                 args.desktop_session, args.confirm, now)
         elif args.command == "allow":
             out = onboard.allow(args.group, args.project, args.confirm)
             print(f"设置文件：{out.path}")
