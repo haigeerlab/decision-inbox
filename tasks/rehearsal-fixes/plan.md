@@ -31,7 +31,7 @@
 - [x] Task 2：doctor 对只登记条目报 ok（Spec 验收 1）
 - [x] Task 3：leave 预览列出没了结的事项和等待单（Spec 验收 2）
 - [x] Task 4：doctor 核对 Claude、Codex 两边的版本（Spec 验收 4）
-- [ ] Task 5：`.gitignore`、README、版本 0.0.19（Spec 验收 5、6）
+- [x] Task 5：`.gitignore`、README、版本 0.0.19（Spec 验收 5、6）
 
 ### Checkpoint（gate）：模块最终验收
 
