@@ -11,7 +11,7 @@
   - 后续：做法 B（向 session-protocol 提需求新增提示代码与回执）待另议
 - [x] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
   - 验证：`tests/test_onboard.py` 步骤含提醒；重跑 join 时规则文件 mtime 不变
-- [ ] Task 6：README、版本 0.0.20（Spec 验收 6）
+- [x] Task 6：README、版本 0.0.20（Spec 验收 6）
   - 验证：`python3 -m unittest discover -s tests` 全部通过；两份清单都是 0.0.20
 
 ## Checkpoint（gate）：模块最终验收

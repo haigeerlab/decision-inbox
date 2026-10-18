@@ -28,7 +28,7 @@
   - `patrol.prompt` 的 workdir 默认改为 `~/.decision-inbox/<组>/io`（取 `store` 的组目录，写绝对路径）。
   - notify 一步改为 `{cli} notify "<text>"`。`__main__` 新增 `notify` 子命令：用 osascript 的 argv 方式发通知，文字作为参数传入，不拼进脚本。命令失败时退出码非 0，巡视记为失败。
   - `onboard.allow_entries(group)` 增加 `Edit(//<组 io 目录>/**)`，`allow` 预览里能看到这一条。
-  - 已有巡视任务的提示词：`onboard task` 重新生成；README 写明升级后要重跑 `allow` 和 `task`。
+  - 已有巡视任务的提示词：用 `patrol prompt <组>` 取新提示词，由收件枢纽用 update_scheduled_task 更新（实现时更正：`onboard task` 只记任务编号）；README 写明升级后的两步。
 - **Task 4 写法提示**（用户 2026-10-18 改定为做法 A）：实现时发现提示代码属于 session-protocol 契约（第 7 节，只增不改），直接加进 `protocol.parse` 会让契约一致性测试失败。用户选 A：
   - 由插件自己的 `items.writing_notes(msg)` 检查，不进契约的解析结果；检查四项：缺「项目」、「你该回」只有字母、架构审查附建议但括号里没写内容、合批要点太薄（2 个以上编号，要点行数少于编号数的 2 倍）；
   - 结果存在事项的 `writingNotes` 里，主视图事项卡片的审查行下面显示「写法提示：…」；
@@ -36,7 +36,7 @@
 - **Task 5 join**（`onboard`）：
   - 后续步骤追加「约定块要在新开的会话里才生效：已经开着的会话，请新开一次」；
   - `_commit` 在 `after == before` 时不写规则文件，名册和记录照旧更新。
-- **Task 6 文档与版本**：README 排查表加两行，升级一节写明 0.0.20 要重跑 `onboard allow` 和 `onboard task`；两份 `plugin.json` 和 `tests/test_packaging.py` 改为 0.0.20。
+- **Task 6 文档与版本**：README 排查表加两行，升级一节写明 0.0.20 要重跑 `onboard allow` 并用 `patrol prompt` 换新巡视提示词；两份 `plugin.json` 和 `tests/test_packaging.py` 改为 0.0.20。
 
 ## Task List
 
@@ -45,13 +45,13 @@
 - [x] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
 - [x] Task 4：【等待用户】写法提示与收件提示（Spec 验收 4）
 - [x] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
-- [ ] Task 6：README、版本 0.0.20（Spec 验收 6）
+- [x] Task 6：README、版本 0.0.20（Spec 验收 6）
 
 ### Checkpoint（gate）：模块最终验收
 
 - [ ] 全部测试通过；每条验收标准都有证据；列出实际改动的文件
 - [ ] 授权：Task 1–6 的代码、测试和文档；每个任务做完就提交，并推送 `claude/rehearsal2-fixes`
-- [ ] 不授权：开 PR 或合并 PR、打标签、建固定副本、改用户的插件安装或配置（包括真的去运行 `onboard allow --confirm`、`onboard task --confirm`）、碰 LIVE-SAAS
+- [ ] 不授权：开 PR 或合并 PR、打标签、建固定副本、改用户的插件安装或配置（包括真的去运行 `onboard allow --confirm`、更新巡视定时任务）、碰 LIVE-SAAS
 - [ ] 实测（Spec 验收 7）放到冻结之后的批 2 重测里，开始前另问用户
 
 ## Risks
