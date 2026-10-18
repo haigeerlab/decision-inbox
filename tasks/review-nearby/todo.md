@@ -6,9 +6,9 @@
   - 验证：`tests/test_doctor.py`：两边都没装报 problem；现有一边、同版本、不同版本用例不变
 - [x] Task 3：返工轮次显示（Spec 验收 5）
   - 验证：`tests/test_crew.py`、`tests/test_health.py`：rework、reviewing（round 0／>0）、null、缺字段、形状不对；`tests/test_hub.py`：有须修改项的【审查结论】不产生事项
-- [ ] Task 4：合批摘要卡片（Spec 验收 6）
+- [x] Task 4：合批摘要卡片（Spec 验收 6）
   - 验证：`tests/test_view.py`：module-crew 新格式样例显示摘要段与「回『N 详情』」；bodies/8.txt 取前 5 行；单项卡片快照不变；详情照旧
-- [ ] Checkpoint A（report）：Phase 1 测试全过；契约未发布时停在这里等
+- [x] Checkpoint A（report）：Phase 1 测试全过（705 个）；契约未发布时停在这里等
 - [ ] Task 5：改钉契约 v2.0.1（Spec 验收 1）
   - 验证：`tests/test_contract.py`：指纹核对、解析样例全过、回执生成后再解析一致、跳过数写明；原有测试全过
 - [ ] Task 6：编号前缀（Spec 验收 3）

@@ -120,6 +120,7 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "text": None,
         "from": msg.fields.get("来自", "").strip(),
         "decide": msg.fields.get("要你决定", "").strip(),
+        "brief": msg.fields.get("要点", "").strip("\n"),
         "options": [{"letter": o.letter, "text": o.text, "consequence": o.consequence} for o in msg.options],
         "recommended": msg.recommended,
         "suggestedReply": msg.suggested_reply,

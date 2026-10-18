@@ -508,3 +508,39 @@ class DoubtRowTest(ViewCase):
         codex = Signal(5, "idle-backlog", ("api-codex",), "API 空闲，有 1 条消息没读")
         self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 收件枢纽；叫不醒就打开它")
         self.assertEqual(view.advice(self.g, codex), "打开 API 的任务")
+
+
+REHEARSAL = Path(__file__).resolve().parent / "fixtures" / "rehearsal"
+
+
+class BatchSummaryTest(ViewCase):
+    """review-nearby Task 4 (R8): a batch card shows the brief's first paragraph, details on 「N 详情」."""
+
+    def test_module_crew_summary_paragraph(self):
+        no = self.ask((REHEARSAL / "wait-user-batch-summary.txt").read_text(encoding="utf-8"), sender="coord")
+        c = card(self.render(), no)
+        self.assertIn("\n".join([
+            "要你决定：批准下列交审吗（C15、C16、C17）",
+            "要点（摘要）：",
+            "- alpha：Spec、Plan（审查通过，经 1 轮修改）",
+            "- beta：最终验收（未审查（审查者无响应））",
+            "- 待你决定的问题：无",
+            f"  …（全文回「{no} 详情」看）",
+            "推荐 A：全部批准"]), c)
+        self.assertNotIn("C15 alpha 的 Spec", c)
+
+    def test_thin_batch_without_blank_line_takes_five_lines(self):
+        text = (REHEARSAL / "wait-user-batch-thin.txt").read_text(encoding="utf-8")
+        no = self.ask(text, sender="coord")
+        c = card(self.render(), no)
+        self.assertIn("要点（摘要）：\n- alpha（", c)
+        self.assertIn(f"  …（共 6 行，回「{no} 详情」看全文）", c)
+        self.assertEqual(c.split("要点（摘要）：\n")[1].split("\n  …")[0].count("\n"), 4)
+
+    def test_single_item_card_unchanged(self):
+        no = self.ask(SINGLE)
+        self.assertNotIn("要点", card(self.render(), no))
+
+    def test_detail_still_shows_whole_text(self):
+        no = self.ask((REHEARSAL / "wait-user-batch-summary.txt").read_text(encoding="utf-8"), sender="coord")
+        self.assertIn("C17 beta 的最终验收", view.render_detail(self.g, no))
