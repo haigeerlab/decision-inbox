@@ -188,6 +188,21 @@ class HubTest(OnboardCase):
                          "local_00000000-0000-0000-0000-00000000hub9")
         self.assertEqual((self.project / "hub" / "CLAUDE.md").read_text(encoding="utf-8").count("BEGIN decision-inbox"), 1)
 
+    def test_start_number(self):
+        out = self.hub(confirm=False, start_number=1001)
+        self.assertTrue(any("#1001" in step for step in out.steps), out.steps)
+        self.hub(start_number=1001)
+        self.hub(start_number=1001)  # rerun before any number
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            self.assertEqual(tx.allocate_number(), 1001)
+        before = (g.path / "counter.json").read_bytes()
+        with self.assertRaises(onboard.JoinError):
+            self.hub(start_number=1001)
+        self.assertEqual((g.path / "counter.json").read_bytes(), before)
+        with self.assertRaises(onboard.JoinError):
+            self.hub(confirm=False, start_number=0)
+
     def test_second_hub_or_bad_session_rejected_without_writes(self):
         self.hub()
         before = self.files()

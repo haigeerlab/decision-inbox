@@ -363,12 +363,22 @@ HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件
              "（Codex 在命令行版里按提示信任；Claude Code 在启用插件后按它的提示确认）")
 
 
-def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str) -> Outcome:
+def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str,
+        start_number: int | None = None) -> Outcome:
     """The hub joins first: group, roster entry, its own block, and the patrol task to create."""
     store.validate_name(group)
     entry = {"relayName": relay_name, "shortName": "收件枢纽", "role": "hub", "line": [],
              "host": "claude-desktop", "desktopSession": desktop_session}
     _check_entry(group, entry)
+    if start_number is not None:
+        try:
+            existing = store.open_group(group)
+        except store.GroupNotFound:
+            existing = None
+        problem = (store.can_set_start_number(existing, start_number) if existing is not None
+                   else store.can_set_start_number_value(start_number))
+        if problem:
+            raise JoinError(problem)
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
@@ -387,9 +397,13 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
         "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
     ]
+    if start_number is not None:
+        steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
     out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group))
     if confirm:
         g, _ = store.init_group(group)
+        if start_number is not None:
+            store.set_start_number(g, start_number)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         _commit(g, entry, rules, after, now)
         _backfill_patrol_time(g, now)

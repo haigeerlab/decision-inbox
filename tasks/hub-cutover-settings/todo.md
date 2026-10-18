@@ -2,9 +2,14 @@
 
 测试命令：`python3 -m unittest discover -s tests -v`
 
-- [ ] Task 1：编号起点
+- [x] Task 1：编号起点
   - 验收：Spec 验收 1–3
   - 文件：`decision_inbox/store.py`、`decision_inbox/onboard.py`、`decision_inbox/__main__.py`、`tests/test_store_group.py`、`tests/test_onboard.py`
+  - 记录（2026-10-18）：
+    - 先写用例：设了起点后从 #1001 开始编；还没编号时重设同一个值不报错；已经编过号后再设，报错且 `counter.json` 一字节都不变；0、负数、超过上限、字符串、小数、布尔值都报错；`onboard hub --start-number` 的预览会写明起点，重跑接入不报错，编过号后再设报 JoinError。先跑，9 个报错。
+    - 实现：`counter.json` 里记下 `start`，用它判断「还没编号」，这样重跑接入也不会出错；新增 `Transaction.set_start_number`、`store.set_start_number`、`store.can_set_start_number`（只读，预览时用）、`onboard.hub(start_number=)`、命令参数 `--start-number`。
+    - 实测：在临时目录跑 `onboard hub … --start-number 0`，退出码 2，提示「起始编号要是 1 到 1000000 的整数」。
+    - 结果：Ran 615 tests, OK
 
 - [ ] Task 2：欠回复回归测试和文档
   - 验收：Spec 验收 4、5
