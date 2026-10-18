@@ -314,6 +314,16 @@ class HostVersionsTest(DoctorCase):
         self.assertEqual(c.state, "ok")
         self.assertIn("Claude 没装", c.evidence)
 
+    def test_neither_side_is_bad(self):
+        """review-nearby Task 2 (O-doctor-none): nothing installed on either side is not ok."""
+        self.write_records({})
+        self.set_codex("0.0.19", enabled=False)
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "bad")
+        self.assertIn("两边都没装", c.evidence)
+        self.assertIn("codex plugin add", c.fix)
+        self.assertIn("固定副本安装", c.fix)
+
     def test_unreadable_codex_cache_is_unknown(self):
         self.claude("0.0.19")
         self.set_codex()

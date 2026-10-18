@@ -2,7 +2,7 @@
 
 - [x] Task 1：重新 join 的写入回执（Spec 验收 7）
   - 验证：`tests/test_onboard.py`：确认输出有「已写入：名册…」，有审查者时有「审查者…已重新登记」，预览没有，内容不变仍写「（没有变化）」
-- [ ] Task 2：doctor 两边都没装时报异常（Spec 验收 8）
+- [x] Task 2：doctor 两边都没装时报异常（Spec 验收 8）
   - 验证：`tests/test_doctor.py`：两边都没装报 problem；现有一边、同版本、不同版本用例不变
 - [ ] Task 3：返工轮次显示（Spec 验收 5）
   - 验证：`tests/test_crew.py`、`tests/test_health.py`：rework、reviewing（round 0／>0）、null、缺字段、形状不对；`tests/test_hub.py`：有须修改项的【审查结论】不产生事项

@@ -225,6 +225,10 @@ def _host_versions() -> Check:
     claude = None if isinstance(found, deps.NotFound) else found.version
     codex_versions = codex[1] if codex else []
     evidence = f"Claude {claude or '没装'}；Codex {'、'.join(codex_versions) or '没装'}"
+    if not claude and not codex_versions:  # review-nearby (O-doctor-none): only one side missing is fine
+        return Check(name, "bad", INSTALL_SOURCE, f"两边都没装 decision-inbox（{evidence}）",
+                     "Claude 侧在插件管理里安装 decision-inbox，或按 README「固定副本安装」安装；"
+                     "要在 Codex 里用，在终端运行 codex plugin add decision-inbox@<市场名>；装好后重开会话")
     if len(codex_versions) > 1 or (claude and codex_versions and codex_versions != [claude]):
         market = codex[0]
         return Check(name, "bad", INSTALL_SOURCE, evidence,
