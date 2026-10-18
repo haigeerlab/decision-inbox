@@ -16,7 +16,7 @@
 - [x] Task 7：R17 验收标准与证据对照（Spec 验收 8）
   - 验证：`tests/test_approval.py`：缺证据标记、Spec 取不到写明
 - [x] Checkpoint B（report）：测试全过（747 个）
-- [ ] Task 8：R15 规则、README、解耦快照（Spec 验收 9、10）
+- [x] Task 8：R15 规则、README、解耦快照（Spec 验收 9、10）
   - 验证：`tests/test_onboard.py` 三种角色；普通卡片快照；`python3 -m unittest discover -s tests` 全过
 
 ## Checkpoint（gate）：模块最终验收
