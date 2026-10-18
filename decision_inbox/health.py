@@ -132,9 +132,10 @@ def _facts(g, relay, maps, snap, crews=None, now: datetime | None = None) -> dic
     ticket_doc = store.read_state(g, "tickets").get("tickets", {})
     pending = items.pending(g)
     out = {}
+    left = store.left_relays(g)  # a session that left is no line any more (rehearsal2-fixes)
     for entry in store.roster(g):
         name = entry["relayName"]
-        if entry["role"] == "hub":
+        if entry["role"] == "hub" or name in left:
             continue
         fact = relay.agents.get(name) if relay is not None else None
         read = maps.get(name)

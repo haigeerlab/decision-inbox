@@ -1,6 +1,6 @@
 # Todo: rehearsal2-fixes
 
-- [ ] Task 1：已退出条目不进线状态（Spec 验收 1）
+- [x] Task 1：已退出条目不进线状态（Spec 验收 1）
   - 验证：`tests/test_health.py` 新用例：left 条目不在 lines、信号里；现有旧格式、leave 测试通过
 - [ ] Task 2：stopped 能叫醒时不写「掉线」，模块写「停着」（Spec 验收 2）
   - 验证：`tests/test_health.py` 新用例：Claude stopped+desktopSession、stopped+wake 绑定、stopped 叫不醒、unreachable、Codex stopped 五种；模块 stopped 写「停着」；`tests/test_patrol.py` 现有测试通过

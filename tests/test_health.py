@@ -447,3 +447,26 @@ class CrewLineTest(HealthCase):
         self.wait("coord", "API")
         r = health.assess(self.g, now=NOW, relay=snapshot(*self.quiet()), maps={})
         self.assertEqual(r.lines["coord"].text, "阻塞：等 API")
+
+
+class LeftEntryTest(HealthCase):
+    """rehearsal2-fixes Task 1: a session that left is not a line any more."""
+
+    def leave(self, name):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc.setdefault("left", {})[name] = at(60)
+            tx.write_state("onboarding", doc)
+
+    def test_left_session_has_no_line_or_signal(self):
+        self.leave("api")
+        r = self.assess(snapshot(agent("api", activity_ago=1, waiting=(3, ["fe"], 30), state="stopped")))
+        self.assertNotIn("api", r.lines)
+        self.assertFalse([s for s in r.signals if "api" in s.sessions])
+        self.assertIn("fe", r.lines)
+
+    def test_wait_on_left_session_still_names_it(self):
+        self.leave("api")
+        self.wait(target="API")
+        r = self.assess(snapshot(agent("fe", activity_ago=1)))
+        self.assertEqual(r.lines["fe"].text, "阻塞：等 API")
