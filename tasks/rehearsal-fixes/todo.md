@@ -6,7 +6,7 @@
   - 验证：`tests/test_doctor.py` 新用例：enroll 后该项为 ok，写「只登记，不写约定块」；正式条目照旧
 - [x] Task 3：leave 预览列出没了结的事项和等待单（Spec 验收 2）
   - 验证：`tests/test_onboard.py` 新用例：正式条目、只登记条目各一：有没结束事项和开着的等待单时逐条列出并写明后果与处理办法；确认后照常 leave；没有时输出与现在相同
-- [ ] Task 4：doctor 核对 Claude、Codex 两边的版本（Spec 验收 4）
+- [x] Task 4：doctor 核对 Claude、Codex 两边的版本（Spec 验收 4）
   - 验证：`tests/test_doctor.py` 新用例：一致 ok；不一致 bad 带命令；Codex 缓存两个版本 bad；Codex 没启用或没装 ok；Claude 没装 ok；配置读不到 unknown
 - [ ] Task 5：`.gitignore`、README、版本 0.0.19（Spec 验收 5、6）
   - 验证：`python3 -m unittest discover -s tests` 全部通过；两份清单 0.0.19
