@@ -82,6 +82,36 @@ def _return_text(problems) -> str:
     return "\n".join(lines)
 
 
+_ITEM_REF_RE = re.compile(r"#\d+")
+_LETTER_ONLY_RE = re.compile(r"^(\d+\s+)?[A-Za-z]$")
+_ADVICE_RE = re.compile(r"^通过，附建议\d+条（(.*)）$")
+
+
+def writing_notes(msg) -> list[tuple[str, str]]:
+    """Loose writing in a 【等待用户】, for the user's eyes only (rehearsal2-fixes, user's choice A).
+
+    Plugin-local on purpose: these are not session-protocol hint codes and change no parse result.
+    """
+    fields, out = msg.fields, []
+    if not fields.get("项目", "").strip():
+        out.append(("missing-project", "缺「项目：」"))
+    if _LETTER_ONLY_RE.match(fields.get("你该回", "").strip()):
+        out.append(("reply-letter-only", "「你该回」只写了选项字母，没写完整回复原文"))
+    review = msg.review
+    if review.status == "passed-with-advice" and review.advice_count:
+        value = review.raw.strip().replace(",", "，").replace("(", "（").replace(")", "）")
+        if review.ref is not None:
+            value = protocol._REVIEW_REF_RE.sub("", value).rstrip()
+        hit = _ADVICE_RE.match(value)
+        if hit is None or not hit.group(1).strip():
+            out.append(("review-empty-advice", "「架构审查」写了附建议，括号里没写建议内容"))
+    refs = set(_ITEM_REF_RE.findall(fields.get("要你决定", "")))
+    lines = [x for x in fields.get("要点", "").splitlines() if x.strip()]
+    if len(refs) >= 2 and len(lines) < 2 * len(refs):
+        out.append(("brief-thin-batch", f"一次要决定 {len(refs)} 项，要点只有 {len(lines)} 行"))
+    return out
+
+
 def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) -> dict:
     return {
         "sender": sender,
@@ -100,6 +130,7 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "ends": {"ids": list(msg.ends.ids), "none": msg.ends.none},
         "review": {"text": label.text, "warn": label.warn, "highlight": label.highlight, "ref": label.ref,
                    "mentions": list(label.mentions)},
+        "writingNotes": [text for _, text in writing_notes(msg)],
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],

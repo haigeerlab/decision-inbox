@@ -29,12 +29,10 @@
   - notify 一步改为 `{cli} notify "<text>"`。`__main__` 新增 `notify` 子命令：用 osascript 的 argv 方式发通知，文字作为参数传入，不拼进脚本。命令失败时退出码非 0，巡视记为失败。
   - `onboard.allow_entries(group)` 增加 `Edit(//<组 io 目录>/**)`，`allow` 预览里能看到这一条。
   - 已有巡视任务的提示词：`onboard task` 重新生成；README 写明升级后要重跑 `allow` 和 `task`。
-- **Task 4 写法提示**（`protocol.parse`，只加 hints）：
-  - `missing-project`：缺「项目」；
-  - `reply-letter-only`：「你该回」只有选项字母，或「字母+空白」；
-  - `review-empty-brackets`：「架构审查」写了「附建议N条」，但没有括号内容；
-  - `brief-thin-batch`：「要你决定」里提到的 `#编号` 有 2 个以上，且要点非空行数少于编号数的 2 倍（用 bodies/8.txt 实测样例写测试：4 个编号、6 行，触发）。
-  - 收件枢纽收下时，提示照旧进主视图；另外给发件人回一条只读告知：「收件枢纽已收下 #6546；下次请改：…」。不标 expectsReply，不是协议消息类型。复用 hub 已有的退回发送路径（outgoing），正文第一行写「收件提示：#邮箱号」，和退回区分开。
+- **Task 4 写法提示**（用户 2026-10-18 改定为做法 A）：实现时发现提示代码属于 session-protocol 契约（第 7 节，只增不改），直接加进 `protocol.parse` 会让契约一致性测试失败。用户选 A：
+  - 由插件自己的 `items.writing_notes(msg)` 检查，不进契约的解析结果；检查四项：缺「项目」、「你该回」只有字母、架构审查附建议但括号里没写内容、合批要点太薄（2 个以上编号，要点行数少于编号数的 2 倍）；
+  - 结果存在事项的 `writingNotes` 里，主视图事项卡片的审查行下面显示「写法提示：…」；
+  - 不给发件人回执。做法 B（向契约提需求：新增提示代码、写明可以回执）记为后续。
 - **Task 5 join**（`onboard`）：
   - 后续步骤追加「约定块要在新开的会话里才生效：已经开着的会话，请新开一次」；
   - `_commit` 在 `after == before` 时不写规则文件，名册和记录照旧更新。
@@ -45,7 +43,7 @@
 - [x] Task 1：已退出条目不进线状态（Spec 验收 1）
 - [x] Task 2：stopped 能叫醒时不写「掉线」，模块写「停着」（Spec 验收 2）
 - [x] Task 3：巡视中间文件、notify 命令和 allow 放行（Spec 验收 3）
-- [ ] Task 4：【等待用户】写法提示与收件提示（Spec 验收 4）
+- [x] Task 4：【等待用户】写法提示与收件提示（Spec 验收 4）
 - [ ] Task 5：join 提醒新开会话、内容相同不重写（Spec 验收 5）
 - [ ] Task 6：README、版本 0.0.20（Spec 验收 6）
 
