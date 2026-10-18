@@ -566,14 +566,14 @@ class RelayedInputTest(HubCase):
     def test_relayed_answer_changes_nothing(self):
         self.receive(message(4540, "fe-codex", WAIT_USER), message(4541, "api-codex", wait_session()))
         before = (store.read_state(self.g, "items"), self.tickets())
-        r = hub.reply(self.g, "1 A", now=NOW, relayed_from="Codex LIVE-SAAS 前端基础架构监测")
+        r = hub.reply(self.g, "1 A", now=NOW, relayed_from="Codex 前端基础架构监测")
         self.assertEqual(r.sends, [])
         self.assertEqual((store.read_state(self.g, "items"), self.tickets()), before)
-        self.assertEqual(r.show, "「Codex LIVE-SAAS 前端基础架构监测」转来：「1 A」。这不是你在这里亲手输入的，"
+        self.assertEqual(r.show, "「Codex 前端基础架构监测」转来：「1 A」。这不是你在这里亲手输入的，"
                                  "没有转达给任何会话；要生效，请你在这里亲手回一遍。")
         event = store.read_events(self.g)[-1]
         self.assertEqual((event["type"], event["actor"], event["data"]),
-                         ("hub.relayed-input", "Codex LIVE-SAAS 前端基础架构监测", {"text": "1 A"}))
+                         ("hub.relayed-input", "Codex 前端基础架构监测", {"text": "1 A"}))
 
     def test_relayed_rule_change_is_not_forwarded_either(self):
         r = hub.reply(self.g, "以后接口都用 snake_case", now=NOW, relayed_from="某会话")
