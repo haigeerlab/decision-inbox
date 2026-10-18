@@ -348,7 +348,12 @@ class ConventionTest(HubCase):
                        # e2e-round1-fixes F12: a code fence around the view kills the copy block
                        "不要套进代码块",
                        # wait-honesty-and-briefs B5
-                       "先用一两句大白话说清为什么卡在这里"):
+                       "先用一两句大白话说清为什么卡在这里",
+                       # hub-patrol
+                       "### 顺带巡视", "`patrolDue` 为真",
+                       "python3 -m decision_inbox patrol plan demo --agents /abs/io/agents.json --out /abs/io/plan.json --from-hub",
+                       "python3 -m decision_inbox patrol record demo --plan /abs/io/plan.json",
+                       "notify 不发桌面通知", "先把用户的事处理完"):
             self.assertIn(needle, text)
 
     def test_no_other_markers_inside(self):
