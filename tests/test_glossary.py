@@ -22,15 +22,17 @@ OLD = {
     "已恢复": "已结项", "约定块": "协作规则段", "用户答复": "你的答复", "待用户决定": "待你决定",
     "审批": "批准", "评审": "审查",
 }
-_ITEM = re.compile(r"(?<!待决)(?<!多线)(?<!单线)事项")
+_ITEM = re.compile(r"(?<!待决)(?<!多线)(?<!单线)(?<!注意)事项")
 _FIELD_NAMES = {name for names in protocol.FIELDS.values() for name in names}
 _TAG = re.compile(r"【[^】]*】")
-_QUOTED_FIELD = re.compile(r"[「『](" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True))) + r")[」』：:]")
+_QUOTED_FIELD = re.compile(r"[「『`](" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True))) + r")[」』：:`]")
 _PROBLEM_CODE = re.compile(r"^[a-z][a-z-]*:")  # stable issue codes such as missing-field:事项 (protocol.PROBLEM_CODES)
 _LINE_FIELD = re.compile(r"^(\s*[-*]?\s*)(" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True)))
                          + r")[：:]", re.M)
 
 # (where, old name) -> why it may stay. `where` is a file name relative to the repo, or "module.py:literal".
+# A line that lists old names on purpose, for readers who knew them, carries this marker (README 升级一节).
+LEGEND = "旧称："
 # KIND_TAGS keys are the contract's tag names and are always skipped.
 ALLOWED: dict[tuple[str, str], str] = {
     ("store.py:literal", "收件枢纽"): "OLD_HUB_NAMES：旧组名册里存的收件箱线名，读出时换成决策收件箱",
@@ -50,6 +52,8 @@ def old_terms(text: str) -> list[tuple[str, str]]:
     """(old name, line) for every old name left once the contract's own words are removed."""
     hits = []
     for line in strip_contract(text).splitlines():
+        if LEGEND in line:
+            continue
         hits += [(old, line.strip()) for old in OLD if old in line]
         if _ITEM.search(line):
             hits.append(("事项", line.strip()))
@@ -155,6 +159,19 @@ for _rel in ["README.md", "skills/decision-inbox-join/SKILL.md",
     _t = _file_test(_rel)
     _name = "test_file_" + re.sub(r"\W", "_", _rel)
     setattr(ScanTest, _name, unittest.expectedFailure(_t) if _rel in PENDING and file_hits(_rel) else _t)
+
+
+class GlossaryPageTest(unittest.TestCase):
+    def test_cli_prints_the_bundled_copy_word_for_word(self):
+        import subprocess
+        import sys
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "glossary"], cwd="/", capture_output=True,
+                              text=True, env={"PYTHONPATH": str(ROOT), "PATH": "/usr/bin:/bin"})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        copy = (ROOT / "docs" / "glossary.md").read_text(encoding="utf-8")
+        self.assertEqual(done.stdout, copy)
+        self.assertIn("术语表（v1.1", copy)
+        self.assertIn("来源：", copy.splitlines()[0] + copy.splitlines()[1] + copy.splitlines()[2])
 
 
 if __name__ == "__main__":

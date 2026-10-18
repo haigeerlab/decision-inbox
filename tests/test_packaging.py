@@ -103,10 +103,10 @@ class HookCommandTest(TempHomeTestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ""))
 
 
-COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown")
+COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown", "glossary")
 QUERIES = ("lines", "flow", "item", "map")
 CHANGES = ("hub-setup", "join", "leave", "teardown")
-SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor", "notify"}
+SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor", "notify", "glossary"}
 
 
 def frontmatter(text):
@@ -157,6 +157,9 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("--local-rules", self.read("commands/join.md"))
         self.assertIn("--start-number", self.read("commands/hub-setup.md"))
         self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
+        glossary = self.read("commands/glossary.md")  # glossary-rename: the help page shows the copy word for word
+        self.assertIn("bin/decision-inbox\" glossary", glossary)
+        self.assertIn("逐字", glossary)
 
     def test_codex_skill(self):
         meta, body = frontmatter(self.read("skills/decision-inbox-join/SKILL.md"))
@@ -181,13 +184,13 @@ class ReadmeTest(unittest.TestCase):
         import re
         text = (REPO / "README.md").read_text(encoding="utf-8")
         for needle in ("## 安装", "/plugin marketplace add", "codex plugin marketplace add", "## 接入",
-                       "收件枢纽", "负责人", "开发线", "/decision-inbox:hub-setup", "/decision-inbox:join",
+                       "决策收件箱", "审查者", "开发线", "/decision-inbox:glossary", "W 编号", "/decision-inbox:hub-setup", "/decision-inbox:join",
                        "## 日常", "/decision-inbox:lines", "/decision-inbox:flow", "/decision-inbox:item",
                        "/decision-inbox:map", "## 升级", "## 卸载", "/decision-inbox:leave",
                        "/decision-inbox:teardown", "~/.decision-inbox", "保留", "## 排查", "停止钩子", "巡视",
                        "【答复告知】",
                        # e2e-round1-fixes F7, F3, F4
-                       "先删掉手贴的旧收件枢纽规则", "亲手输入", "靠收件枢纽遵守约定", "巡视还没跑完过", "被自动模式拦下",
+                       "先删掉手贴的旧决策收件箱规则", "亲手输入", "靠决策收件箱遵守约定", "巡视还没跑完过", "被自动模式拦下",
                        # relay-checkpoint-authority
                        "检查点答复即授权", "--checkpoint-authority", "一次答完", "信任这个项目",
                        # wait-honesty-and-briefs
@@ -198,24 +201,24 @@ class ReadmeTest(unittest.TestCase):
                        # protocol-contract-v1
                        "## 消息协议", "session-protocol",
                        # relay-presence-and-doubt
-                       "送达存疑", "收件枢纽欠回复越来越多",
+                       "送达存疑", "决策收件箱欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
                        "session-protocol` v2.1",
                        # stall-and-patrol
                        "/loop 5m", "### 常规授权（Claude 线）", "先问」规则可能不生效", "io/snapshots/",
                        # approval-display
-                       "### 审批项怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
+                       "### 提请批准怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
                        # review-nearby
-                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了约定块", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
+                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
                        # patrol-cadence
                        "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
                        # hub-patrol
-                       "收件枢纽会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`",
+                       "决策收件箱会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`",
                        # crew-coordinator-seam
                        "--crew-coordinator", "--local-rules", "CLAUDE.local.md", "不再读 AGENTS.md",
                        # hub-cutover-settings
-                       "### 替换已有的收件枢纽", "--start-number", "本插件不读",
+                       "### 替换已有的决策收件箱", "--start-number", "本插件不读",
                        # transition-compat
                        "### 迁移期：还没接入的会话", "onboard enroll", "hub 编号", "0.0.19"):
             self.assertIn(needle, text)
