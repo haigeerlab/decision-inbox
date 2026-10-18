@@ -42,6 +42,23 @@ class RosterTest(TempHomeTestCase):
                                             desktopSession=bad))
         self.assertIsNone(store.find_session(self.g, relay_name="x-owner"))
 
+    def test_crew_coordinator_and_local_rules_flags(self):
+        """crew-coordinator-seam: booleans only; the coordinator flag on dev lines, local rules on Claude."""
+        coord = dict(DEV, relayName="crew-coord", shortName="前端并行", host="claude-desktop",
+                     crewCoordinator=True, localRules=True)
+        with self.g.transaction() as tx:
+            tx.add_session(coord)
+        self.assertTrue(store.find_session(self.g, relay_name="crew-coord")["crewCoordinator"])
+        bad_entries = [dict(coord, relayName="b1", shortName="b1", crewCoordinator="yes"),
+                       dict(coord, relayName="b2", shortName="b2", localRules=1),
+                       dict(OWNER, relayName="b3", shortName="b3", crewCoordinator=True),
+                       dict(DEV, relayName="b4", shortName="b4", localRules=True)]
+        for bad in bad_entries:
+            with self.subTest(bad=bad["relayName"]):
+                with self.assertRaises(store.InvalidSession):
+                    with self.g.transaction() as tx:
+                        tx.add_session(bad)
+
     def test_replace_existing_entry(self):
         with self.g.transaction() as tx:
             tx.replace_session(dict(DEV, repo="/tmp/shop-fe-2"))

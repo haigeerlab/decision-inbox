@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: hub-cutover-settings
 
 > 依据：`spec/hub-cutover-settings.md`（用户 2026-10-18 批准）。任务清单：`tasks/hub-cutover-settings/todo.md`。分支 `claude/livesaas-seam`，接在 crew-coordinator-seam 之后做。

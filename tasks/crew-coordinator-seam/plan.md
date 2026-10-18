@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: crew-coordinator-seam
 
 > 依据：`spec/crew-coordinator-seam.md`（用户 2026-10-18 批准）。任务清单：`tasks/crew-coordinator-seam/todo.md`。分支 `claude/livesaas-seam`。
