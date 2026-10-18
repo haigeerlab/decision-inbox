@@ -70,6 +70,9 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
         name = f"约定块：{entry['shortName']}"
         if entry["relayName"] in left:
             continue
+        if entry.get("legacyFormat"):
+            out.append(Check(name, "ok", "本插件", "只登记，不写约定块（迁移期旧格式会话）"))
+            continue
         rules = files.get(entry["relayName"])
         if rules is None:
             out.append(Check(name, "unknown", "本插件", "接入记录里没有它的规则文件"))

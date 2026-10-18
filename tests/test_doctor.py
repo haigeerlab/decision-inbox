@@ -246,3 +246,13 @@ class ModuleCrewTest(DoctorCase):
         out = self.check("module-crew 出口：并行")
         self.assertEqual((out.state, out.evidence), ("bad", "状态库坏了"))
         self.assertIn("模块状态未知", out.fix)
+
+
+class EnrolledEntryTest(DoctorCase):
+    """rehearsal-fixes Task 2: an enrolled entry has no block by design."""
+
+    def test_enrolled_entry_is_ok(self):
+        onboard.enroll("g", "g-legacy", "旧格式", "claude-desktop", ["web"], None, True, NOW)
+        c = self.check("约定块：旧格式")
+        self.assertEqual((c.state, c.evidence), ("ok", "只登记，不写约定块（迁移期旧格式会话）"))
+        self.assertEqual(self.check("约定块：开发").state, "ok")

@@ -28,7 +28,7 @@
 ## Task List
 
 - [x] Task 1：【撤回】写成自己邮箱号时点明事项号（Spec 验收 3）
-- [ ] Task 2：doctor 对只登记条目报 ok（Spec 验收 1）
+- [x] Task 2：doctor 对只登记条目报 ok（Spec 验收 1）
 - [ ] Task 3：leave 预览列出没了结的事项和等待单（Spec 验收 2）
 - [ ] Task 4：doctor 核对 Claude、Codex 两边的版本（Spec 验收 4）
 - [ ] Task 5：`.gitignore`、README、版本 0.0.19（Spec 验收 5、6）
