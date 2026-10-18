@@ -147,8 +147,9 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("item-ids", self.read("commands/item.md"))
         self.assertIn("bridge_wake_status", self.read("commands/item.md"))
         setup = self.read("commands/hub-setup.md")
-        for needle in ("get_session", "create_scheduled_task", "onboard task", "立即运行", "bridge_register",
-                       "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked, not just asked for
+        # stall-and-patrol R18: a looping patrol session replaces the scheduled task
+        for needle in ("get_session", "start_session", "/loop 5m", "onboard patrol-session", "delete_scheduled_task",
+                       "bridge_register", "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked
             self.assertIn(needle, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
         self.assertIn("--checkpoint-authority", self.read("commands/join.md"))
