@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved caf4d069de85 -->
 # Spec: transition-compat
 
 > 能力图模块 `transition-compat`（2026-10-18 用 add-module 插入，排在 hub-cutover-settings 之后）。来源：LIVE-SAAS 联合接入「插件补改」阶段，接入方案 D1、D8，用户决定 10。session-protocol 契约负责人 10-18 答复：兼容写法**不进契约**，由本插件做成过渡期适配，契约 v1.6 第 8 节写明了这一点。用户 2026-10-18 在本会话直接同意插入，并要求顺带把契约升到 v1.7。Spec 先交审。
