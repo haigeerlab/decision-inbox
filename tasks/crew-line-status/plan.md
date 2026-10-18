@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: crew-line-status
 
 > 依据：`spec/crew-line-status.md`（用户 2026-10-18 批准，doctor 实际运行出口命令）。任务清单：`tasks/crew-line-status/todo.md`。分支 `claude/crew-line-status`。
@@ -31,7 +31,7 @@
 
 ## Task List
 
-- [ ] Task 1：`crew.py` 读出口（Spec 验收 1）
+- [x] Task 1：`crew.py` 读出口（Spec 验收 1）
 - [ ] Task 2：协调会话线的状态判定与括号文字、信号 1、不判停住（Spec 验收 2–6）
 - [ ] Task 3：接到主视图、`/lines`、巡视、收件枢纽答复；没有协调会话的协作组输出不变（Spec 验收 7）
 - [ ] Task 4：doctor 与依赖检查（Spec 验收 8）

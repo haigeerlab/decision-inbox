@@ -1,6 +1,6 @@
 # Todo: crew-line-status
 
-- [ ] Task 1：`crew.py` 读出口（Spec 验收 1）
+- [x] Task 1：`crew.py` 读出口（Spec 验收 1）
   - 验证：`python3 -m unittest tests.test_crew`；正常、接口主版本不对、schemaVersion 不对、退出码 2、超时、JSON 坏、缺字段、路径跑出根目录、没装，各有用例
 - [ ] Task 2：协调会话线的状态判定与括号文字、信号 1、不判停住（Spec 验收 2–6）
   - 验证：`tests/test_health.py` 新用例：一个模块在忙盖过阻塞并列出全部等待单；全停着照常阻塞与全线互等；未知不报信号 1；挂起的忙不算；merged 不列；无记录；协调会话线不判停住
