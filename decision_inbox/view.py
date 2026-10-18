@@ -52,7 +52,7 @@ def copy_line(no: int, letter: str, reply: str | None) -> str:
     reply = re.sub(r"^\d+\s+", "", reply or "")
     if not reply:
         return f"{no} {letter}"
-    if reply.startswith(letter) and reply[len(letter):len(letter) + 1] in ("", " ", ":", "："):
+    if reply.startswith(letter) and reply[len(letter):len(letter) + 1] in ("", " ", ":", "：", "；", "，"):
         return f"{no} {reply}"
     return f"{no} {letter} {reply}"
 
@@ -219,6 +219,23 @@ def _summary(it: dict) -> list[str]:
     return out
 
 
+def _decision_lines(it: dict) -> list[str]:
+    """Each 「待用户决定」 as its own question with the reviewer's lean (review-nearby R2)."""
+    out = ["待你决定的问题（每条都要答，没答全会被追问）："]
+    for d in it.get("decisions") or ():
+        out.append(f"{d['id']}：{d['question']}")
+        out.append("  " + "　".join(f"{letter}. {text}" for letter, text in d["options"]))
+        if d["lean"]:
+            out.append(f"  审查倾向：{d['lean']}" + (f"（{d['leanReason']}）" if d.get("leanReason") else ""))
+    return out if len(out) > 1 else []
+
+
+def _unanswered_in_copy(it: dict, line: str) -> str | None:
+    missing = [d["id"] for d in it.get("decisions") or ()
+               if not re.search(rf"(?<![A-Za-z0-9]){d['id']}(?![0-9])", line)]
+    return f"  还要答 {'、'.join(missing)}，写在同一条回复里" if missing else None
+
+
 def _item_card(g: store.Group, now: str, it: dict) -> str:
     no = it["no"]
     topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
@@ -238,20 +255,26 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
         out.append(f"推荐 {o['letter']}：{first}" if o is rec else f"{o['letter']}：{first}")
         out.append(f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}")
         if o is rec:
-            out += [COPY_LABEL, "```", copy_line(no, o["letter"], it["suggestedReply"]), "```"]
+            line = copy_line(no, o["letter"], it["suggestedReply"])
+            out += [COPY_LABEL, "```", line, "```"]
+            if (gap := _unanswered_in_copy(it, line)) is not None:
+                out.append(gap)
         else:
             out.append(f"  回 {no} {o['letter']}")
-    return "\n".join(out + _review_lines(it))
+    return "\n".join(out + _decision_lines(it) + _review_lines(it))
 
 
 def _combined(g: store.Group) -> str | None:
     """One copy block answering every recommended card at once (relay-checkpoint-authority R4)."""
     pending = items.pending(g)
+    asks = [it for it in pending if it.get("decisions")]  # answered on their own (review-nearby R2)
+    pending = [it for it in pending if not it.get("decisions")]
     picks = [f"{it['no']} {it['recommended']}" for it in pending if it["recommended"]]
     if len(picks) < 2:
         return None
     out = ["一次答完（全按推荐）：", "```", "，".join(picks), "```"]
     out += [f"#{it['no']} 没有推荐，要单独回" for it in pending if not it["recommended"]]
+    out += [f"#{it['no']} 带待你决定的问题，要单独回" for it in asks]
     return "\n".join(out)
 
 

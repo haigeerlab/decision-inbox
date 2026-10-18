@@ -13,7 +13,7 @@
   - 验证：`tests/test_contract.py`：指纹核对、解析样例全过、回执生成后再解析一致、跳过数写明；原有测试全过
 - [x] Task 6：编号前缀（Spec 验收 3）
   - 验证：`tests/test_items.py`：「21 B，C15 退回」；C15、#C15、R-3、D1、4c5d6e7 不当事项号；四种老写法不变
-- [ ] Task 7：待用户决定（Spec 验收 2）
+- [x] Task 7：待用户决定（Spec 验收 2）
   - 验证：`tests/test_items.py`、`tests/test_view.py`：缺 Dn、只答一半、错字母、重复、没答主选项都追问；答全转发原话；卡片列 Dn；一次答完跳过
 - [ ] Task 8：登记回执（Spec 验收 4）
   - 验证：`tests/test_hub.py`：receipt 无 replyTo、wake false、能解析为合格回执；取代、写法提示；旧格式、退回、撤回不发
