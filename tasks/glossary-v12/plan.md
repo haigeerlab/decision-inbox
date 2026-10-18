@@ -19,8 +19,9 @@
 - **Task 1 审查列标记、旧称扫描、README 与术语表副本**（Spec 验收 1–4）：
   - 先改测试（确认失败）：
     - `tests/test_mapview.py` 的审查列与整表断言改为新写法（✔、待批准、改过待重审、标记无效、无标记）；
-    - `tests/test_glossary.py` 的 `OLD` 加两个词，扫描应命中 `mapview.py` 和 README 第 106 行。
-  - 再改 `mapview.py`、README 第 106 行、`docs/glossary.md`。
+    - `tests/test_glossary.py` 的 `OLD` 加两个词，扫描应命中 `mapview.py` 和 README 第 106 行；
+    - `tests/test_glossary.py` 第 159 行核对术语表副本版本的断言改为「术语表（v1.2」。
+  - 再改 `mapview.py`、README 第 106 行、`docs/glossary.md`；`__main__.py` 第 656 行注释里的「v1.1」改为「v1.2」。
   - 验证：上面两组测试转绿；`diff` 核对术语表副本与原件正文一致；全量测试通过。
 
 ## Checkpoint（gate）：模块最终验收
