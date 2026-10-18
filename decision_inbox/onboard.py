@@ -329,6 +329,7 @@ class Outcome:
     warnings: list = field(default_factory=list)  # shown first in the preview (relay-checkpoint-authority R1)
     codex_unseen: bool = False  # the warnings include Codex not loading the block (R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
+    written: list = field(default_factory=list)  # what --confirm wrote besides the file (review-nearby R11)
 
 
 def _read(path: Path) -> str:
@@ -561,8 +562,10 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     if confirm:
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
+        out.written.append(f"已写入：名册（{short_name}，{role}）")
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
+            out.written.append(f"审查者：{reviewer}（节点 {'、'.join(nodes)}）已重新登记")
         if exclude is not None:
             _add_exclude(g, relay_name, exclude)
     return out

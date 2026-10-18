@@ -1,6 +1,6 @@
 # Todo: review-nearby
 
-- [ ] Task 1：重新 join 的写入回执（Spec 验收 7）
+- [x] Task 1：重新 join 的写入回执（Spec 验收 7）
   - 验证：`tests/test_onboard.py`：确认输出有「已写入：名册…」，有审查者时有「审查者…已重新登记」，预览没有，内容不变仍写「（没有变化）」
 - [ ] Task 2：doctor 两边都没装时报异常（Spec 验收 8）
   - 验证：`tests/test_doctor.py`：两边都没装报 problem；现有一边、同版本、不同版本用例不变
