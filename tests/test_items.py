@@ -406,3 +406,55 @@ class LifecycleTest(ItemsCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegacyFormatTest(ItemsCase):
+    """transition-compat: lines not migrated yet get the old numbering; left sessions get nothing."""
+
+    def mark(self, relay, **fields):
+        with self.g.transaction() as tx:
+            entry = dict(store.find_session(self.g, relay_name=relay), **fields)
+            if fields.get("legacyFormat"):
+                entry.pop("repo", None)
+            tx.replace_session(entry)
+
+    def leave(self, relay):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc.setdefault("left", {})[relay] = T1
+            tx.write_state("onboarding", doc)
+
+    def test_single_reply_uses_old_numbering(self):
+        self.mark("fe-codex", legacyFormat=True)
+        no = self.receive(SINGLE, relay_id=5990).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        first = out[0].text.splitlines()[1]
+        self.assertEqual(first, f"事项：#5990（hub 编号 {no}）")
+        self.assertEqual(out[0].text.splitlines()[0], "【用户答复】")
+        self.assertIn(f"用户原话：{no} A", out[0].text)
+
+    def test_formal_line_unchanged(self):
+        no = self.receive(SINGLE, relay_id=5990).item
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        self.assertEqual(out[0].text.splitlines()[1], f"事项：#{no}（你的原消息 #5990）")
+
+    def test_multiline_reply_uses_old_numbering_for_legacy_lines_only(self):
+        self.mark("fe-codex", legacyFormat=True)
+        no = self.receive(MULTI, sender="coord", relay_id=5948).item
+        out = {o.to: o.text for o in items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers,
+                                                  answered_at=T2)}
+        self.assertEqual(out["fe-codex"].splitlines()[1], f"事项：#5948（多线事项，发起方 coord；hub 编号 {no}）")
+        self.assertIn("适用于你的范围：", out["fe-codex"])
+        self.assertTrue(out["api-codex"].splitlines()[1].startswith(f"事项：#{no}（"))
+
+    def test_left_session_gets_no_multiline_reply(self):
+        no = self.receive(MULTI, sender="coord").item
+        self.leave("api-codex")
+        out = items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        self.assertEqual(sorted(o.to for o in out), ["coord", "fe-codex"])
+
+    def test_multiline_naming_a_left_session_is_returned(self):
+        self.leave("api-codex")
+        r = self.receive(MULTI, sender="coord")
+        self.assertFalse(r.accepted)
+        self.assertIn("scope-session-unknown:API", codes(r.problems))

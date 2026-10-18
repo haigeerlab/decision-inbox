@@ -214,8 +214,11 @@ def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
     last = it["answers"][-1]
     text = protocol.format_answer_notice(it["no"], owner["shortName"], last["original"], last["at"],
                                          source_relay_id=it["relayId"])
+    left = store.left_relays(g)
+    # transition-compat: the old rules never had 【答复告知】, and a left session gets nothing
     return [(e["relayName"], text) for e in store.roster(g)
-            if e["role"] == "dev" and set(e["line"]) & set(owner["line"])]
+            if e["role"] == "dev" and set(e["line"]) & set(owner["line"])
+            and not e.get("legacyFormat") and e["relayName"] not in left]
 
 
 def outgoing(g: store.Group) -> list[dict]:

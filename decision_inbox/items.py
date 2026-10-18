@@ -100,8 +100,10 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
         problems = [p for p in problems if not p.code.startswith(_SCOPE_CODES)]
         hints.append(Issue("multiline-not-allowed", "只有总协调和负责人能抛多线事项，已按普通事项处理"))
     if multi:
+        left = store.left_relays(g)
         for name in msg.lines_in_scope:
-            if store.find_session(g, short_name=name) is None:
+            named = store.find_session(g, short_name=name)
+            if named is None or named["relayName"] in left:
                 problems.append(Issue(f"scope-session-unknown:{name}", f"适用会话里的 {name} 不在会话名册里"))
     with g.transaction() as tx:
         doc = _doc(tx)
@@ -277,6 +279,7 @@ class Outgoing:
 def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
     """Record the user's answers and build the 【用户答复】 texts; the hub sends them."""
     out: list[Outgoing] = []
+    legacy, left = store.legacy_relays(g), store.left_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
         for a in answers:
@@ -288,13 +291,20 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
             batch = [Outgoing(it["sender"], protocol.format_user_reply(
                 item=a.item, original=a.original, answered_at=answered_at, option_text=option_text,
                 source_relay_id=it["relayId"]), a.item)]
+            if it["sender"] in legacy and it["relayId"] is not None:
+                batch[0] = Outgoing(batch[0].to, protocol.legacy_head(batch[0].text, a.item, it["relayId"]), a.item)
             if it["multi"]:
                 sender = (store.find_session(g, relay_name=it["sender"]) or {}).get("shortName", it["sender"])
                 texts = protocol.format_multiline_replies(item=a.item, sender=sender, original=a.original,
                                                           answered_at=answered_at, wait_user_text=it["text"],
                                                           source_relay_id=it["relayId"])
                 for short, text in texts.items():
-                    batch.append(Outgoing(store.find_session(g, short_name=short)["relayName"], text, a.item))
+                    to = store.find_session(g, short_name=short)["relayName"]
+                    if to in left:
+                        continue
+                    if to in legacy and it["relayId"] is not None:
+                        text = protocol.legacy_head(text, a.item, it["relayId"], multi_sender=it["sender"])
+                    batch.append(Outgoing(to, text, a.item))
             it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at})
             it["recipients"] = [o.to for o in batch]
             _set_status(doc, a.item, "forwarded", answered_at)

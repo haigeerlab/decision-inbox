@@ -21,9 +21,25 @@
     - 实测：在临时目录跑 `onboard enroll` 预览，退出码 0，输出和预期一致。
     - 全部测试：Ran 621 tests, OK
 
-- [ ] Task 3：输出旧写法；答复告知、多线事项跳过旧格式和已退出的会话
+- [x] Task 3：输出旧写法；答复告知、多线事项跳过旧格式和已退出的会话
   - 验收：Spec 验收 2、3、5
-  - 文件：`decision_inbox/protocol.py`、`decision_inbox/items.py`、`decision_inbox/hub.py`、相应测试
+  - 文件：`decision_inbox/protocol.py`、`decision_inbox/items.py`、`decision_inbox/hub.py`、`decision_inbox/store.py`、`tests/test_items.py`、`tests/test_hub.py`
+  - 记录（2026-10-18）：
+    - 先写用例：
+      - 旧格式线的普通答复，首行是「事项：#5990（hub 编号 N）」；
+      - 正式线的写法不变；
+      - 多线答复：旧格式线收到「事项：#5948（多线事项，发起方 coord；hub 编号 N）」，正式线照旧；
+      - 已退出的会话收不到多线答复；
+      - 「适用会话」里写了已退出的会话，按 `scope-session-unknown` 退回；
+      - 答复告知不发给旧格式线，也不发给已退出的会话。
+    - 先跑：5 个失败。
+    - 实现：
+      - `store.left_relays`、`store.legacy_relays`；
+      - `protocol.legacy_head`：只替换「事项：」这一行，其他字段沿用正式写法；
+      - `items.answer` 按收件人选择写法；
+      - 多线事项的范围核对把已退出的会话也算进去；
+      - `hub._notices` 过滤旧格式线和已退出的会话。
+    - 结果：Ran 627 tests, OK
 
 - [ ] Task 4：认旧编号；退回说明写双编号
   - 验收：Spec 验收 4

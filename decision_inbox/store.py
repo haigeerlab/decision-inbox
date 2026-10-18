@@ -357,6 +357,16 @@ class Group:
         return Transaction(self)
 
 
+def left_relays(group: Group) -> set[str]:
+    """Sessions that left the group (onboarding state); the hub sends them nothing (transition-compat)."""
+    return set(read_state(group, "onboarding").get("left", {}))
+
+
+def legacy_relays(group: Group) -> set[str]:
+    """Lines not migrated yet: answers use the old numbering (transition-compat)."""
+    return {e["relayName"] for e in roster(group) if e.get("legacyFormat")}
+
+
 def set_start_number(group: Group, n) -> None:
     with group.transaction() as tx:
         tx.set_start_number(n)

@@ -488,6 +488,27 @@ class AnswerNoticeTest(HubCase):
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
         self.assertIn("事项：#1（你的原消息 #4540）", body)
 
+    def test_no_notice_for_legacy_or_left_lines(self):
+        """transition-compat: the old rules never had 【答复告知】; a left session gets nothing."""
+        with self.g.transaction() as tx:
+            entry = dict(store.find_session(self.g, relay_name="fe-codex"), legacyFormat=True)
+            entry.pop("repo", None)
+            tx.replace_session(entry)
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual([s["kind"] for s in r.sends], ["answer"])
+        with self.g.transaction() as tx:
+            entry = dict(store.find_session(self.g, relay_name="fe-codex"))
+            entry.pop("legacyFormat")
+            entry["repo"] = "/tmp/fe"
+            tx.replace_session(entry)
+            doc = tx.read_state("onboarding")
+            doc.setdefault("left", {})["fe-codex"] = NOW
+            tx.write_state("onboarding", doc)
+        self.receive(message(1502, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "2 A", now=NOW)
+        self.assertEqual([s["kind"] for s in r.sends], ["answer"])
+
     def test_multiline_and_dev_items_not_copied(self):
         self.receive(message(1502, "fe-owner", MULTI))
         self.receive(message(1503, "api-codex", WAIT_USER))
