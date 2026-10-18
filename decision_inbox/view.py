@@ -184,6 +184,8 @@ def _review_lines(it: dict) -> list[str]:
     out = [f"审查：{label} · 详情：{it['no']} 详情"]
     if review.get("warn"):
         out += [f"  正文提到：{m}" for m in review.get("mentions", [])]
+    if it.get("writingNotes"):  # rehearsal2-fixes: shown to the user only
+        out.append("写法提示：" + "；".join(it["writingNotes"]))
     return out
 
 

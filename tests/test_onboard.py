@@ -981,3 +981,40 @@ class UnfinishedLeaveTest(TempHomeTestCase):
         self.assertEqual(out.warnings, [])
         out = onboard.leave("demo", "old-fe", project=None, confirm=False, now=NOW)
         self.assertEqual(out.warnings, [])
+
+
+class AllowIoTest(TempHomeTestCase):
+    """rehearsal2-fixes Task 3: the allowlist also lets the patrol write into the group's io/ (Edit rule)."""
+
+    def test_allow_adds_edit_rule_for_io(self):
+        hub_dir = self.home / "hubdir"
+        hub_dir.mkdir()
+        onboard.hub("g", "g-hub", "local_1", hub_dir, True, "2026-10-17T22:00:00+08:00")
+        out = onboard.allow("g", hub_dir, confirm=False)
+        rule = "Edit(/" + str(store.root_dir() / "g" / "io") + "/**)"
+        self.assertTrue(rule.startswith("Edit(//"))
+        self.assertIn(rule, out.added)
+
+
+class JoinReloadTest(OnboardCase):
+    """rehearsal2-fixes Task 5: join says a new session picks the block up; an unchanged file is not rewritten."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    join = JoinTest.join
+
+    def test_steps_say_open_a_new_session(self):
+        out = self.join(confirm=False)
+        self.assertTrue(any("新开的会话里才生效" in s for s in out.steps))
+
+    def test_unchanged_rules_file_not_rewritten(self):
+        import os
+        self.join()
+        path = self.project / "fe" / "AGENTS.md"
+        os.utime(path, (1_000_000_000, 1_000_000_000))
+        out = self.join(desktop_session=None, short_name="前端2")
+        self.assertFalse(out.changed)
+        self.assertEqual(path.stat().st_mtime, 1_000_000_000)
+        self.assertEqual(store.find_session(store.open_group("demo"), relay_name="fe-codex")["shortName"], "前端2")

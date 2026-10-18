@@ -115,9 +115,24 @@ def _busy(fact, now: datetime, also=()) -> bool:
 def _module_word(fact, now: datetime) -> str:
     if fact is None:
         return "无记录"
-    if fact.presence in ("offline", "unreachable"):
+    if fact.presence == "unreachable":
         return "掉线"
+    if fact.presence == "offline":  # the app put the session away; its coordinator wakes it (rehearsal2-fixes)
+        return "停着"
     return "在忙" if _busy(fact, now) else "停着"
+
+
+def _unreachable(fact, entry: dict) -> bool:
+    """掉线 only when nothing can reach the session (rehearsal2-fixes).
+
+    Claude's app stops an idle session's process (agent-relay reports `stopped`); a desktop
+    message wakes it, so it is 掉线 only without a desktop session or wake binding to wake it by.
+    """
+    if fact is None or fact.presence not in ("offline", "unreachable"):
+        return False
+    if fact.presence == "unreachable" or fact.host_app == "codex":
+        return True
+    return not (entry.get("desktopSession") or fact.wake_bound)
 
 
 def _crew_modules(read, relay, now: datetime) -> tuple:
@@ -132,9 +147,10 @@ def _facts(g, relay, maps, snap, crews=None, now: datetime | None = None) -> dic
     ticket_doc = store.read_state(g, "tickets").get("tickets", {})
     pending = items.pending(g)
     out = {}
+    left = store.left_relays(g)  # a session that left is no line any more (rehearsal2-fixes)
     for entry in store.roster(g):
         name = entry["relayName"]
-        if entry["role"] == "hub":
+        if entry["role"] == "hub" or name in left:
             continue
         fact = relay.agents.get(name) if relay is not None else None
         read = maps.get(name)
@@ -165,6 +181,8 @@ def _facts(g, relay, maps, snap, crews=None, now: datetime | None = None) -> dic
 
 
 def _is_working(f: _Facts, now: datetime) -> bool:
+    if f.fact is not None and f.fact.presence == "offline":  # its process is stopped (rehearsal2-fixes)
+        return False
     return _busy(f.fact, now, (f.changed,))
 
 
@@ -188,7 +206,7 @@ def _state(f: _Facts, now: datetime, stale=frozenset(), names: dict | None = Non
     Possibly stale tickets do not make a line blocked (relay-presence-and-doubt).
     """
     presence = f.fact.presence if f.fact is not None else None
-    if presence in ("offline", "unreachable"):
+    if _unreachable(f.fact, f.entry):
         return LineState("offline", "掉线")
     if presence == "needs-user":
         return LineState("needs-user", "等你确认")
@@ -275,8 +293,9 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
         if fact is None or not fact.waiting_count:
             continue
         if fact.presence in ("offline", "unreachable"):
-            out.append(Signal(4, "offline-backlog", (name,),
-                              f"{_short(f)} 掉线，有 {fact.waiting_count} 条消息送不进去"))
+            text = (f"{_short(f)} 掉线，有 {fact.waiting_count} 条消息送不进去" if _unreachable(fact, f.entry)
+                    else f"{_short(f)} 停着，有 {fact.waiting_count} 条消息等它")
+            out.append(Signal(4, "offline-backlog", (name,), text))
         elif fact.activity == "idle":
             out.append(Signal(5, "idle-backlog", (name,), f"{_short(f)} 空闲，有 {fact.waiting_count} 条消息没读"))
         elif fact.presence_since is not None:

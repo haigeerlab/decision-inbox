@@ -501,3 +501,58 @@ class LegacyFormatTest(ItemsCase):
         hint = next(h.text for h in r.hints if h.code == "auto-superseded")
         self.assertTrue(hint.startswith(f"#5990（hub 编号 {old}） 已被新事项自动取代"), hint)
         self.assertIn("【与 #5990 并行】", hint)
+
+
+class WritingNotesTest(TempHomeTestCase):
+    """rehearsal2-fixes Task 4 (user chose A): loose writing is noted for the user only, outside the contract."""
+
+    FIX = Path(__file__).resolve().parent / "fixtures" / "protocol"
+    CODES = ("missing-project", "reply-letter-only", "review-empty-advice", "brief-thin-batch")
+
+    def notes(self, text):
+        return [code for code, _ in items.writing_notes(protocol.parse(text))]
+
+    def test_rehearsal_batch_sample(self):
+        text = (self.FIX.parent / "rehearsal" / "wait-user-batch-thin.txt").read_text(encoding="utf-8")
+        msg = protocol.parse(text)
+        self.assertEqual(([p.code for p in msg.problems], [h.code for h in msg.hints]), ([], []))  # contract unchanged
+        self.assertEqual(self.notes(text), list(self.CODES))
+
+    def test_complete_sample_has_no_notes(self):
+        self.assertEqual(self.notes((self.FIX / "wait-user.txt").read_text(encoding="utf-8")), [])
+
+    def test_review_forms(self):
+        base = (self.FIX / "wait-user.txt").read_text(encoding="utf-8").replace(
+            "选项与我的建议：", "架构审查：{}\n选项与我的建议：")
+        self.assertNotIn("review-empty-advice", self.notes(base.format("通过，附建议1条（金额字段改成分）")))
+        self.assertNotIn("review-empty-advice", self.notes(base.format("通过，附建议1条（日志）（#41）")))
+        self.assertIn("review-empty-advice", self.notes(base.format("通过，附建议2条（R-3）")))
+        self.assertNotIn("review-empty-advice", self.notes(base.format("通过")))
+
+    def test_reply_letter_forms(self):
+        base = (self.FIX / "wait-user.txt").read_text(encoding="utf-8")
+        for reply in ("A", " B ", "12 A"):
+            with self.subTest(reply=reply):
+                self.assertIn("reply-letter-only", self.notes(base.replace("你该回：12 A 先接微信支付", f"你该回：{reply}")))
+        self.assertNotIn("reply-letter-only", self.notes(base.replace("你该回：12 A 先接微信支付", "你该回：A 先接微信支付")))
+
+    def test_batch_brief_rich_enough(self):
+        text = (self.FIX / "wait-user.txt").read_text(encoding="utf-8").replace(
+            "要你决定：支付页先接哪种支付方式", "要你决定：批准 #4、#5 吗").replace(
+            "要点：Mock 已就绪，两种方式工作量差一倍。", "要点：\n- #4 做什么\n- #4 不做什么\n- #5 步骤\n- #5 风险")
+        self.assertNotIn("brief-thin-batch", self.notes(text))
+
+    def test_notes_kept_on_item_and_shown_on_card(self):
+        from decision_inbox import view
+        g, _ = store.init_group("demo")
+        with g.transaction() as tx:
+            tx.add_session({"relayName": "coord", "shortName": "并行协调", "role": "dev", "line": ["main"],
+                            "host": "claude-desktop", "repo": "/tmp/coord"})
+        text = (self.FIX.parent / "rehearsal" / "wait-user-batch-thin.txt").read_text(encoding="utf-8")
+        r = items.receive(g, text, sender="coord", relay_id=6546, received_at="2026-10-18T19:40:01+08:00")
+        self.assertTrue(r.accepted)
+        self.assertEqual(r.return_text, None)
+        it = next(x for x in items.pending(g))
+        card = view._item_card(g, "2026-10-18T19:45:00+08:00", it)
+        self.assertIn("写法提示：缺「项目：」", card)
+        self.assertIn("「你该回」只写了选项字母", card)

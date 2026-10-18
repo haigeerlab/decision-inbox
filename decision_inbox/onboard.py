@@ -359,13 +359,15 @@ def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> N
         tx.write_state(DOMAIN, doc)
         tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"],
                         data={"role": entry["role"], "file": str(rules), "at": now})
-    store._atomic_write_bytes(rules, after.encode("utf-8"))
+    if not rules.is_file() or rules.read_text(encoding="utf-8") != after:  # unchanged: leave it be (rehearsal2-fixes)
+        store._atomic_write_bytes(rules, after.encode("utf-8"))
 
 
 def _register_step(relay_name: str) -> str:
     return f"在 agent-relay 登记本会话：bridge_register，agent 为 {relay_name}，wake: \"auto\"（已登记过也再登记一次，绑定唤醒）"
 
 
+RELOAD_STEP = "约定块要在新开的会话里才生效：已经开着的会话，请新开一次再继续"  # rehearsal2-fixes
 HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件自带的停止钩子"
              "（Codex 在命令行版里按提示信任；Claude Code 在启用插件后按它的提示确认）")
 
@@ -540,6 +542,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         steps.append("用桌面版的 get_session(\"self\") 取得本会话编号（local_ 开头），带上 --desktop-session "
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
+    steps.append(RELOAD_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
     if local_rules:
         if exclude is not None:
@@ -739,8 +742,10 @@ class Allow:
     present: tuple[str, ...]
 
 
-def allow_entries() -> list[str]:
-    return [f"Bash({install.cli()}:*)", *(f"mcp__agent-relay__{t}" for t in RELAY_TOOLS), *DESKTOP_TOOLS]
+def allow_entries(group: str) -> list[str]:
+    # Edit rules cover file writes; "//" anchors an absolute path (Claude Code permissions docs).
+    io = "Edit(/" + str(store.root_dir() / group / "io") + "/**)"
+    return [f"Bash({install.cli()}:*)", *(f"mcp__agent-relay__{t}" for t in RELAY_TOOLS), *DESKTOP_TOOLS, io]
 
 
 def allow(group: str, project, confirm: bool) -> Allow:
@@ -755,7 +760,7 @@ def allow(group: str, project, confirm: bool) -> Allow:
             or not isinstance(doc.get("permissions", {}).get("allow", []), list):
         raise JoinError(f"{path} 的格式不是预期的设置文件，没有改它")
     current = list(doc.get("permissions", {}).get("allow", []))
-    wanted = allow_entries()
+    wanted = allow_entries(group)
     added = tuple(e for e in wanted if e not in current)
     out = Allow(path, added, tuple(e for e in wanted if e in current))
     if confirm and added:

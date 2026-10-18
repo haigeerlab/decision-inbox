@@ -1,3 +1,4 @@
+from pathlib import Path
 import hashlib
 import unittest
 from datetime import datetime, timedelta
@@ -375,7 +376,7 @@ class CommandLineTest(PatrolCase):
         code, out, _ = self.run_cli("patrol", "prompt", "demo")
         self.assertEqual(code, 0)
         for needle in ("bridge_agents", "patrol plan demo", "patrol record demo", "bridge_send", "send_message",
-                       "display notification", "wake", "owner-alert", "notify"):
+                       "notify \"<text>\"", "wake", "owner-alert", "/io/"):
             self.assertIn(needle, out)
         self.assertEqual(self.run_cli("patrol", "plan", "nope", "--agents", "x", "--out", "y")[0], 2)
         self.assertEqual(self.run_cli("patrol", "prompt", "nope")[0], 2)
@@ -464,3 +465,47 @@ class DoubtNoticeTest(PatrolCase):
         self.assertEqual([a for a in again.actions if a.id.startswith("notify:doubt:")], [])
         new = self.run_round(10, [fe([8, 9])])
         self.assertEqual(len([a for a in new.actions if a.id.startswith("notify:doubt:")]), 1)
+
+
+class PromptPermissionTest(TempHomeTestCase):
+    """rehearsal2-fixes Task 3: the patrol writes only into the group's io/ and notifies through the CLI."""
+
+    def test_prompt_uses_group_io_and_cli_notify(self):
+        text = patrol.prompt("demo", cli="/x/decision-inbox")
+        io = str(store.root_dir() / "demo" / "io")
+        self.assertIn(f"{io}/decision-inbox-demo-agents.json", text)
+        self.assertIn(f"--out {io}/decision-inbox-demo-plan.json", text)
+        self.assertNotIn("$TMPDIR", text)
+        self.assertIn('/x/decision-inbox notify "<text>"', text)
+        self.assertNotIn("osascript", text)
+
+
+class NotifyCommandTest(TempHomeTestCase):
+    """rehearsal2-fixes Task 3: `decision-inbox notify` passes the text as an argument, never as script."""
+
+    def test_notify_passes_text_as_argv(self):
+        import os, stat, subprocess, sys
+        log = self.home / "args.txt"
+        fake = self.home / "fake-osascript"
+        fake.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {log}\n", encoding="utf-8")
+        fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+        env = dict(os.environ, DECISION_INBOX_OSASCRIPT=str(fake), DECISION_INBOX_HOME=str(self.home / ".di"))
+        text = '负责人 "停着"\'; do shell script "x"'
+        root = Path(__file__).resolve().parent.parent
+        r = subprocess.run([sys.executable, "-m", "decision_inbox", "notify", text], cwd=root, env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        args = log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(args[-1], text)
+        self.assertNotIn(text, "\n".join(args[:-1]))
+
+    def test_notify_failure_exits_nonzero(self):
+        import os, subprocess, sys
+        env = dict(os.environ, DECISION_INBOX_OSASCRIPT="/nonexistent/osascript")
+        root = Path(__file__).resolve().parent.parent
+        r = subprocess.run([sys.executable, "-m", "decision_inbox", "notify", "hi"], cwd=root, env=env,
+                           capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        r = subprocess.run([sys.executable, "-m", "decision_inbox", "notify"], cwd=root, env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)

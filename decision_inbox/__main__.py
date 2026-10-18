@@ -11,6 +11,7 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
          "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
+         "      python3 -m decision_inbox notify <文字>\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
          "      python3 -m decision_inbox onboard <hub|join|allow|task|leave|teardown> <协作组> ...\n"
@@ -58,6 +59,26 @@ def _read(path: str) -> str:
         return Path(path).read_text(encoding="utf-8")
     except OSError as e:
         raise _RelayUnreadable(f"读不出 agent-relay 原文文件 {path}：{e}") from None
+
+
+def _notify(argv: list[str]) -> int:
+    """A desktop notification for the patrol: the text is an argument, never script (rehearsal2-fixes)."""
+    if len(argv) != 1 or not argv[0].strip():
+        print("用法：decision-inbox notify <文字>", file=sys.stderr)
+        return 2
+    import subprocess
+    osascript = os.environ.get("DECISION_INBOX_OSASCRIPT", "osascript")
+    script = ["-e", "on run argv", "-e", 'display notification (item 1 of argv) with title "decision-inbox"',
+              "-e", "end run"]
+    try:
+        r = subprocess.run([osascript, *script, argv[0]], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"桌面通知没发出去：{e}", file=sys.stderr)
+        return 1
+    if r.returncode != 0:
+        print(f"桌面通知没发出去：{r.stderr.strip() or r.returncode}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _disposable_roots() -> list[Path]:
@@ -611,6 +632,8 @@ def main(argv: list[str]) -> int:
         return _view(argv[1:])
     if argv[:1] == ["patrol"]:
         return _patrol(argv[1:])
+    if argv[:1] == ["notify"]:
+        return _notify(argv[1:])
     if argv[:1] == ["hook"]:
         return _hook(argv[1:])
     if argv[:1] == ["query"]:

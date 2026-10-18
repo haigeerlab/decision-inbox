@@ -411,7 +411,7 @@ class CrewLineTest(HealthCase):
                                  agent("shop-b", state="stopped"),
                                  with_activity(agent("shop-c", activity_ago=1), "busy")))
         self.assertEqual(r.lines["coord"].text,
-                         "阻塞：等 API（模块 a 停着·构建、b 掉线·等合并、c 挂起：等接口）")
+                         "阻塞：等 API（模块 a 停着·构建、b 停着·等合并、c 挂起：等接口）")
         self.assertIn("all-waiting", [x.code for x in r.signals])
 
     def test_unknown_output(self):
@@ -447,3 +447,86 @@ class CrewLineTest(HealthCase):
         self.wait("coord", "API")
         r = health.assess(self.g, now=NOW, relay=snapshot(*self.quiet()), maps={})
         self.assertEqual(r.lines["coord"].text, "阻塞：等 API")
+
+
+class LeftEntryTest(HealthCase):
+    """rehearsal2-fixes Task 1: a session that left is not a line any more."""
+
+    def leave(self, name):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc.setdefault("left", {})[name] = at(60)
+            tx.write_state("onboarding", doc)
+
+    def test_left_session_has_no_line_or_signal(self):
+        self.leave("api")
+        r = self.assess(snapshot(agent("api", activity_ago=1, waiting=(3, ["fe"], 30), state="stopped")))
+        self.assertNotIn("api", r.lines)
+        self.assertFalse([s for s in r.signals if "api" in s.sessions])
+        self.assertIn("fe", r.lines)
+
+    def test_wait_on_left_session_still_names_it(self):
+        self.leave("api")
+        self.wait(target="API")
+        r = self.assess(snapshot(agent("fe", activity_ago=1)))
+        self.assertEqual(r.lines["fe"].text, "阻塞：等 API")
+
+
+class StoppedTest(HealthCase):
+    """rehearsal2-fixes Task 2: a Claude session the app put away is not 掉线 while it can be woken."""
+
+    def word(self, r, name):
+        return r.lines[name].word, r.lines[name].text
+
+    def claude(self, name, state="stopped", wake=False, **kw):
+        a = agent(name, state=state, **kw)
+        if wake:
+            a["wake"] = {"app": "claude", "sessionId": name}
+        return a
+
+    def set_desktop(self, name):
+        with self.g.transaction() as tx:
+            entry = dict(store.find_session(self.g, relay_name=name), desktopSession=f"local_{name}")
+            tx.replace_session(entry)
+
+    def test_stopped_with_desktop_session_is_not_offline(self):
+        self.set_desktop("owner")
+        r = self.assess(snapshot(self.claude("owner", activity_ago=3)))
+        self.assertEqual(self.word(r, "owner"), ("idle", "3 分钟无活动"))
+
+    def test_stopped_with_wake_binding_is_not_offline(self):
+        r = self.assess(snapshot(self.claude("owner", wake=True, activity_ago=3)))
+        self.assertNotEqual(r.lines["owner"].word, "offline")
+
+    def test_stopped_unwakeable_is_offline(self):
+        r = self.assess(snapshot(self.claude("owner", activity_ago=3)))
+        self.assertEqual(self.word(r, "owner"), ("offline", "掉线"))
+
+    def test_unreachable_is_offline(self):
+        self.set_desktop("owner")
+        r = self.assess(snapshot(self.claude("owner", state="unreachable", wake=True)))
+        self.assertEqual(self.word(r, "owner"), ("offline", "掉线"))
+
+    def test_codex_stopped_stays_offline(self):
+        a = agent("fe", app="codex", state="stopped")
+        a["wake"] = {"app": "codex", "sessionId": "fe"}
+        r = self.assess(snapshot(a))
+        self.assertEqual(self.word(r, "fe"), ("offline", "掉线"))
+
+    def test_stopped_wakeable_still_blocked(self):
+        self.set_desktop("owner")
+        self.wait(waiter="owner", target="API")
+        r = self.assess(snapshot(self.claude("owner", activity_ago=1)))
+        self.assertEqual(r.lines["owner"].word, "blocked")
+
+    def test_backlog_text_for_wakeable_session(self):
+        self.set_desktop("owner")
+        r = self.assess(snapshot(self.claude("owner", waiting=(2, ["fe"], 30))))
+        s = next(x for x in r.signals if x.code == "offline-backlog")
+        self.assertEqual(s.text, "前端负责人 停着，有 2 条消息等它")
+
+    def test_module_word(self):
+        now = health._instant(NOW)
+        self.assertEqual(health._module_word(snapshot(self.claude("m", wake=True)).agents["m"], now), "停着")
+        self.assertEqual(health._module_word(snapshot(self.claude("m")).agents["m"], now), "停着")
+        self.assertEqual(health._module_word(snapshot(self.claude("m", state="unreachable")).agents["m"], now), "掉线")

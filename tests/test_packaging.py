@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.19")
+        self.assertEqual(claude["version"], "0.0.20")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -106,7 +106,7 @@ class HookCommandTest(TempHomeTestCase):
 COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown")
 QUERIES = ("lines", "flow", "item", "map")
 CHANGES = ("hub-setup", "join", "leave", "teardown")
-SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor"}
+SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor", "notify"}
 
 
 def frontmatter(text):
