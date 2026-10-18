@@ -115,8 +115,8 @@ def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
                      for it in items.by_status(g, *items.FINAL, "pending", *items.PROGRESS))
         if raised:
             continue
-        link = (f" {DESKTOP_LINK.format(session=entry['desktopSession'])}" if entry.get("desktopSession")
-                else "（Codex 任务）")
+        where = (f"打开 {DESKTOP_LINK.format(session=entry['desktopSession'])}" if entry.get("desktopSession")
+                 else "去 Codex 打开它的任务")
         rows.append(f"⚠ 停滞：{entry['shortName']} 被问了 {int(_hours(now, at) * 60)} 分钟还没抛事项。"
-                    f"去{entry['shortName']}{link}处理：A 挂起当前模块，先开可开工的模块；B 换做法；C 继续等")
+                    f"请去「{entry['shortName']}」处理（{where}）：A 挂起当前模块，先开可开工的模块；B 换做法；C 继续等")
     return rows
