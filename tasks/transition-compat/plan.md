@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: transition-compat
 
 > 依据：`spec/transition-compat.md`（用户 2026-10-18 批准）。任务清单：`tasks/transition-compat/todo.md`。分支 `claude/transition-compat`。

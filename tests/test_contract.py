@@ -11,14 +11,23 @@ from pathlib import Path
 
 from decision_inbox import protocol
 
-VERSION = "v1.5"
+VERSION = "v1.7"
 HERE = Path(__file__).resolve().parent
 CONTRACT = HERE / "fixtures" / "session-protocol" / VERSION
 ORIGINAL = HERE / "fixtures" / "protocol"
 # Kinds this plugin only generates (the hub sends them, other sessions read them).
 GENERATE_ONLY = {"answer-notice"}
 # Kinds added in v1.1 for module-crew; this plugin neither parses nor generates them (protocol-contract-v1-3).
-NOT_PARSED = {"review-request", "shared-change-request", "coordination-notice"}
+NOT_PARSED = {"review-request", "shared-change-request", "coordination-notice",
+              # v1.6: owner -> dev/coordinator; the hub never receives it (transition-compat)
+              "owner-handoff"}
+# v1.6: a coordinator relaying the hub's answer to its own dev lines; the hub never receives these.
+NOT_PARSED_PREFIX = ("user-reply/relay-",)
+
+
+def skipped(path) -> bool:
+    name = path.relative_to(CONTRACT).as_posix()
+    return path.parent.name in NOT_PARSED or name.startswith(NOT_PARSED_PREFIX)
 
 
 def to_contract(m: protocol.Message) -> dict:
@@ -82,21 +91,21 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "246e138"])
+                         ["session-protocol", VERSION, "1e14a49"])
 
 
 class ConformanceTest(unittest.TestCase):
     def test_counts(self):
         docs = [json.loads(p.read_text(encoding="utf-8")) for p in cases()]
-        self.assertEqual(sum("parse" in d for d in docs), 55)
+        self.assertEqual(sum("parse" in d for d in docs), 63)
         self.assertEqual(sum("generate" in d for d in docs), 6)
-        skipped = [p for p in cases() if p.parent.name in NOT_PARSED]
-        self.assertEqual(len(skipped), 18, "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")
+        self.assertEqual(len([p for p in cases() if skipped(p)]), 26,
+                         "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")
 
     def test_parse(self):
         for path in cases():
             expected = json.loads(path.read_text(encoding="utf-8")).get("parse")
-            if expected is None or path.parent.name in GENERATE_ONLY | NOT_PARSED:
+            if expected is None or path.parent.name in GENERATE_ONLY or skipped(path):
                 continue
             got = to_contract(protocol.parse(path.with_suffix(".txt").read_text(encoding="utf-8")))
             for key, want in expected.items():
@@ -106,7 +115,7 @@ class ConformanceTest(unittest.TestCase):
     def test_generate(self):
         for path in cases():
             spec = json.loads(path.read_text(encoding="utf-8")).get("generate")
-            if spec is None or path.parent.name in NOT_PARSED:
+            if spec is None or skipped(path):
                 continue
             with self.subTest(sample=path.relative_to(CONTRACT).as_posix()):
                 self.assertEqual(generate(spec["kind"], spec["inputs"]),
