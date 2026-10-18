@@ -51,7 +51,12 @@ def _join_command(group: str, entry: dict) -> str:
     cli = install.cli()
     if entry["role"] == "hub":
         return f"{cli} onboard hub {group} …（加 --confirm）"
-    return f"{cli} onboard join {group} --role {entry['role']} --relay-name {entry['relayName']} …（加 --confirm）"
+    flags = "".join(f" {flag}" for key, flag in (("checkpointAuthority", "--checkpoint-authority"),
+                                                   ("crewCoordinator", "--crew-coordinator"),
+                                                   ("localRules", "--local-rules"))
+                    if entry.get(key))
+    return (f"{cli} onboard join {group} --role {entry['role']} --relay-name {entry['relayName']}{flags} "
+            "…（加 --confirm）")
 
 
 def _conventions(g: store.Group, group: str) -> list[Check]:
@@ -73,7 +78,8 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
             out.append(Check(name, "bad", "本插件", f"规则文件读不出：{rules}（{e}）", _join_command(group, entry)))
             continue
         current = _block_in(text)
-        want = onboard.block(entry["role"], group, hub_relay, bool(entry.get("checkpointAuthority")))
+        want = onboard.block(entry["role"], group, hub_relay, bool(entry.get("checkpointAuthority")),
+                             bool(entry.get("crewCoordinator")))
         if current is None:
             out.append(Check(name, "bad", "本插件", f"{rules} 里没有 decision-inbox 约定块", _join_command(group, entry)))
         elif current != want:

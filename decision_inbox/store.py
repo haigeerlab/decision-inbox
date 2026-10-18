@@ -30,6 +30,13 @@ class StoreCorrupt(StoreError):
     """A state file exists but cannot be trusted; never overwrite it."""
 
 
+class StartNumberError(StoreError):
+    """The start number cannot be set (bad value, or numbers already given out); nothing changed."""
+
+
+MAX_START_NUMBER = 1_000_000
+
+
 class InvalidSession(StoreError):
     """A roster entry breaks the roster rules."""
 
@@ -64,6 +71,13 @@ def _validate_session(entry: dict, others: list[dict]) -> dict:
             raise bad("desktopSession 必须是桌面版会话编号（local_ 开头）")
     if role == "dev" and (len(line) != 1 or repo is None):
         raise bad("开发线必须恰好属于一条线，并填写 repo")
+    for flag in ("crewCoordinator", "localRules"):
+        if flag in entry and not isinstance(entry[flag], bool):
+            raise bad(f"{flag} 只能是 true 或 false")
+    if entry.get("crewCoordinator") and role != "dev":
+        raise bad("只有开发线能标为并行开发协调会话")
+    if entry.get("localRules") and host != "claude-desktop":
+        raise bad("只有 Claude 桌面版的会话能把约定块写进 CLAUDE.local.md")
     if role == "owner" and not line:
         raise bad("负责人至少负责一条线")
     if role in ("hub", "coordinator") and line:
@@ -245,6 +259,19 @@ class Transaction:
             raise TypeError("state document must be a dict")
         self._states[domain] = doc
 
+    def set_start_number(self, n) -> None:
+        """hub-cutover-settings: number from `n`, only while nothing has been numbered yet."""
+        if (problem := can_set_start_number_value(n)) is not None:
+            raise StartNumberError(problem)
+        if self._counter is None:
+            self._counter = _read_json(self.group.path / "counter.json")
+        if self._counter.get("next") != self._counter.get("start", 1):
+            raise StartNumberError(f"协作组 {self.group.name} 已经编过号（下一个是 #{self._counter.get('next')}），"
+                                   "不能再改起始编号")
+        self._counter["next"] = n
+        self._counter["start"] = n
+        self._counter_dirty = True
+
     def allocate_number(self) -> int:
         if self._counter is None:
             self._counter = _read_json(self.group.path / "counter.json")
@@ -326,6 +353,27 @@ class Group:
 
     def transaction(self) -> Transaction:
         return Transaction(self)
+
+
+def set_start_number(group: Group, n) -> None:
+    with group.transaction() as tx:
+        tx.set_start_number(n)
+
+
+def can_set_start_number_value(n) -> str | None:
+    if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= MAX_START_NUMBER:
+        return f"起始编号要是 1 到 {MAX_START_NUMBER} 的整数，收到 {n!r}"
+    return None
+
+
+def can_set_start_number(group: Group, n) -> str | None:
+    """Why `n` cannot be the start number of `group`, or None when it can (read-only)."""
+    if (problem := can_set_start_number_value(n)) is not None:
+        return problem
+    counter = _read_json(group.path / "counter.json")
+    if counter.get("next") != counter.get("start", 1):
+        return f"协作组 {group.name} 已经编过号（下一个是 #{counter.get('next')}），不能再改起始编号"
+    return None
 
 
 def check(group: Group) -> dict:

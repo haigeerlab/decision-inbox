@@ -231,6 +231,19 @@ API 已交付 Mock，继续做支付页。
 ROLE_NAMES = {"dev": "开发线", "owner": "负责人", "coordinator": "总协调"}
 _ROLE_RULES = {"dev": _DEV, "owner": _OWNER, "coordinator": _COORDINATOR}
 
+# crew-coordinator-seam: a module-crew coordination session joined as this line's dev.
+_CREW_COORDINATOR = """
+### 并行开发协调会话（用户在接入时确认）
+
+- 你代表这条线和收件枢纽说话，模块会话只和你说话。
+- 模块在干活、你在等它们时收工，不用抛【等待用户】。
+- 几个模块的事合成一项抛出，或者第一行写【与 #旧编号 并行】；否则后发的会默认取代先发的。
+- 收到【用户答复】、转给模块、模块开工之后，立刻发【已恢复】，结束行写这个编号；不用等模块做完。
+- 跨线请求每个模块开一张【等待其他会话】，「等什么」开头写模块 id。
+- 【答复告知】只记录，不执行。
+- 分工：对用户和收件枢纽的事，以本约定块为准；模块之间的事，以 crew-coordinator skill 为准；谁的话算用户决定，以 session-protocol 契约为准。
+"""
+
 
 _AUTHORITY = """### 检查点答复即授权（用户在接入时选择打开）
 
@@ -241,7 +254,8 @@ _AUTHORITY = """### 检查点答复即授权（用户在接入时选择打开）
 """
 
 
-def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = False) -> str:
+def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = False,
+          crew_coordinator: bool = False) -> str:
     """The convention block for one role, wrapped in BEGIN/END markers.
 
     `checkpoint_authority` adds the opt-in section that lets a relayed checkpoint answer
@@ -256,12 +270,43 @@ def block(role: str, group: str, hub_relay: str, checkpoint_authority: bool = Fa
     authority = _AUTHORITY.format(hub=hub_relay) if checkpoint_authority else ""
     body = _COMMON.format(group=group, hub=hub_relay, role_name=ROLE_NAMES[role], templates=templates,
                           authority=authority)
-    return (f"<!-- BEGIN decision-inbox {role} -->\n{body}\n{_ROLE_RULES[role]}"
+    crew = _CREW_COORDINATOR if crew_coordinator and role == "dev" else ""
+    return (f"<!-- BEGIN decision-inbox {role} -->\n{body}\n{_ROLE_RULES[role]}{crew}"
             f"<!-- END decision-inbox {role} -->\n")
 
 
 DOMAIN = "onboarding"
 RULES_FILES = {"claude-desktop": "CLAUDE.md", "codex-desktop": "AGENTS.md"}
+LOCAL_RULES = "CLAUDE.local.md"  # crew-coordinator-seam: Claude loads it beside CLAUDE.md; kept out of git
+
+
+def rules_path(entry: dict, project) -> Path:
+    """The rules file a session's block lives in under `project`."""
+    name = LOCAL_RULES if entry.get("localRules") else RULES_FILES[entry["host"]]
+    return Path(os.path.abspath(project)) / name
+
+
+def _git_exclude(home: str) -> Path | None:
+    """info/exclude of the repository `home` belongs to (shared by its worktrees), or None outside git."""
+    import subprocess
+    try:
+        done = subprocess.run(["git", "-C", home, "rev-parse", "--git-common-dir"], capture_output=True, text=True,
+                              timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0 or not done.stdout.strip():
+        return None
+    common = Path(done.stdout.strip())
+    return (common if common.is_absolute() else Path(home) / common) / "info" / "exclude"
+
+
+def _git_ignored(home: str, name: str) -> bool:
+    import subprocess
+    try:
+        return subprocess.run(["git", "-C", home, "check-ignore", "-q", name], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 PATROL_CRON = "*/5 * * * *"
 
 
@@ -318,12 +363,22 @@ HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件
              "（Codex 在命令行版里按提示信任；Claude Code 在启用插件后按它的提示确认）")
 
 
-def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str) -> Outcome:
+def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str,
+        start_number: int | None = None) -> Outcome:
     """The hub joins first: group, roster entry, its own block, and the patrol task to create."""
     store.validate_name(group)
     entry = {"relayName": relay_name, "shortName": "收件枢纽", "role": "hub", "line": [],
              "host": "claude-desktop", "desktopSession": desktop_session}
     _check_entry(group, entry)
+    if start_number is not None:
+        try:
+            existing = store.open_group(group)
+        except store.GroupNotFound:
+            existing = None
+        problem = (store.can_set_start_number(existing, start_number) if existing is not None
+                   else store.can_set_start_number_value(start_number))
+        if problem:
+            raise JoinError(problem)
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
@@ -342,9 +397,13 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
         "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
     ]
+    if start_number is not None:
+        steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
     out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group))
     if confirm:
         g, _ = store.init_group(group)
+        if start_number is not None:
+            store.set_start_number(g, start_number)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         _commit(g, entry, rules, after, now)
         _backfill_patrol_time(g, now)
@@ -432,7 +491,8 @@ def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[
 
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
          project, reviewer, nodes, confirm: bool, now: str, session_cwd=None,
-         checkpoint_authority: bool = False) -> Outcome:
+         checkpoint_authority: bool = False, crew_coordinator: bool = False,
+         local_rules: bool = False) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
@@ -446,17 +506,40 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         entry["desktopSession"] = desktop_session
     if checkpoint_authority:
         entry["checkpointAuthority"] = True
+    if crew_coordinator:
+        if role != "dev":
+            raise JoinError("--crew-coordinator 只能和 --role dev 一起用：协调会话按这条线的开发线接入")
+        entry["crewCoordinator"] = True
+    if local_rules:
+        if host != "claude-desktop":
+            raise JoinError("--local-rules 只用于 Claude 桌面版：Codex 不读 CLAUDE.local.md")
+        entry["localRules"] = True
     _check_entry(group, entry)
     _check_reviewer(g, role, reviewer, nodes)
-    rules = Path(home) / RULES_FILES[host]
+    rules = rules_path(entry, home)
     before = _read(rules)
-    after = place(before, role, block(role, group, hub_relay, checkpoint_authority))
+    after = place(before, role, block(role, group, hub_relay, checkpoint_authority, crew_coordinator))
     steps = [_register_step(relay_name)]
+    exclude = None
+    if local_rules:
+        found = _git_exclude(home)
+        if found is not None and not _git_ignored(home, LOCAL_RULES):
+            exclude = found
+        if (Path(home) / "AGENTS.md").is_file() and not (Path(home) / "CLAUDE.md").is_file():
+            agents_warning = "加了 CLAUDE.local.md 之后，Claude 默认不再读 AGENTS.md（项目里没有 CLAUDE.md）"
+        else:
+            agents_warning = None
     if host == "claude-desktop" and not desktop_session:
         steps.append("用桌面版的 get_session(\"self\") 取得本会话编号（local_ 开头），带上 --desktop-session "
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
+    if local_rules:
+        if exclude is not None:
+            out.warnings.append(f"{LOCAL_RULES} 还没被 git 忽略：确认时在 {exclude} 加一行 {LOCAL_RULES}"
+                                "（git 的 info/exclude，只影响本机，不改仓库里的文件）")
+        if agents_warning:
+            out.warnings.append(agents_warning)
     if (word := stricter_rule(before)) is not None:
         out.warnings.append(f"项目规则比约定块默认值更严格，以项目规则为准（规则文件里有「{word}」）")
     if host == "codex-desktop":
@@ -470,6 +553,8 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         install.write_shim(install.plugin_root())
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
+        if exclude is not None:
+            _add_exclude(g, relay_name, exclude)
     return out
 
 
@@ -488,7 +573,7 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
     """Strip the block from the rules file; the roster and every state file stay (spec 已定事项 2)."""
     recorded = store.read_state(g, DOMAIN).get("files", {}).get(entry["relayName"])
     if project is not None:
-        rules = Path(os.path.abspath(project)) / RULES_FILES[entry["host"]]
+        rules = rules_path(entry, project)
     elif recorded:
         rules = Path(recorded)
     else:
@@ -510,7 +595,37 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
             doc.setdefault("left", {})[entry["relayName"]] = now
             tx.write_state(DOMAIN, doc)
             tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
+        _drop_exclude(g, entry["relayName"])
     return out
+
+
+def _add_exclude(g: store.Group, relay_name: str, exclude: Path) -> None:
+    """Append the one line, once, and remember that this plugin added it."""
+    text = _read(exclude)
+    if LOCAL_RULES not in text.splitlines():
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        store._atomic_write_bytes(exclude, ((text if not text or text.endswith("\n") else text + "\n")
+                                            + LOCAL_RULES + "\n").encode("utf-8"))
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        doc.setdefault("excludeAdded", {})[relay_name] = str(exclude)
+        tx.write_state(DOMAIN, doc)
+
+
+def _drop_exclude(g: store.Group, relay_name: str) -> None:
+    """Remove the line this plugin added, unless another joined session still relies on it."""
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        added = doc.get("excludeAdded", {})
+        path = added.pop(relay_name, None)
+        tx.write_state(DOMAIN, doc)
+    if path is None or path in added.values():
+        return
+    exclude = Path(path)
+    lines = _read(exclude).splitlines(keepends=True)
+    kept = [line for line in lines if line.rstrip("\n") != LOCAL_RULES]
+    if kept != lines:
+        store._atomic_write_bytes(exclude, "".join(kept).encode("utf-8"))
 
 
 def _drop_created_rules(rules: Path) -> None:

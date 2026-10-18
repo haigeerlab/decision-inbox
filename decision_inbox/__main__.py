@@ -464,6 +464,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--relay-name", required=True)
     p.add_argument("--desktop-session", required=True)
     p.add_argument("--project", default=".")
+    p.add_argument("--start-number", type=int)
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("join")
     p.add_argument("group")
@@ -478,6 +479,8 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--nodes", default="")
     p.add_argument("--session-cwd")
     p.add_argument("--checkpoint-authority", action="store_true")
+    p.add_argument("--crew-coordinator", action="store_true")
+    p.add_argument("--local-rules", action="store_true")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("allow")
     p.add_argument("group")
@@ -500,12 +503,14 @@ def _onboard(argv: list[str]) -> int:
     now = store.now()
     try:
         if args.command == "hub":
-            out = onboard.hub(args.group, args.relay_name, args.desktop_session, args.project, args.confirm, now)
+            out = onboard.hub(args.group, args.relay_name, args.desktop_session, args.project, args.confirm, now,
+                              start_number=args.start_number)
         elif args.command == "join":
             nodes = [n for n in args.nodes.split(",") if n]
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
-                               session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority)
+                               session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
+                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules)
         elif args.command == "allow":
             out = onboard.allow(args.group, args.project, args.confirm)
             print(f"设置文件：{out.path}")

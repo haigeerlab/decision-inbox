@@ -113,3 +113,33 @@ class ShowTest(TempHomeTestCase):
             tx.append_event("tickets.created", ref=43, actor="API")
             tx.write_state("tickets", tx.read_state("tickets"))
         self.assertEqual(store.read_state(g, "tickets")["lastSeq"], 43)
+
+
+class StartNumberTest(TempHomeTestCase):
+    """hub-cutover-settings: a new group may start numbering at N, only before any number is given out."""
+
+    def allocate(self, g):
+        with g.transaction() as tx:
+            return tx.allocate_number()
+
+    def test_start_then_allocate(self):
+        g, _ = store.init_group("demo")
+        store.set_start_number(g, 1001)
+        store.set_start_number(g, 1001)  # a rerun before any number is fine
+        self.assertEqual([self.allocate(g), self.allocate(g)], [1001, 1002])
+
+    def test_refused_once_numbers_are_given_out(self):
+        g, _ = store.init_group("demo")
+        self.allocate(g)
+        before = (g.path / "counter.json").read_bytes()
+        with self.assertRaises(store.StartNumberError):
+            store.set_start_number(g, 1001)
+        self.assertEqual((g.path / "counter.json").read_bytes(), before)
+
+    def test_bad_values(self):
+        g, _ = store.init_group("demo")
+        for bad in (0, -5, 1000001, "1001", 10.5, True):
+            with self.subTest(bad=bad):
+                with self.assertRaises(store.StartNumberError):
+                    store.set_start_number(g, bad)
+        self.assertEqual(self.allocate(g), 1)

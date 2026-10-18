@@ -1,3 +1,4 @@
+import os
 import re
 import unittest
 
@@ -186,6 +187,21 @@ class HubTest(OnboardCase):
         self.assertEqual(store.find_session(g, relay_name="di-hub")["desktopSession"],
                          "local_00000000-0000-0000-0000-00000000hub9")
         self.assertEqual((self.project / "hub" / "CLAUDE.md").read_text(encoding="utf-8").count("BEGIN decision-inbox"), 1)
+
+    def test_start_number(self):
+        out = self.hub(confirm=False, start_number=1001)
+        self.assertTrue(any("#1001" in step for step in out.steps), out.steps)
+        self.hub(start_number=1001)
+        self.hub(start_number=1001)  # rerun before any number
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            self.assertEqual(tx.allocate_number(), 1001)
+        before = (g.path / "counter.json").read_bytes()
+        with self.assertRaises(onboard.JoinError):
+            self.hub(start_number=1001)
+        self.assertEqual((g.path / "counter.json").read_bytes(), before)
+        with self.assertRaises(onboard.JoinError):
+            self.hub(confirm=False, start_number=0)
 
     def test_second_hub_or_bad_session_rejected_without_writes(self):
         self.hub()
@@ -551,6 +567,138 @@ class CheckpointAuthorityTest(OnboardCase):
         out = self.join_fe(True, project=repo, cwd=self.dir("scratch"))
         self.assertEqual(len(out.warnings), 2)
         self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[1])
+
+
+class CrewCoordinatorTest(OnboardCase):
+    """crew-coordinator-seam: the flag is written only by a confirmed join, with its own section."""
+
+    def join_coord(self, flag=True, role="dev", confirm=True):
+        return onboard.join("demo", role=role, relay_name="crew-coord", short_name="前端并行", host="claude-desktop",
+                            lines=["前端"] if role != "coordinator" else [],
+                            desktop_session="local_00000000-0000-0000-0000-00000000c0rd", project=self.dir("crew"),
+                            reviewer=None, nodes=[], confirm=confirm, now=NOW, crew_coordinator=flag)
+
+    def entry(self):
+        return store.find_session(store.open_group("demo"), relay_name="crew-coord")
+
+    def test_section_and_flag_then_off_again(self):
+        self.hub()
+        out = self.join_coord(confirm=False)
+        self.assertIsNone(store.find_session(store.open_group("demo"), relay_name="crew-coord"))
+        self.assertIn("### 并行开发协调会话", out.after)
+        self.join_coord()
+        self.assertTrue(self.entry()["crewCoordinator"])
+        text = (self.project / "crew" / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertEqual(text, onboard.block("dev", "demo", "di-hub", crew_coordinator=True))
+        self.assertLess(text.index("### 开发线"), text.index("### 并行开发协调会话"))
+        for phrase in ("模块会话只和你说话", "不用抛【等待用户】", "【与 #旧编号 并行】", "立刻发【已恢复】",
+                       "「等什么」开头写模块 id", "【答复告知】只记录", "crew-coordinator skill",
+                       "session-protocol 契约"):
+            self.assertIn(phrase, text)
+        self.join_coord(flag=False)
+        self.assertNotIn("crewCoordinator", self.entry())
+        self.assertNotIn("并行开发协调会话", (self.project / "crew" / "CLAUDE.md").read_text(encoding="utf-8"))
+
+    def test_only_with_dev(self):
+        self.hub()
+        for role in ("owner", "coordinator"):
+            with self.subTest(role=role):
+                with self.assertRaises(onboard.JoinError):
+                    self.join_coord(role=role)
+        self.assertIsNone(store.find_session(store.open_group("demo"), relay_name="crew-coord"))
+
+    def test_other_roles_never_get_the_section(self):
+        for role in ("dev", "owner", "coordinator"):
+            self.assertNotIn("并行开发协调会话", onboard.block(role, "demo", "di-hub"))
+
+
+def git(*args, cwd):
+    import subprocess
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
+                   env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                            GIT_COMMITTER_EMAIL="t@t"))
+
+
+class LocalRulesTest(OnboardCase):
+    """crew-coordinator-seam: the block goes to CLAUDE.local.md, kept out of git through info/exclude."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    def repo(self, name="crew"):
+        path = self.dir(name)
+        git("init", "-q", cwd=path)
+        (path / "CLAUDE.md").write_text("# 项目规则\n", encoding="utf-8")
+        return path
+
+    def join_local(self, project, host="claude-desktop", confirm=True, relay="crew-coord"):
+        return onboard.join("demo", role="dev", relay_name=relay, short_name="前端并行", host=host,
+                            lines=["前端"], desktop_session="local_00000000-0000-0000-0000-00000000c0rd"
+                            if host == "claude-desktop" else None,
+                            project=project, reviewer=None, nodes=[], confirm=confirm, now=NOW, local_rules=True)
+
+    def exclude(self, repo):
+        return (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+
+    def test_writes_local_file_and_excludes_it_once(self):
+        repo = self.repo()
+        out = self.join_local(repo, confirm=False)
+        self.assertEqual(out.file, repo / "CLAUDE.local.md")
+        self.assertTrue(any("info/exclude" in w for w in out.warnings), out.warnings)
+        self.assertFalse((repo / "CLAUDE.local.md").exists())
+        self.join_local(repo)
+        self.assertEqual((repo / "CLAUDE.md").read_text(encoding="utf-8"), "# 项目规则\n")
+        self.assertIn("<!-- BEGIN decision-inbox dev -->", (repo / "CLAUDE.local.md").read_text(encoding="utf-8"))
+        self.assertTrue(store.find_session(store.open_group("demo"), relay_name="crew-coord")["localRules"])
+        self.join_local(repo)
+        self.assertEqual(self.exclude(repo).splitlines().count("CLAUDE.local.md"), 1)
+        import subprocess
+        self.assertEqual(subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True,
+                                        text=True).stdout.strip(), "?? CLAUDE.md")
+
+    def test_leave_removes_block_and_its_exclude_line(self):
+        repo = self.repo()
+        self.join_local(repo)
+        onboard.leave("demo", "crew-coord", project=repo, confirm=True, now=NOW)
+        self.assertFalse((repo / "CLAUDE.local.md").exists())
+        self.assertNotIn("CLAUDE.local.md", self.exclude(repo).splitlines())
+        self.assertEqual((repo / "CLAUDE.md").read_text(encoding="utf-8"), "# 项目规则\n")
+
+    def test_already_ignored_adds_nothing(self):
+        repo = self.repo()
+        (repo / ".gitignore").write_text("CLAUDE.local.md\n", encoding="utf-8")
+        before = self.exclude(repo)
+        out = self.join_local(repo)
+        self.assertFalse(any("info/exclude" in w for w in out.warnings))
+        self.assertEqual(self.exclude(repo), before)
+        onboard.leave("demo", "crew-coord", project=None, confirm=True, now=NOW)
+        self.assertEqual(self.exclude(repo), before)
+
+    def test_worktree_uses_the_common_exclude(self):
+        main = self.repo("main")
+        git("add", "CLAUDE.md", cwd=main)
+        git("commit", "-qm", "init", cwd=main)
+        wt = self.project / "crew-base"
+        git("worktree", "add", "-q", str(wt), cwd=main)
+        self.join_local(wt)
+        self.assertIn("CLAUDE.local.md", self.exclude(main).splitlines())
+
+    def test_not_a_git_repo_still_writes(self):
+        plain = self.dir("plain")
+        out = self.join_local(plain)
+        self.assertTrue((plain / "CLAUDE.local.md").is_file())
+        self.assertFalse(any("info/exclude" in w for w in out.warnings))
+
+    def test_codex_cannot_use_local_rules(self):
+        with self.assertRaises(onboard.JoinError):
+            self.join_local(self.repo(), host="codex-desktop", relay="fe-codex")
+
+    def test_warns_when_agents_md_would_stop_loading(self):
+        path = self.dir("agents-only")
+        (path / "AGENTS.md").write_text("# 规则\n", encoding="utf-8")
+        out = self.join_local(path, confirm=False)
+        self.assertTrue(any("不再读 AGENTS.md" in w for w in out.warnings), out.warnings)
 
 
 AUTONOMY = """### 检查点之间自主处理

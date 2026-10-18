@@ -72,6 +72,14 @@
 - **Claude 对照**：观测期内未见 Claude 会话出现此提示（**未验证**是否不会发生）。
 - **状态**：agent-relay 0.7.1 起有引导式恢复：读收件箱时提示会话用原名重新登记，登记后可再读一次；完全自动恢复不可行（会话得自己重新登记，旁人替它登记会被身份校验拒绝）。
 
+#### H25 Codex 每一轮按需重启 MCP 服务器：两轮之间结束 bridge 会自动重连
+
+- **现象**：Codex 每一轮开始时按需启动 MCP 服务器。在两轮之间结束 agent-relay 的 bridge 进程，下一轮会起新的 bridge，不留断掉的连接。
+- **证据（实测）**：2026-10-18 agent-relay 0.8.2 真实宿主验收（agent-relay 消息 #5835）：测试任务被点开后 3 秒内，codex app-server 下起了两个 bridge 进程；用 SIGTERM 结束它们后再发一条带唤醒的消息，ChatGPT 回 `Codex confirmed a new turn`，又起了两个新的 bridge 进程，任务 16 秒后读到并确认了这条消息。
+- **对照**：agent-relay 0.8.0 升级时用 pkill 结束所有 bridge，正开着的 Codex 任务一直报 `Transport closed`，直到 ⌘Q 重启 ChatGPT 才恢复。两者不矛盾。
+- **推测（未验证，待复核）**：只有 bridge 在某一轮进行中断掉，或 Codex 启动 bridge 时运行时目录正被替换，那一轮才会留下坏连接。
+- **影响**：agent-relay 0.8.2 的「送达存疑」提醒针对「已送达、但这一轮读不到信箱」，两轮之间结束 bridge 不会触发它。H2 的对策（重启后逐个点开 Codex 会话）不变；升级 agent-relay 后，只有正在运行的那一轮报 `Transport closed` 才需要重启 ChatGPT（待复核）。
+
 #### H4 谁能叫醒已停止的 Claude 会话
 
 - **结论**：agent-relay 叫不醒已停止的 Claude 会话；Claude 桌面版自带的会话消息工具可以叫醒，但它只能在 Claude 会话内部调用，外部进程（包括 agent-relay）调不到。
@@ -199,6 +207,12 @@ ChatGPT 应用内置一份 codex（0.162.0-alpha.17.2），命令行另装一份
 - **现象**：2026-10-18 收件枢纽换会话后用原身份名 `bridge_register`，因名字还绑在已归档的旧会话上被拒；用户同意后带 `takeover` 才登记成功。
 - **影响**：实地验收 P2 沿用原收件枢纽身份名时一定会遇到，要先征得用户同意接管。
 
+#### H26 Claude 的 CLAUDE.local.md：和 CLAUDE.md 一起加载，有它时不再读 AGENTS.md（文档）
+
+- **规则**：Claude Code 加载工作目录及上层每一层的 `CLAUDE.md` 和 `CLAUDE.local.md`；同一层里 `CLAUDE.local.md` 排在 `CLAUDE.md` 后面。`CLAUDE.local.md` 要自己加进 git 的忽略规则。被忽略的 `CLAUDE.local.md` 只存在于创建它的那个 worktree，别的 worktree 拿不到。工作目录或上层只要有 `CLAUDE.md` 或 `CLAUDE.local.md`，默认就不再读 `AGENTS.md`；要两种都读，得在设置里改「Project instructions」（code.claude.com/docs/en/memory，2026-10-18 查阅）。
+- **Codex 对照**：Codex 只读 `AGENTS.md`（H18），不读 `CLAUDE.local.md`。
+- **影响**：module-crew 的协调会话开在集成 checkout 里，约定块写进 `CLAUDE.local.md`（`onboard join --local-rules`），就不会被提交，也不会被模块 worktree 继承。桌面版 Code 标签页是否同样加载这个文件，**待复核**（联合演练 P2）。
+
 #### H15 定时任务
 
 - **Claude 桌面版（实测）**：一次性定时任务按时启动（无延迟），能运行 Bash、只读查询 SQLite、调用 agent-relay MCP 工具、调用会话消息工具。周期任务每次触发有几分钟的负载均衡延迟（**文档**：工具说明）。周期间隔的实际值、应用关闭时的补跑行为**未验证**。
@@ -243,6 +257,7 @@ ChatGPT 应用内置一份 codex（0.162.0-alpha.17.2），命令行另装一份
 | 找依赖插件时识别目录型插件市场 | H21 |
 | 巡视任务建好后先手动运行一次；命令读完输入文件即删除，免得下一轮被旧文件卡住 | H22 |
 | 收件枢纽换会话沿用原身份名，接管前先问用户 | H23 |
+| 协调会话的约定块可以写进 `CLAUDE.local.md` 并排除出 git；只有 AGENTS.md 的项目接入时要提示 | H26 |
 
 ## 5. 未验证 / 待复核
 
@@ -252,6 +267,8 @@ ChatGPT 应用内置一份 codex（0.162.0-alpha.17.2），命令行另装一份
 4. Codex 桌面版是否有可用于巡视的定时任务（H15）。
 5. Codex 压缩后抓最近人工输入的机制（H17），以及 Claude 侧是否同样发生
 6. agent-relay 0.7.1 起的引导式恢复在 H2、H3 场景下的实际效果。
+7. bridge 在一轮进行中断掉、或启动时运行时目录正被替换，是否就是留下 `Transport closed` 坏连接的条件（H25）。
+8. Claude 桌面版 Code 标签页是否像 Claude Code 一样加载 `CLAUDE.local.md`（H26）。
 
 ## 6. 复核方法
 
@@ -276,3 +293,5 @@ defaults read /Applications/ChatGPT.app/Contents/Info.plist CFBundleShortVersion
 | 2026-10-16 | 初版：16 条差异，基于 2026-10-13 至 10-16 的实测与两个插件仓库的文档 |
 | 2026-10-17 | 新增 H17（Codex 自动压缩后抓最近人工输入当任务，待复核） |
 | 2026-10-17 | H3 改为 agent-relay 0.7.1 起有引导式恢复；H10 补守卫对邮箱转来任务的判断；新增 H18（Codex 会话目录决定加载哪份 AGENTS.md）、H19（Claude 自动模式拦命令）、H20（定时任务不继承权限）、H21（目录型插件市场读源目录） |
+| 2026-10-18 | 新增 H25（Codex 每一轮按需重启 MCP 服务器，两轮之间结束 bridge 会自动重连；一轮中途断掉才需重启 ChatGPT，待复核），来源 agent-relay 负责人 |
+| 2026-10-18 | 新增 H26（CLAUDE.local.md 的加载规则，以及有它时不再读 AGENTS.md），来源 Claude Code 官方文档 |

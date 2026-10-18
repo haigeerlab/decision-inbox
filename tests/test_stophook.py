@@ -239,9 +239,9 @@ class AnsweredNotResumedTest(HookCase):
         ]))
 
 
-def progress(done, total, status="ok", module="pay"):
+def progress(done, total, status="ok", module="pay", module_status="in_progress"):
     from types import SimpleNamespace
-    m = SimpleNamespace(id=module, progress_done=done, progress_total=total)
+    m = SimpleNamespace(id=module, progress_done=done, progress_total=total, status=module_status)
     return lambda repo: SimpleNamespace(status=status, map=SimpleNamespace(active_module=module, modules=(m,)))
 
 
@@ -270,3 +270,38 @@ class SilentStopTest(HookCase):
         items.receive(self.g, text.replace("是否完全停住：是", "是否完全停住：否"), sender="api-codex", relay_id=9,
                       received_at=at(1))
         self.assertFalse(self.decide_with(progress(2, 5)).block)
+
+    def test_suspended_module_passes(self):
+        """crew-coordinator-seam: a suspended module is waiting on something outside, not a silent stop."""
+        self.assertFalse(self.decide_with(progress(2, 5, module_status="suspended")).block)
+
+
+class CrewCoordinatorTest(HookCase):
+    """crew-coordinator-seam: module progress belongs to module-crew, the other two duties still hold."""
+
+    def setUp(self):
+        super().setUp()
+        (self.repos / "crew" / "src").mkdir(parents=True)
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "crew-coord", "shortName": "前端并行", "role": "dev", "line": ["前端"],
+                            "host": "claude-desktop", "repo": str(self.repos / "crew"), "crewCoordinator": True})
+
+    def decide_with(self, read_map, **kw):
+        return stophook.decide(self.g, payload=self.payload(cwd=self.repos / "crew", **kw), now=NOW,
+                               read_map=read_map)
+
+    def test_open_todos_pass_for_the_coordinator(self):
+        self.assertFalse(self.decide_with(progress(2, 5)).block)
+
+    def test_someone_waiting_still_blocks(self):
+        self.wait("api-codex", "前端并行", 10)
+        self.assertTrue(self.decide_with(progress(2, 5)).block)
+
+    def test_answered_not_resumed_still_blocks(self):
+        no = items.receive(self.g, WAIT_USER, sender="crew-coord", relay_id=21, received_at=at(30)).item
+        items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=at(3))
+        self.assertTrue(self.decide_with(progress(2, 5)).block)
+
+    def test_ordinary_dev_line_still_blocks(self):
+        d = stophook.decide(self.g, payload=self.payload(cwd=self.repos / "api"), now=NOW, read_map=progress(2, 5))
+        self.assertTrue(d.block)

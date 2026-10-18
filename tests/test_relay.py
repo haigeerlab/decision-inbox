@@ -338,3 +338,25 @@ class Relay08FieldsTest(unittest.TestCase):
             "state": "accepted", "doubt": {"reason": "accepted-unread", "since": "x"}}}))
         self.assertTrue(st.wake_doubt)
         self.assertFalse(relay.parse_message_status(json.dumps({"message": {"id": 6}})).wake_doubt)
+
+
+class OwesRepliesIgnoredTest(unittest.TestCase):
+    """hub-cutover-settings: agent-relay's owesReplies never reaches the main view, patrol or doctor.
+
+    Everything downstream reads agents through parse_agents, so the snapshot must not change.
+    """
+
+    def test_snapshot_is_the_same_with_or_without_owes_replies(self):
+        import dataclasses
+        import json
+        base = {"name": "arch-review", "unread": 1, "lastActivity": "2026-10-18T03:44:20Z",
+                "presence": {"state": "running", "activity": "busy"},
+                "host": {"app": "claude", "sessionId": "s"},
+                "waiting": {"count": 1, "from": ["fe"], "ids": [5922], "oldestAt": "2026-10-18T03:44:16Z"}}
+        owes = dict(base, owesReplies={"count": 152, "ids": list(range(3855, 3875)),
+                                       "oldestAt": "2026-10-16T13:55:12Z"})
+        plain = relay.parse_agents(json.dumps({"count": 1, "agents": [base]}))
+        loaded = relay.parse_agents(json.dumps({"count": 1, "agents": [owes]}))
+        self.assertEqual(plain, loaded)
+        fields = {f.name for f in dataclasses.fields(type(loaded.agents["arch-review"]))}
+        self.assertFalse([f for f in fields if "owe" in f.lower()], fields)

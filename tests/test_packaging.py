@@ -26,7 +26,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.15")
+        self.assertEqual(claude["version"], "0.0.16")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -152,6 +152,9 @@ class CommandFilesTest(unittest.TestCase):
             self.assertIn(needle, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
         self.assertIn("--checkpoint-authority", self.read("commands/join.md"))
+        self.assertIn("--crew-coordinator", self.read("commands/join.md"))
+        self.assertIn("--local-rules", self.read("commands/join.md"))
+        self.assertIn("--start-number", self.read("commands/hub-setup.md"))
         self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
 
     def test_codex_skill(self):
@@ -201,7 +204,11 @@ class ReadmeTest(unittest.TestCase):
                        # patrol-cadence
                        "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
                        # hub-patrol
-                       "收件枢纽会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`"):
+                       "收件枢纽会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`",
+                       # crew-coordinator-seam
+                       "--crew-coordinator", "--local-rules", "CLAUDE.local.md", "不再读 AGENTS.md",
+                       # hub-cutover-settings
+                       "### 替换已有的收件枢纽", "--start-number", "本插件不读"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")

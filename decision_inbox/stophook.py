@@ -92,6 +92,8 @@ def _silent_stop(g: store.Group, entry: dict, read_map) -> str | None:
     """
     if entry["role"] != "dev" or not entry.get("repo"):
         return None
+    if entry.get("crewCoordinator"):
+        return None  # module progress belongs to module-crew (crew-coordinator-seam)
     if any(it["sender"] == entry["relayName"] for it in items.pending(g)):
         return None
     read = read_map(entry["repo"])
@@ -99,7 +101,7 @@ def _silent_stop(g: store.Group, entry: dict, read_map) -> str | None:
     if getattr(read, "status", None) != "ok" or line_map is None or not line_map.active_module:
         return None
     m = next((m for m in line_map.modules if m.id == line_map.active_module), None)
-    if m is None or m.progress_done >= m.progress_total:
+    if m is None or m.progress_done >= m.progress_total or getattr(m, "status", None) == "suspended":
         return None
     return "\n".join([
         f"【decision-inbox】收工前请先处理：当前模块 {m.id} 还有 {m.progress_total - m.progress_done} 项没勾，"
