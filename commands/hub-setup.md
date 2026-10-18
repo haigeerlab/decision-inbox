@@ -7,7 +7,7 @@ allowed-tools: Bash, mcp__ccd_session_mgmt__get_session, mcp__agent-relay__bridg
 参数：$ARGUMENTS（第一个是协作组名，第二个是身份名；缺了就问用户，不要自己起名）。会改本目录的 CLAUDE.md、建协作组、建定时任务，每一步都先预览、经用户确认。
 
 1. 调用 `get_session`（session_id 填 `self`），取得本会话编号（`local_` 开头）。
-2. 预览：运行 `"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox" onboard hub <协作组> --relay-name <身份名> --desktop-session <本会话编号> --project "$PWD"`，把输出（要写的文件、名册条目、约定块全文）给用户看。
+2. 预览：运行 `"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox" onboard hub <协作组> --relay-name <身份名> --desktop-session <本会话编号> --project "$PWD"`，把输出（要写的文件、名册条目、约定块全文）给用户看。如果这是替换一个已经在用的收件枢纽（旧的那个已经编过号），先问用户新编号从几开始（例如 1001），用户给了就加 `--start-number <起始编号>`；起始编号只有在新组还没编过号时才能设。
 3. 等用户确认后，同一条命令加 `--confirm` 再运行。用户没确认就停在这里。
 4. 按输出的「后续步骤」做：
    - 调用 `bridge_register`（`agent` 为身份名，`wake` 为 `"auto"`）；

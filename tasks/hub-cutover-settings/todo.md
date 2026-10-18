@@ -11,9 +11,13 @@
     - 实测：在临时目录跑 `onboard hub … --start-number 0`，退出码 2，提示「起始编号要是 1 到 1000000 的整数」。
     - 结果：Ran 615 tests, OK
 
-- [ ] Task 2：欠回复回归测试和文档
+- [x] Task 2：欠回复回归测试和文档
   - 验收：Spec 验收 4、5
-  - 文件：`tests/test_view.py` 或新测试文件、`README.md`、`commands/hub-setup.md`
+  - 文件：`tests/test_relay.py`、`README.md`、`commands/hub-setup.md`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：
+    - 回归测试放在 `relay.parse_agents` 这一层：主视图、巡视、doctor 都是读解析后的 agents 数据，所以只要证明带不带 `owesReplies`（152 条）解析结果完全一样、数据结构里也没有任何 owe 字段，就够了。这条测试一写就通过，是把现有行为固定下来；以后有人把欠回复读进来，它就会失败。
+    - 文档：先在打包测试里加检查项，README 新增「### 替换已有的收件枢纽」一节（编号起点；切换前先处理完未读；历史欠回复本插件不读），`commands/hub-setup.md` 写明替换时先问用户起始编号、加 `--start-number`。
+    - 全部测试：Ran 616 tests, OK
 
 ### Checkpoint（gate）：模块最终验收
 

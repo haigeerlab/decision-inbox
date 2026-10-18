@@ -154,6 +154,7 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("--checkpoint-authority", self.read("commands/join.md"))
         self.assertIn("--crew-coordinator", self.read("commands/join.md"))
         self.assertIn("--local-rules", self.read("commands/join.md"))
+        self.assertIn("--start-number", self.read("commands/hub-setup.md"))
         self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
 
     def test_codex_skill(self):
@@ -205,7 +206,9 @@ class ReadmeTest(unittest.TestCase):
                        # hub-patrol
                        "收件枢纽会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`",
                        # crew-coordinator-seam
-                       "--crew-coordinator", "--local-rules", "CLAUDE.local.md", "不再读 AGENTS.md"):
+                       "--crew-coordinator", "--local-rules", "CLAUDE.local.md", "不再读 AGENTS.md",
+                       # hub-cutover-settings
+                       "### 替换已有的收件枢纽", "--start-number", "本插件不读"):
             self.assertIn(needle, text)
         for sub in re.findall(r"decision-inbox ([a-z]+)", text):
             self.assertIn(sub, SUBCOMMANDS | {"plugin"}, f"README 用了不存在的子命令 {sub}")
