@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+CONTRACT_VERSION = "1.7"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+
 KIND_TAGS = {
     "等待用户": "wait-user",
     "用户答复": "user-reply",

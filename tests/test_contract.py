@@ -11,7 +11,7 @@ from pathlib import Path
 
 from decision_inbox import protocol
 
-VERSION = "v1.7"
+VERSION = f"v{protocol.CONTRACT_VERSION}"
 HERE = Path(__file__).resolve().parent
 CONTRACT = HERE / "fixtures" / "session-protocol" / VERSION
 ORIGINAL = HERE / "fixtures" / "protocol"

@@ -114,7 +114,7 @@ def sourced(text: str, source: str) -> str:
 
 
 # Accepted interface major per dependency (spec/doctor-and-observer.md decision 2).
-MAJORS = {"spec-guard": 1, "delegate": 1, "agent-relay": 2}
+MAJORS = {"spec-guard": 1, "delegate": 1, "agent-relay": 2, "module-crew": 1}
 _DELEGATE_DEFAULTS = {"review": "/delegate:review", "run": "/delegate:run", "doctor": "/delegate:doctor"}
 _DELEGATE_COMMAND = re.compile(r"^/delegate:[a-z-]+$")
 

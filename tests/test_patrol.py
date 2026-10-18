@@ -202,7 +202,7 @@ class RecordTest(PatrolCase):
 def with_signals(*signals):
     """Patch line-health so a round sees exactly these signals."""
     return mock.patch("decision_inbox.patrol.health.assess",
-                      lambda g, now, relay, maps, previous: Assessment({}, tuple(signals), {"version": 1, "at": now,
+                      lambda g, now, relay, maps, previous, crews=None: Assessment({}, tuple(signals), {"version": 1, "at": now,
                                                                                              "sessions": {}}))
 
 
