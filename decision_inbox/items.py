@@ -43,10 +43,10 @@ def _not_owner(no, doc: dict | None = None, sender: str | None = None, kind: str
         mine = next((k for k, it in doc["items"].items()
                      if it["sender"] == sender and it["relayId"] == no and it["status"] not in FINAL), None)
         if mine is not None and kind == "withdraw":
-            return Issue("not-owner", f"#{no} 是邮箱号，对应事项 #{mine}；改写「事项：#{mine}」重发【撤回】")
+            return Issue("not-owner", f"#{no} 是邮箱号，对应待决事项 #{mine}；改写「事项：#{mine}」重发【撤回】")
         if mine is not None:
-            return Issue("not-owner", f"#{no} 是邮箱号，对应事项 #{mine}；去掉【取代】靠默认取代，或改写【取代 #{mine}】")
-    return Issue("not-owner", f"#{no} 不存在，或不是你抛出的事项")
+            return Issue("not-owner", f"#{no} 是邮箱号，对应待决事项 #{mine}；去掉【取代】靠默认取代，或改写【取代 #{mine}】")
+    return Issue("not-owner", f"#{no} 不存在，或不是你抛出的待决事项")
 
 
 def _owned(doc: dict, no, sender: str) -> dict | None:
@@ -171,13 +171,13 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
     if multi and entry.get("role") not in MULTILINE_ROLES:
         multi = False
         problems = [p for p in problems if not p.code.startswith(_SCOPE_CODES)]
-        hints.append(Issue("multiline-not-allowed", "只有总协调和负责人能抛多线事项，已按普通事项处理"))
+        hints.append(Issue("multiline-not-allowed", "只有跨线协调和审查者能抛多线事项，已按单线事项处理"))
     if multi:
         left = store.left_relays(g)
         for name in msg.lines_in_scope:
             named = store.find_session(g, short_name=name)
             if named is None or named["relayName"] in left:
-                problems.append(Issue(f"scope-session-unknown:{name}", f"适用会话里的 {name} 不在会话名册里"))
+                problems.append(Issue(f"scope-session-unknown:{name}", f"「适用会话」里的 {name} 不在名册里"))
     legacy = sender in store.legacy_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
@@ -203,7 +203,7 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
             for old in auto:
                 it = doc["items"][str(old)]
                 ref = f"#{it['relayId']}" if legacy and it.get("relayId") is not None else f"#{old}"
-                hints.append(Issue("auto-superseded", f"{_label(it, old, legacy)} 已被新事项自动取代；"
+                hints.append(Issue("auto-superseded", f"{_label(it, old, legacy)} 已被新的待决事项自动取代；"
                                                       f"确实要两项都答，请写【与 {ref} 并行】重发"))
         no = tx.allocate_number()
         label = reviews.display_label(g, session=sender, message=msg, received_at=received_at)

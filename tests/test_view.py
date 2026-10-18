@@ -366,7 +366,7 @@ class AnomalyTest(ViewCase):
             "- 后台：后台 已忙 25 分钟，还有 1 条消息在等它。建议：先等它做完这一轮；要插队就去它的会话说明",
             "- 前端：前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart。建议：看挂起原因是否已经解决",
             "- API：API 的审查 R3（spec）已来回 4 轮，超过本组常见水平。建议：看一下这次审查的分歧点",
-            "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交负责人跟进",
+            "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交审查者跟进",
             "- 前端：前端 的等待记录 W31（等 API）还开着，但它后来又开了新的等待 W35。建议：确认旧等待是否还需要，不需要就说「关掉 W31」",
             "- API：API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟。建议：在 Codex 里点开 API 让它加载",
         ])
@@ -475,7 +475,7 @@ class ExpandedViewTest(ViewCase):
         ])
 
     def test_invalidated(self):
-        self.assertEqual(view.render_invalidated(self.g), "没有失效的事项")
+        self.assertEqual(view.render_invalidated(self.g), "没有失效的待决事项")
         old = self.ask(SINGLE)
         new = self.ask(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"))
         gone = self.ask(SINGLE, sender="api-codex")
@@ -506,7 +506,7 @@ class DoubtRowTest(ViewCase):
         from decision_inbox.health import Signal
         claude = Signal(5, "idle-backlog", ("hub",), "收件枢纽 空闲，有 1 条消息没读")
         codex = Signal(5, "idle-backlog", ("api-codex",), "API 空闲，有 1 条消息没读")
-        self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 收件枢纽；叫不醒就打开它")
+        self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 决策收件箱；叫不醒就打开它")
         self.assertEqual(view.advice(self.g, codex), "打开 API 的任务")
 
 

@@ -108,7 +108,7 @@ def note_cell(g: store.Group, now: str, entry: dict, line_map, m) -> str:
 
 RESPONSIBILITY_CHARS = 40
 _EXPANDED = ("in_progress", "suspended", "blocked", "ready")
-_COLUMNS = "| 位 | 编号 | 作用 | 状态 | Spec/Plan 评审 | 架构审查 | 备注 |\n|---|---|---|---|---|---|---|"
+_COLUMNS = "| 位 | 编号 | 作用 | 状态 | Spec/Plan 批准 | 架构审查 | 备注 |\n|---|---|---|---|---|---|---|"
 
 
 def _cell(text: str) -> str:

@@ -14,7 +14,7 @@ from decision_inbox import protocol, store
 from decision_inbox.protocol import Issue
 
 DOMAIN = "tickets"
-USER_TARGETS = ("用户", "收件枢纽")
+USER_TARGETS = ("用户", "决策收件箱", "收件枢纽")  # 收件枢纽: old name lines may still write
 _NUM_RE = re.compile(r"#\s*(\d+)")
 # Requirement 4.5 fixed fallback thresholds, in minutes.
 WAITED_MINUTES = 15
@@ -63,7 +63,7 @@ def _resolve_end(tx, doc, no: int, sender: str, hints, resumed: bool) -> int | N
         if not resumed:
             hints.append(Issue("end-is-item", f"#{no} 是待决事项，不是等待记录；结束待决事项要发【已恢复】"))
         return None
-    hints.append(Issue("end-unknown", f"#{no} 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西"))
+    hints.append(Issue("end-unknown", f"#{no} 既不是决策收件箱编号，也不是你发过的消息，没有关闭任何东西"))
     return None
 
 

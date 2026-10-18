@@ -73,7 +73,7 @@ class WakeTest(PatrolCase):
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
                         .startswith("decision-inbox：叫不醒 前端负责人"))
         self.assertTrue(next(a for a in second.actions if a.id.startswith("notify:unwakeable")).text
-                        .endswith(f"请手动打开 claude://claude.ai/epitaxy/{OWNER_DESKTOP}（来源：Claude 桌面版），详见收件枢纽"))
+                        .endswith(f"请手动打开 claude://claude.ai/epitaxy/{OWNER_DESKTOP}（来源：Claude 桌面版），详见决策收件箱"))
         for minutes in (10, 12):  # still stopped: neither another wake nor another notice
             quiet = self.run_round(minutes, [owner])
             self.assertEqual([i for i in self.ids(quiet) if "fe-owner" in i], [], minutes)
@@ -278,7 +278,7 @@ class NoticeTest(PatrolCase):
             first = self.run_round(0)
             again = self.run_round(5)
         self.assertEqual(self.ids(first), ["notify:all-waiting"])
-        self.assertEqual(first.actions[0].text, "decision-inbox：全线互等：所有会话都没在干活，还有 2 张等待单没关，详见收件枢纽")
+        self.assertEqual(first.actions[0].text, "decision-inbox：全线互等：所有会话都没在干活，还有 2 张等待单没关，详见决策收件箱")
         self.assertEqual(self.ids(again), [])
         with with_signals():
             self.run_round(10)
@@ -319,7 +319,7 @@ class NoticeTest(PatrolCase):
             later_round = self.run_round(5)
         notices = [a for a in p.actions if a.kind == "notify"]
         self.assertEqual([a.id for a in notices], ["notify:all-waiting", "notify:signal:8|x0", "notify:more"])
-        self.assertEqual(notices[-1].text, "decision-inbox：还有 3 件事，详见收件枢纽")
+        self.assertEqual(notices[-1].text, "decision-inbox：还有 3 件事，详见决策收件箱")
         self.assertEqual(self.ids(later_round), [])
 
 
@@ -408,7 +408,7 @@ class HandoffTest(PatrolCase):
         self.assertEqual(self.ids(p).count("wake:fe-owner"), 1)
         notices = [a for a in p.actions if a.kind == "notify"]
         self.assertEqual(notices[0].id, f"notify:handoff:{no}|fe-owner")
-        self.assertEqual(notices[0].text, f"decision-inbox：#{no} 的答复卡在离线的前端负责人，挡住 1 条线，详见收件枢纽")
+        self.assertEqual(notices[0].text, f"decision-inbox：#{no} 的答复卡在离线的前端负责人，挡住 1 条线，详见决策收件箱")
         wake = next(a for a in p.actions if a.id == "wake:fe-owner")
         self.assertIn(f"#{no}", wake.text)
 

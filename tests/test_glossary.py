@@ -25,13 +25,18 @@ OLD = {
 _ITEM = re.compile(r"(?<!待决)(?<!多线)(?<!单线)事项")
 _FIELD_NAMES = {name for names in protocol.FIELDS.values() for name in names}
 _TAG = re.compile(r"【[^】]*】")
-_QUOTED_FIELD = re.compile(r"[「『](" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True))) + r")[」』]")
+_QUOTED_FIELD = re.compile(r"[「『](" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True))) + r")[」』：:]")
+_PROBLEM_CODE = re.compile(r"^[a-z][a-z-]*:")  # stable issue codes such as missing-field:事项 (protocol.PROBLEM_CODES)
 _LINE_FIELD = re.compile(r"^(\s*[-*]?\s*)(" + "|".join(map(re.escape, sorted(_FIELD_NAMES, key=len, reverse=True)))
                          + r")[：:]", re.M)
 
 # (where, old name) -> why it may stay. `where` is a file name relative to the repo, or "module.py:literal".
 # KIND_TAGS keys are the contract's tag names and are always skipped.
-ALLOWED: dict[tuple[str, str], str] = {}
+ALLOWED: dict[tuple[str, str], str] = {
+    ("store.py:literal", "收件枢纽"): "OLD_HUB_NAMES：旧组名册里存的收件箱线名，读出时换成决策收件箱",
+    ("protocol.py:literal", "负责人"): "【答复告知】的说明行是契约 v2.1 生成样例原文（answer-notice/basic.json），契约改标签前不动",
+    ("tickets.py:literal", "收件枢纽"): "USER_TARGETS 兼容旧写法：线写「在等谁：收件枢纽」照样认作等用户",
+}
 
 
 def strip_contract(text: str) -> str:
@@ -76,7 +81,7 @@ def literal_hits(path: Path) -> list[tuple[str, str]]:
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)) or id(node) in skip:
             continue
-        if node.value in _FIELD_NAMES or id(node) in tag_keys:
+        if node.value in _FIELD_NAMES or id(node) in tag_keys or _PROBLEM_CODE.match(node.value):
             continue
         hits += [(old, line) for old, line in old_terms(node.value) if (f"{path.name}:literal", old) not in ALLOWED]
     return hits

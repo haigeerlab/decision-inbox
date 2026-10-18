@@ -190,7 +190,7 @@ class FlowCategoryTest(QueryCase):
     def test_external(self):
         self.wait("fe", "设计组", 40, what="支付页设计稿")
         self.assertEqual(self.verdict(agent("fe", activity_ago=60)),
-                         ["为什么：等别的线交付：等 设计组 的「支付页设计稿」", "你要做：交负责人跟进（谁来做：负责人）"])
+                         ["为什么：等别的线交付：等 设计组 的「支付页设计稿」", "你要做：交审查者跟进（谁来做：审查者）"])
 
     def test_idle_but_waited_on(self):
         self.assertEqual(self.verdict(agent("fe", activity_ago=200)),
@@ -234,7 +234,7 @@ class FlowDetailsTest(QueryCase):
         self.wait("fe", "API", 59)
         self.wait("bg", "设计组", 60, what="设计稿")
         self.wait("api", "用户", 300)
-        self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 负责人跟进：第一版不记录")
+        self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 审查者跟进：第一版不记录")
 
 
 def status(no, sender, recipient, sent_at, delivery="accepted", ack=None, replies=(), wake=None, outcome=None):
@@ -286,7 +286,7 @@ class ItemTest(QueryCase):
             f"{hhmm(at(35))} 对方已取走",
             f"{hhmm(at(30))} agent-relay #7001：前端 已确认",
             f"{hhmm(at(30))} 对方已确认",
-            f"{hhmm(at(20))} 前端 已恢复，事项结束",
+            f"{hhmm(at(20))} 前端 已结项，待决事项结束",
         ])
         self.assertNotIn("先接微信支付", text)
 

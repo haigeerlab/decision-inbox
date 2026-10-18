@@ -392,7 +392,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         start_number: int | None = None) -> Outcome:
     """The hub joins first: group, roster entry, its own block, and the patrol task to create."""
     store.validate_name(group)
-    entry = {"relayName": relay_name, "shortName": "收件枢纽", "role": "hub", "line": [],
+    entry = {"relayName": relay_name, "shortName": store.HUB_NAME, "role": "hub", "line": [],
              "host": "claude-desktop", "desktopSession": desktop_session}
     _check_entry(group, entry)
     if start_number is not None:

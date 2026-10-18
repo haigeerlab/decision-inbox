@@ -9,7 +9,7 @@ from decision_inbox import crew, doctor, health, hub, install, items, mapview, o
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
-         "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
+         "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <邮箱名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox notify <文字>\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
@@ -476,14 +476,14 @@ def _print_outcome(out, confirm: bool) -> None:
         for note in onboard.CODEX_NOTES if out.codex_unseen else ():
             print(f"  {note}")
     if out.drops:
-        state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
-                 else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
+        state = ("接入时新建，删掉协作规则段后为空，已删掉这个文件" if confirm
+                 else "接入时新建，删掉协作规则段后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
     elif not out.changed:
         state = "没有变化"
     else:
         state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
     if out.file is None:
-        print("规则文件：无（只登记进名册，不写约定块）")
+        print("规则文件：无（只登记进名册，不写协作规则段）")
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))

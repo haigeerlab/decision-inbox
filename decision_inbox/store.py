@@ -62,7 +62,7 @@ def _validate_session(entry: dict, others: list[dict]) -> dict:
     if host not in HOSTS:
         raise bad(f"host 只能是 {'／'.join(HOSTS)}")
     if not isinstance(line, list) or not all(isinstance(x, str) and x for x in line):
-        raise bad("line 必须是短名数组")
+        raise bad("line 必须是线名数组")
     if repo is not None and (not isinstance(repo, str) or not os.path.isabs(repo)):
         raise bad("repo 必须是绝对路径")
     if "desktopSession" in entry:
@@ -75,22 +75,24 @@ def _validate_session(entry: dict, others: list[dict]) -> dict:
         if flag in entry and not isinstance(entry[flag], bool):
             raise bad(f"{flag} 只能是 true 或 false")
     if entry.get("crewCoordinator") and role != "dev":
-        raise bad("只有开发线能标为并行开发协调会话")
+        raise bad("只有开发线能标为模块协调")
     if entry.get("legacyFormat") and role != "dev":
         raise bad("只有开发线能登记为旧格式（迁移期还没接入的线）")
     if entry.get("localRules") and host != "claude-desktop":
-        raise bad("只有 Claude 桌面版的会话能把约定块写进 CLAUDE.local.md")
+        raise bad("只有 Claude 桌面版的会话能把协作规则段写进 CLAUDE.local.md")
     if role == "owner" and not line:
-        raise bad("负责人至少负责一条线")
+        raise bad("审查者至少负责一条线")
     if role in ("hub", "coordinator") and line:
-        raise bad("收件枢纽和总协调不属于任何线")
+        raise bad("决策收件箱和跨线协调不属于任何线")
     if role == "hub" and host != "claude-desktop":
-        raise bad("收件枢纽只能是 Claude 桌面版")
+        raise bad("决策收件箱只能是 Claude 桌面版")
+    if role != "hub" and short in (HUB_NAME, *OLD_HUB_NAMES):
+        raise bad(f"线名「{short}」留给决策收件箱，请换一个")
     for other in others:
         if other["shortName"] == short:
             raise bad(f"shortName 与 {other['relayName']} 重复")
         if role == "hub" and other["role"] == "hub":
-            raise bad(f"每组只能有一个收件枢纽，已有 {other['relayName']}")
+            raise bad(f"每组只能有一个决策收件箱，已有 {other['relayName']}")
     return dict(entry, line=list(line))
 
 
@@ -430,13 +432,25 @@ def read_events(group: Group, ref: int | None = None,
     return sorted(events, key=lambda e: e["seq"])
 
 
+HUB_NAME = "决策收件箱"
+OLD_HUB_NAMES = ("收件枢纽",)  # what groups joined before glossary v1.1 stored; shown as HUB_NAME, never rewritten
+
+
+def _shown(entry: dict) -> dict:
+    if entry.get("role") == "hub" and entry.get("shortName") in OLD_HUB_NAMES:
+        return {**entry, "shortName": HUB_NAME}
+    return entry
+
+
 def roster(group: Group) -> list[dict]:
-    """Lock-free read of the roster entries, in insertion order."""
-    return list(_read_json(group.path / "roster.json").get("sessions", []))
+    """Lock-free read of the roster entries, in insertion order (an old hub name shows as HUB_NAME)."""
+    return [_shown(e) for e in _read_json(group.path / "roster.json").get("sessions", [])]
 
 
 def find_session(group: Group, relay_name: str | None = None,
                  short_name: str | None = None) -> dict | None:
+    if short_name in OLD_HUB_NAMES:
+        short_name = HUB_NAME
     for s in roster(group):
         if relay_name is not None and s.get("relayName") == relay_name:
             return s

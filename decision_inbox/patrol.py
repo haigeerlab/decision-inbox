@@ -57,7 +57,7 @@ def signal_key(signal) -> str:
 
 def notice_text(text: str) -> str:
     """Desktop notification wording (spec 关键决策 5)."""
-    return f"decision-inbox：{text}，详见收件枢纽"
+    return f"decision-inbox：{text}，详见决策收件箱"
 
 
 @dataclass
@@ -175,7 +175,7 @@ def _wake_hub(ctx: _Context) -> None:
     ctx.plan.live["wakes"].append(hub["relayName"])
     if hub.get("desktopSession") and hub["relayName"] not in ctx.state.get("wakes", {}):
         ctx.plan.actions.append(Action(f"wake:{hub['relayName']}", "wake", hub["desktopSession"],
-                                       "【decision-inbox 巡视】有新的事要告诉用户，请刷新收件枢纽主视图。"))
+                                       "【decision-inbox 巡视】有新的事要告诉用户，请刷新决策收件箱主视图。"))
 
 
 def _owner(g: store.Group, session: str) -> dict | None:
@@ -201,7 +201,7 @@ def _alerts(ctx: _Context, signals) -> None:
             text = f"【进度预警】{short}：{signal.text}。建议：{view.advice(ctx.g, signal)}"
             ctx.plan.actions.append(Action(f"alert:{key}", "owner-alert", owner["relayName"], text))
         elif (_instant(ctx.now) - _instant(seen["alertedAt"])).total_seconds() >= health.ESCALATE_MINUTES * 60:
-            ctx.notify(f"escalate:{key}", f"{short}：{signal.text}；负责人 {health.ESCALATE_MINUTES} 分钟没处理")
+            ctx.notify(f"escalate:{key}", f"{short}：{signal.text}；审查者 {health.ESCALATE_MINUTES} 分钟没处理")
 
 
 def _handoffs(ctx: _Context) -> None:
@@ -310,7 +310,7 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
 
 PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
 
-第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}；再用 bridge_outbox（agent 写 {hub}，不带别的参数）读收件枢纽发出、对方还没确认的消息，把返回的 JSON 原文原样写入文件 {outbox}。
+第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}；再用 bridge_outbox（agent 写 {hub}，不带别的参数）读决策收件箱发出、对方还没确认的消息，把返回的 JSON 原文原样写入文件 {outbox}。
 
 第 2 步：运行
 {cli} patrol plan {group} --agents {agents} --outbox {outbox} --out {plan}
@@ -342,7 +342,7 @@ def prompt(group: str, cli: str | None = None, workdir: str | None = None, hub: 
             roster = store.roster(store.open_group(group))
         except (store.GroupNotFound, store.InvalidName):
             roster = []
-        hub = next((e["relayName"] for e in roster if e["role"] == "hub"), "<收件枢纽身份名>")
+        hub = next((e["relayName"] for e in roster if e["role"] == "hub"), "<决策收件箱邮箱名>")
     return PROMPT.format(group=group, cli=cli or install.cli(), agents=f"{workdir}/decision-inbox-{group}-agents.json",
                          outbox=f"{workdir}/decision-inbox-{group}-outbox.json", hub=hub,
                          plan=f"{workdir}/decision-inbox-{group}-plan.json")

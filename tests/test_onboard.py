@@ -297,7 +297,7 @@ class JoinTest(OnboardCase):
 
     def test_roster_rules_change_nothing(self):
         before = self.files()
-        for kw in (dict(lines=()), dict(short_name="收件枢纽"), dict(role="hub", lines=())):
+        for kw in (dict(lines=()), dict(short_name="收件枢纽"), dict(short_name="决策收件箱"), dict(role="hub", lines=())):
             with self.assertRaises((store.InvalidSession, onboard.JoinError)):
                 self.join(**kw)
         self.assertEqual(self.files(), before)
@@ -426,7 +426,7 @@ class CreatedRulesTest(OnboardCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             main(["onboard", "teardown", "demo"])
-        self.assertIn("接入时新建，删掉约定块后为空，确认后会删掉这个文件", buf.getvalue())
+        self.assertIn("接入时新建，删掉协作规则段后为空，确认后会删掉这个文件", buf.getvalue())
 
 
 class CodexLoadsTest(OnboardCase):

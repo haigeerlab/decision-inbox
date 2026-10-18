@@ -121,7 +121,7 @@ class OpenAndCloseTest(TicketsCase):
         r = self.receive(f"【已恢复】\n结束：#9999\n")
         self.assertEqual(r.closed, ())
         hint = next(h for h in r.hints if h.code == "end-unknown")
-        self.assertEqual(hint.text, "#9999 既不是收件枢纽编号，也不是你发过的消息，没有关闭任何东西")
+        self.assertEqual(hint.text, "#9999 既不是决策收件箱编号，也不是你发过的消息，没有关闭任何东西")
 
     def test_end_line_with_own_item_relay_id_is_not_unknown(self):
         items.receive(self.g, SINGLE, sender="fe-codex", relay_id=4540, received_at=SENT)

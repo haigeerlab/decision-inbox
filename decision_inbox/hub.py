@@ -15,7 +15,7 @@ from decision_inbox import deps, health, install, items, protocol, reviews, stal
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
-KIND_LABELS = {"wait-session": "等待其他会话", "resumed": "已恢复", "review-conclusion": "审查结论"}
+KIND_LABELS = {"wait-session": "等待其他会话", "resumed": "已结项", "review-conclusion": "审查结论"}
 
 
 @dataclass
@@ -123,7 +123,7 @@ def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | 
         texts = [_return_text(KIND_LABELS[msg.kind], r.problems)] if r.problems else []
         return msg.kind, texts, _hints(g, m.sender, r.hints), None, None
     if msg.kind == "user-reply":
-        return msg.kind, [], [f"{short} 发来一条【用户答复】，收件枢纽不处理"], None, None
+        return msg.kind, [], [f"{short} 发来一条【用户答复】（你的答复），决策收件箱不处理"], None, None
     note = f"{short} 称：{_first_line(m.body)}（说「{m.id} 原文」看全文）"
     question = _question_return(g, m)
     record = {"sender": m.sender, "text": m.body, "at": at, "returned": question is not None}
@@ -142,12 +142,12 @@ def _question_return(g: store.Group, m) -> str | None:
                     if m.reply_to is not None and e["relayId"] == m.reply_to), None)
     if replied is not None and replied["kind"] == "return":
         return None
-    lines = [f"回复：#{m.id}", "收件枢纽只转达用户的话，不答疑，也不做决定。"]
+    lines = [f"回复：#{m.id}", "决策收件箱只转达用户的话，不答疑，也不做决定。"]
     it = items.get(g, replied["item"]) if replied is not None and replied["item"] is not None else None
     if it is not None and replied["kind"] == "answer":
-        lines.append(f"你回的 #{m.reply_to} 是用户对事项 #{it['no']}（你的原消息 #{it['relayId']}）的答复。")
+        lines.append(f"你回的 #{m.reply_to} 是用户对待决事项 #{it['no']}（你的原消息 #{it['relayId']}）的答复。")
     elif it is not None and replied["kind"] == "notice":
-        lines.append(f"你回的 #{m.reply_to} 是事项 #{it['no']}（原消息 #{it['relayId']}）的【答复告知】，只是告知。")
+        lines.append(f"你回的 #{m.reply_to} 是待决事项 #{it['no']}（原消息 #{it['relayId']}）的【答复告知】，只是告知。")
     lines.append("还有疑问，请抛一项【等待用户】，写清要用户确认什么。")
     return "\n".join(lines) + "\n"
 
@@ -155,7 +155,7 @@ def _question_return(g: store.Group, m) -> str | None:
 def returned_today(g: store.Group, now: str) -> list[str]:
     """Anomaly rows for questions returned today: someone is stuck enough to ask the hub."""
     day = today(now)
-    return [f"- {_short(g, rec['sender'])}：问了收件枢纽（#{relay_id}），已自动退回。"
+    return [f"- {_short(g, rec['sender'])}：问了决策收件箱（#{relay_id}），已自动退回。"
             f"建议：说「{relay_id} 原文」看它问了什么"
             for relay_id, rec in store.read_state(g, DOMAIN).get("unknown", {}).items()
             if rec.get("returned") and today(rec["at"]) == day]

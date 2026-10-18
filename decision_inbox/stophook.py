@@ -67,14 +67,14 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
     if any(t.waiter == me for t in open_):
         return _pass("本会话开着等待记录，已报阻塞")
     if any(it["sender"] == me and it["fullyStopped"] for it in items.pending(g)):
-        return _pass("本会话有完全停住的待答事项，已报阻塞")
+        return _pass("本会话有完全停住的待决事项，已报阻塞")
     waiting = sorted((t for t in open_ if t.target == short), key=lambda t: t.no)
     answered = _answered(g, me, now)
     if not waiting and not answered:
         silent = _silent_stop(g, entry, read_map or specguard.read_line)
         if silent is not None:
             return Decision(True, silent, None)
-        return _pass("没有会话在等本会话，也没有已答未恢复的事项")
+        return _pass("没有会话在等本会话，也没有已答复、还没结项的待决事项")
     out = []
     if waiting:
         rows = [f"- W{t.no}（结束行写 #{t.no}）{(store.find_session(g, relay_name=t.waiter) or {}).get('shortName', t.waiter)} 在等你："
@@ -83,12 +83,12 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
                 "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这条等待记录的编号（#数字）。",
                 "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。"]
     if answered:
-        out.append("另外，用户已答复你抛的事项，你还没发【已恢复】：" if waiting
-                   else "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。")
+        out.append("另外，用户已答复你抛的待决事项，你还没发【已恢复】（表示已结项）：" if waiting
+                   else "【decision-inbox】收工前请先处理：用户已答复你抛的待决事项，你还没发【已恢复】（表示已结项）。")
         out += [*answered, "做完了：发【已恢复】，结束行写这个编号。",
                 "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
                 # the hook cannot see this session's own sent mail (relay-presence-and-doubt 关键决策 6)
-                "已经发过【已恢复】、收件枢纽还没收进：回一句「已发 #邮箱号」即可收工，不用重发。"]
+                "已经发过【已恢复】、决策收件箱还没收进：回一句「已发 #邮箱号」即可收工，不用重发。"]
     return Decision(True, "\n".join(out), None)
 
 
@@ -112,7 +112,7 @@ def _silent_stop(g: store.Group, entry: dict, read_map) -> str | None:
         return None
     return "\n".join([
         f"【decision-inbox】收工前请先处理：当前模块 {m.id} 还有 {m.progress_total - m.progress_done} 项没勾，"
-        "你既没报阻塞也没抛事项。",
+        "你既没报阻塞也没抛待决事项。",
         "手上没有已批准、还没做完的下一步：抛一项【等待用户】，说明要用户定什么。",
         "在等别人：抛【等待其他会话】。",
         "还能接着做：继续做，不要停下。"])

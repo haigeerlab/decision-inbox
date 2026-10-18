@@ -106,7 +106,7 @@ class ReceiveDispatchTest(HubCase):
 
     def test_user_reply_from_a_session_is_not_handled(self):
         r = self.receive(message(1010, "fe-codex", "【用户答复】\n事项：#1\n用户原话：1 A\n答复时间：现在\n"))
-        self.assertEqual(r.notes, ["前端 发来一条【用户答复】，收件枢纽不处理"])
+        self.assertEqual(r.notes, ["前端 发来一条【用户答复】（你的答复），决策收件箱不处理"])
         self.assertEqual((r.sends, r.ack), ([], [1010]))
 
     def test_unregistered_reviewer_conclusion_is_returned(self):
@@ -296,7 +296,7 @@ class ReplyTest(HubCase):
         self.assertTrue(self.reply("看等待").show.startswith("W2 API 等 前端"))
         self.assertEqual(self.reply("看已关闭").show, "2026-10-16 没有关闭的等待记录")
         self.assertEqual(self.reply("看已关闭 2026-10-15").show, "2026-10-15 没有关闭的等待记录")
-        self.assertEqual(self.reply("看失效").show, "没有失效的事项")
+        self.assertEqual(self.reply("看失效").show, "没有失效的待决事项")
 
     def test_original_of_unknown_message(self):
         self.receive(message(1304, "fe-codex", "随便说一句\n第二行"))
@@ -481,7 +481,7 @@ class CommandLineTest(HubCase):
         self.assertTrue(self.run_cli("view", "demo", "detail", "1")[1].startswith("#1 详情"))
         self.assertEqual(self.run_cli("view", "demo", "waits")[1].strip(), "没有开着的等待记录")
         self.assertEqual(self.run_cli("view", "demo", "closed", "2026-10-15")[1].strip(), "2026-10-15 没有关闭的等待记录")
-        self.assertEqual(self.run_cli("view", "demo", "invalidated")[1].strip(), "没有失效的事项")
+        self.assertEqual(self.run_cli("view", "demo", "invalidated")[1].strip(), "没有失效的待决事项")
         self.assertEqual(self.run_cli("view", "demo", "bogus")[0], 2)
 
     def test_convention_creates_io_folder(self):
@@ -578,8 +578,8 @@ class QuestionReturnTest(HubCase):
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
         self.assertEqual(body, "\n".join([
             "回复：#4543",
-            "收件枢纽只转达用户的话，不答疑，也不做决定。",
-            "你回的 #4542 是用户对事项 #1（你的原消息 #4540）的答复。",
+            "决策收件箱只转达用户的话，不答疑，也不做决定。",
+            "你回的 #4542 是用户对待决事项 #1（你的原消息 #4540）的答复。",
             "还有疑问，请抛一项【等待用户】，写清要用户确认什么。"]) + "\n")
         self.assertIn("前端 称：回复：#4542（说「4543 原文」看全文）", r.notes)
 
@@ -587,7 +587,7 @@ class QuestionReturnTest(HubCase):
         r = self.receive(asking(2001, "fe-codex", "收件枢纽，现在几点了？"))
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
         self.assertNotIn("你回的", body)
-        self.assertTrue(body.startswith("回复：#2001\n收件枢纽只转达用户的话"))
+        self.assertTrue(body.startswith("回复：#2001\n决策收件箱只转达用户的话"))
 
     def test_notice_reply_names_the_notice(self):
         self.receive(message(1501, "fe-owner", WAIT_USER))
@@ -595,7 +595,7 @@ class QuestionReturnTest(HubCase):
         hub.sent(self.g, {r.sends[0]["id"]: 1601, r.sends[1]["id"]: 1602}, [], at=NOW)
         r = self.receive(asking(1603, "fe-codex", "回复：#1602\n这条要我做什么？", reply_to=1602))
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
-        self.assertIn("你回的 #1602 是事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
+        self.assertIn("你回的 #1602 是待决事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
 
     def test_no_return_for_plain_notes_bridge_or_replies_to_a_return(self):
         r = self.receive(asking(2001, "fe-codex", "问一句"))
@@ -612,7 +612,7 @@ class QuestionReturnTest(HubCase):
         self.receive(asking(2001, "fe-codex", "问一句"))
         main = hub.main_view(self.g, now=NOW)
         self.assertIn("异常 1", main)
-        self.assertIn("- 前端：问了收件枢纽（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
+        self.assertIn("- 前端：问了决策收件箱（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
         self.assertIn("异常 0", hub.main_view(self.g, now="2026-10-17T05:30:00Z"))
 
 
