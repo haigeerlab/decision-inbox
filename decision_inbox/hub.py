@@ -362,10 +362,10 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
-_LOOK_RE = re.compile(r"^看\s*#?(\d+)$")
+_LOOK_RE = re.compile(r"^看\s*([#WwＷ]?)\s*(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
-_CLOSE_RE = re.compile(r"^关掉\s*((?:#\s*\d+[\s、，,]*)+)(.*)$", re.S)
+_CLOSE_RE = re.compile(r"^关掉\s*((?:[#WwＷ]?\s*\d+[\s、，,]*)+)(.*)$", re.S)
 
 
 def today(now: str) -> str:
@@ -380,16 +380,16 @@ def _original(g: store.Group, relay_id: str) -> str:
 
 
 def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps, crews=None) -> Reply:
-    """「关掉 #编号」: every number must be an open ticket, else nothing is closed."""
+    """「关掉 W编号」 (or #编号): every number must be an open ticket, else nothing is closed."""
     open_ = store.read_state(g, "tickets").get("tickets", {})
     for no in numbers:
         if items.get(g, no) is not None:
-            return Reply(f"#{no} 是事项，不是等待单；要放弃事项请让提出方发【撤回】")
+            return Reply(f"#{no} 是待决事项，不是等待记录；要放弃待决事项请让提出方发【撤回】")
         if open_.get(str(no), {}).get("status") != "open":
-            return Reply(f"#{no} 不是开着的等待单，请确认编号")
+            return Reply(f"{view.wait_no(no)} 不是开着的等待记录，请确认编号")
     for no in numbers:
         tickets.close_by_user(g, no, reason or None, now)
-    listed = "、".join(f"#{n}" for n in numbers)
+    listed = "、".join(view.wait_no(n) for n in numbers)
     return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps, crews=crews))
 
 
@@ -409,7 +409,12 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if m := _DETAIL_RE.match(said):
         return Reply(view.render_detail(g, int(m.group(1))))
     if m := _LOOK_RE.match(said):
-        return Reply(view.render_look(g, int(m.group(1)), now))
+        no = int(m.group(2))
+        is_wait = str(no) in store.read_state(g, tickets.DOMAIN).get("tickets", {})
+        if m.group(1) in ("W", "w", "Ｗ") or (is_wait and items.get(g, no) is None):
+            from decision_inbox import query
+            return Reply(query.render_item(g, no))
+        return Reply(view.render_look(g, no, now))
     if m := _ORIGINAL_RE.match(said):
         return Reply(_original(g, m.group(1)))
     if said == "看等待":

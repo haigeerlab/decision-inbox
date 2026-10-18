@@ -964,9 +964,9 @@ class UnfinishedLeaveTest(TempHomeTestCase):
         text = "\n".join(out.warnings)
         self.assertIn("leave 后它们继续留在主视图，收件枢纽不再给它发任何消息", text)
         self.assertIn(f"事项 #{item}：支付页先接哪种支付方式", text)
-        self.assertIn(f"等待单 #{ticket}：在等 API", text)
+        self.assertIn(f"等待记录 W{ticket}：在等 API", text)
         self.assertIn("发【撤回】", text)
-        self.assertIn("关掉 #编号", text)
+        self.assertIn("关掉 W编号", text)
         onboard.leave("demo", relay_name, project=None, confirm=True, now=NOW)
         self.assertIn(relay_name, store.read_state(self.g, onboard.DOMAIN)["left"])
 

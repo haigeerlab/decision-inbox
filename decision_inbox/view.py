@@ -108,7 +108,7 @@ _ADVICE = {
     6: "看挂起原因是否已经解决",
     7: "看一下这次审查的分歧点",
     8: "问 {who} 进展，或交负责人跟进",
-    9: "确认旧等待是否还需要，不需要就说「关掉 #{ticket}」",
+    9: "确认旧等待是否还需要，不需要就说「关掉 W{ticket}」",
     10: "在 Codex 里点开 {who} 让它加载",
     11: "完全退出 ChatGPT 再打开 {who} 的任务",
 }
@@ -121,7 +121,7 @@ _ADVICE_FOR_CODEX = {"idle-backlog": "打开 {who} 的任务"}
 def advice(g: store.Group, signal) -> str:
     """The fixed advice sentence for signals 3～10 (shared with patrol's owner alerts)."""
     who = _short(g, signal.sessions[0]) if signal.sessions else "?"
-    found = re.search(r"等待单 #(\d+)", signal.text)
+    found = re.search(r"等待记录 W(\d+)", signal.text)
     entry = store.find_session(g, relay_name=signal.sessions[0]) if signal.sessions else None
     by_code = _ADVICE_FOR_CODEX if (entry or {}).get("host") == "codex-desktop" else {}
     text = by_code.get(signal.code) or _ADVICE_BY_CODE.get(signal.code, _ADVICE.get(signal.no, ""))
@@ -413,6 +413,11 @@ def render_detail(g: store.Group, item: int) -> str:
     return "\n".join(out + ["原文：", it["text"].rstrip("\n")])
 
 
+def wait_no(no) -> str:
+    """A wait record's number as shown to people: W3 (术语表 v1.1; #数字 is for items only)."""
+    return f"W{no}"
+
+
 def _ticket_head(g: store.Group, waiter: str, target: str, what: str) -> str:
     return f"{_short(g, waiter)} 等 {target}：{_one_line(what)}"
 
@@ -421,23 +426,23 @@ def render_waits(g: store.Group, now: str, relay=None) -> str:
     """「看等待」: one line per open ticket with wait-tickets' marks."""
     rows = []
     for t in tickets.open_tickets(g, now, relay):
-        parts = [f"#{t.no} {_ticket_head(g, t.waiter, t.target, t.what)}"]
+        parts = [f"{wait_no(t.no)} {_ticket_head(g, t.waiter, t.target, t.what)}"]
         if "waited" not in t.marks:
             parts.append(f"已等 {t.minutes} 分钟")
         row = " · ".join(parts + [_one_line(n) for n in t.notes])
         if t.maybe_stale is not None:
-            row += f"（可能已失效：之后又发过 #{t.maybe_stale}，回『关掉 #{t.no}』）"
+            row += f"（可能已失效：之后又发过 #{t.maybe_stale}，回『关掉 {wait_no(t.no)}』）"
         rows.append(row)
-    return "\n".join(rows) or "没有开着的等待单"
+    return "\n".join(rows) or "没有开着的等待记录"
 
 
 def render_closed(g: store.Group, day: str) -> str:
     """「看已关闭」: tickets closed on `day` with reason and basis."""
-    rows = [f"#{t['no']} {_ticket_head(g, t['waiter'], t['target'], t['what'])} · "
+    rows = [f"{wait_no(t['no'])} {_ticket_head(g, t['waiter'], t['target'], t['what'])} · "
             f"{CLOSE_REASONS.get(t['close']['reason'], t['close']['reason'])} · 依据：{t['close']['basis']} · "
             f"{_clock(t['close']['at'])} 关"
             for t in tickets.closed_on(g, day)]
-    return "\n".join(rows) or f"{day} 没有关闭的等待单"
+    return "\n".join(rows) or f"{day} 没有关闭的等待记录"
 
 
 def render_invalidated(g: store.Group) -> str:

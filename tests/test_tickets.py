@@ -134,7 +134,7 @@ class OpenAndCloseTest(TicketsCase):
         for written in (item, 4707):
             r = self.receive(SINGLE.replace("结束：无", f"结束：#{written}"), relay_id=4752 + written)
             hint = next(h for h in r.hints if h.code == "end-is-item")
-            self.assertEqual(hint.text, f"#{written} 是事项，不是等待；结束事项要发【已恢复】")
+            self.assertEqual(hint.text, f"#{written} 是待决事项，不是等待记录；结束待决事项要发【已恢复】")
         r = self.receive(wait_session(end=f"#{item}"), relay_id=4800)
         self.assertIn("end-is-item", {h.code for h in r.hints})
 

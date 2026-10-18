@@ -125,6 +125,11 @@ def _assess(g, args):
             agents, maps)
 
 
+def _number(text: str) -> int:
+    """An item or wait record number as people write it: 3, #3 or W3 (glossary-rename)."""
+    return int(text.strip().lstrip("#WwＷ"))
+
+
 def _query(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="python3 -m decision_inbox query")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -143,7 +148,7 @@ def _query(argv: list[str]) -> int:
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
-        p.add_argument("number", type=int)
+        p.add_argument("number", type=_number)
         if name == "item":
             p.add_argument("--status", action="append", default=[])
     try:

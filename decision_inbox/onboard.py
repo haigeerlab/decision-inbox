@@ -429,7 +429,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     if old_task:
         steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
-        steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
+        steps.insert(0, f"待决事项和等待记录从 {start_number} 开始编号（待决事项写 #{start_number}、等待记录写 W{start_number}；替换旧的决策收件箱时避免和旧编号混淆）")
     out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
     if confirm:
         g, _ = store.init_group(group)
@@ -666,13 +666,13 @@ def _unfinished(g: store.Group, entry: dict) -> list[str]:
     rows = [f"事项 #{it['no']}：{it.get('decide') or '（没写要你决定）'}"
             for it in items.pending(g) if it["sender"] == name]
     waits = store.read_state(g, "tickets").get("tickets", {})
-    rows += [f"等待单 #{k}：在等 {t['target']}" for k, t in sorted(waits.items(), key=lambda kv: int(kv[0]))
+    rows += [f"等待记录 W{k}：在等 {t['target']}" for k, t in sorted(waits.items(), key=lambda kv: int(kv[0]))
              if t["status"] == "open" and t["waiter"] == name]
     if not rows:
         return []
     return [f"{entry['shortName']} 还有没了结的事，leave 后它们继续留在主视图，收件枢纽不再给它发任何消息：",
             *(f"  {row}" for row in rows),
-            "处理办法：事项请在 leave 前由它自己发【撤回】；等待单你可以在收件枢纽说「关掉 #编号」"]
+            "处理办法：事项请在 leave 前由它自己发【撤回】；等待记录你可以在决策收件箱说「关掉 W编号」"]
 
 
 def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Outcome:

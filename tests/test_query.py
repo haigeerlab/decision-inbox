@@ -301,10 +301,10 @@ class ItemTest(QueryCase):
         t = self.wait("fe", "API", 30, what="订单接口")
         tickets.close_by_user(self.g, t, "不等了", at=at(5))
         text = query.render_item(self.g, t)
-        self.assertEqual(text.split("\n")[0], f"#{t} · 等待单 · 前端 等 API · 当前：已关")
+        self.assertEqual(text.split("\n")[0], f"W{t} · 等待记录 · 前端 等 API · 当前：已关")
         self.assertIn(f"{hhmm(at(30))} 前端 开单：等 API 的「订单接口」（agent-relay #", text)
         self.assertTrue(text.endswith(f"{hhmm(at(5))} 关单：用户关闭，依据：不等了"))
-        self.assertEqual(query.render_item(self.g, 999), "#999 不是事项也不是等待单")
+        self.assertEqual(query.render_item(self.g, 999), "999 既不是待决事项（#999）也不是等待记录（W999）")
 
 
 class CommandLineTest(QueryCase):
@@ -364,6 +364,7 @@ class CommandLineTest(QueryCase):
         self.assertIn("检查明细", out)
         code, out, _ = self.run_cli("query", "item-ids", "demo", str(no))
         self.assertEqual((code, out.split()[-1]), (0, "7001"))
+        self.assertEqual(self.run_cli("query", "item-ids", "demo", f"#{no}")[:2], (code, out))  # glossary-rename
         code, out, _ = self.run_cli("query", "item", "demo", str(no), "--status", status_file)
         self.assertEqual(code, 0)
         self.assertIn("agent-relay #7001：投递 accepted", out)

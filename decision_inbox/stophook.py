@@ -65,7 +65,7 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
     me, short = entry["relayName"], entry["shortName"]
     open_ = tickets.open_tickets(g, now)
     if any(t.waiter == me for t in open_):
-        return _pass("本会话开着等待单，已报阻塞")
+        return _pass("本会话开着等待记录，已报阻塞")
     if any(it["sender"] == me and it["fullyStopped"] for it in items.pending(g)):
         return _pass("本会话有完全停住的待答事项，已报阻塞")
     waiting = sorted((t for t in open_ if t.target == short), key=lambda t: t.no)
@@ -77,10 +77,10 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
         return _pass("没有会话在等本会话，也没有已答未恢复的事项")
     out = []
     if waiting:
-        rows = [f"- #{t.no} {(store.find_session(g, relay_name=t.waiter) or {}).get('shortName', t.waiter)} 在等你："
+        rows = [f"- W{t.no}（结束行写 #{t.no}）{(store.find_session(g, relay_name=t.waiter) or {}).get('shortName', t.waiter)} 在等你："
                 f"{''.join(x.strip() for x in t.what.splitlines())}（已等 {waited(t.minutes)}）" for t in waiting]
         out += ["【decision-inbox】收工前请先处理：有会话在等你。", *rows,
-                "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
+                "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这条等待记录的编号（#数字）。",
                 "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。"]
     if answered:
         out.append("另外，用户已答复你抛的事项，你还没发【已恢复】：" if waiting

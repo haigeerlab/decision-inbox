@@ -376,7 +376,7 @@ def _item_timeline(g: store.Group, it: dict, statuses: dict) -> list[str]:
 def _ticket_timeline(g: store.Group, number: int, t: dict) -> list[str]:
     from decision_inbox.view import CLOSE_REASONS
     waiter = _short(g, t["waiter"])
-    head = f"#{number} · 等待单 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
+    head = f"W{number} · 等待记录 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
     rows = [f"{_clock(t['sentAt'])} {waiter} 开单：等 {t['target']} 的「{_one_line(t['what'])}」"
             f"（agent-relay #{t['relayId']}）"]
     if t.get("close"):
@@ -393,7 +393,7 @@ def render_item(g: store.Group, number: int, statuses: dict | None = None) -> st
     t = store.read_state(g, tickets.DOMAIN).get("tickets", {}).get(str(number))
     if t is not None:
         return "\n".join(_ticket_timeline(g, number, t))
-    return f"#{number} 不是事项也不是等待单"
+    return f"{number} 既不是待决事项（#{number}）也不是等待记录（W{number}）"
 
 
 # ---- query stats / query events (doctor-and-observer decision 4) ----

@@ -353,7 +353,7 @@ class AnomalyTest(ViewCase):
             Signal(6, "suspended-blocks", ("fe-codex",), "前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart"),
             Signal(7, "rework", ("api-codex",), "API 的审查 R3（spec）已来回 4 轮，超过本组常见水平"),
             Signal(8, "slow-progress", ("bg-codex",), "后台 的 jobs 已 3 小时没有新进展，明显慢于平时"),
-            Signal(9, "orphan-wait", ("fe-codex",), "前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35"),
+            Signal(9, "orphan-wait", ("fe-codex",), "前端 的等待记录 W31（等 API）还开着，但它后来又开了新的等待 W35"),
             Signal(10, "codex-backlog", ("api-codex",), "API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟"),
         ]
         text = self.render(self.assessment(signals=[Signal(1, "all-waiting", ("fe-codex",), "全线互等")] + signals))
@@ -367,7 +367,7 @@ class AnomalyTest(ViewCase):
             "- 前端：前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart。建议：看挂起原因是否已经解决",
             "- API：API 的审查 R3（spec）已来回 4 轮，超过本组常见水平。建议：看一下这次审查的分歧点",
             "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交负责人跟进",
-            "- 前端：前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35。建议：确认旧等待是否还需要，不需要就说「关掉 #31」",
+            "- 前端：前端 的等待记录 W31（等 API）还开着，但它后来又开了新的等待 W35。建议：确认旧等待是否还需要，不需要就说「关掉 W31」",
             "- API：API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟。建议：在 Codex 里点开 API 让它加载",
         ])
         self.assertNotIn("全线互等", text)
@@ -450,28 +450,28 @@ class ExpandedViewTest(ViewCase):
         self.assertEqual(view.render_detail(self.g, item=999), "#999 不存在")
 
     def test_waits(self):
-        self.assertEqual(view.render_waits(self.g, now=NOW), "没有开着的等待单")
+        self.assertEqual(view.render_waits(self.g, now=NOW), "没有开着的等待记录")
         fresh = self.wait("fe-codex", "API", 5)
         old = tickets.receive(self.g, (PROTO / "wait-session.txt").read_text(encoding="utf-8"),
                               sender="bg-codex", relay_id=1, sent_at=at(70)).opened
         lines = view.render_waits(self.g, now=NOW).split("\n")
         self.assertEqual(lines, [
-            f"#{fresh} 前端 等 API：订单接口 · 已等 5 分钟",
-            f"#{old} 后台 等 API：订单接口的 Mock 数据，交付后我才能接着做支付页 · ⚠ 已等 70 分钟 · "
+            f"W{fresh} 前端 等 API：订单接口 · 已等 5 分钟",
+            f"W{old} 后台 等 API：订单接口的 Mock 数据，交付后我才能接着做支付页 · ⚠ 已等 70 分钟 · "
             "可能卡住：后台 在等 API 的「订单接口的 Mock 数据，\n  交付后我才能接着做支付页」，"
             "请看一下 API 是否已完成却没通知 后台".replace("\n  ", ""),
         ])
 
     def test_closed(self):
         day = view._today(NOW)
-        self.assertEqual(view.render_closed(self.g, day=day), f"{day} 没有关闭的等待单")
+        self.assertEqual(view.render_closed(self.g, day=day), f"{day} 没有关闭的等待记录")
         first = self.wait("fe-codex", "API", 30)
         tickets.close_by_user(self.g, first, "不等了", at=at(20))
         second = self.wait("api-codex", "后台", 30)
         tickets.close_by_user(self.g, second, None, at=at(10))
         self.assertEqual(view.render_closed(self.g, day=day).split("\n"), [
-            f"#{first} 前端 等 API：订单接口 · 用户关闭 · 依据：不等了 · {hhmm(at(20))} 关",
-            f"#{second} API 等 后台：订单接口 · 用户关闭 · 依据：用户关闭 · {hhmm(at(10))} 关",
+            f"W{first} 前端 等 API：订单接口 · 用户关闭 · 依据：不等了 · {hhmm(at(20))} 关",
+            f"W{second} API 等 后台：订单接口 · 用户关闭 · 依据：用户关闭 · {hhmm(at(10))} 关",
         ])
 
     def test_invalidated(self):
