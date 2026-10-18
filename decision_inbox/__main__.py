@@ -653,7 +653,7 @@ def main(argv: list[str]) -> int:
         return _doctor(argv[1:])
     if argv[:1] == ["whoami"]:
         return _whoami(argv[1:])
-    if argv == ["glossary"]:  # glossary-rename: the bundled copy of 术语表 v1.1, word for word
+    if argv == ["glossary"]:  # glossary-rename: the bundled copy of 术语表 v1.2, word for word
         sys.stdout.write((install.plugin_root() / "docs" / "glossary.md").read_text(encoding="utf-8"))
         return 0
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):

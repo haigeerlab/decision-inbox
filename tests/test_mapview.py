@@ -38,8 +38,8 @@ class CellTest(unittest.TestCase):
                 self.assertEqual(mapview.status_cell(module), want)
 
     def test_spec_plan_review(self):
-        cases = {("approved", "approved"): "Spec 通过 Plan 通过", ("pending", "none"): "Spec 待审 Plan 不适用",
-                 ("revised", "invalid"): "Spec 改后待复审 Plan 异常"}
+        cases = {("approved", "approved"): "Spec ✔ Plan ✔", ("pending", "none"): "Spec 待批准 Plan 无标记",
+                 ("revised", "invalid"): "Spec 改过待重审 Plan 标记无效"}
         for (spec, plan), want in cases.items():
             with self.subTest(want=want):
                 self.assertEqual(mapview.review_cell(fact(spec=spec, plan=plan)), want)
@@ -47,8 +47,8 @@ class CellTest(unittest.TestCase):
     def test_external_review_marked_only_when_recorded(self):
         import dataclasses
         base = fact(spec="approved", plan="pending")
-        for value, want in (("recorded", "Spec 通过 Plan 待审（有参考意见）"),
-                            ("declined", "Spec 通过 Plan 待审"), ("none", "Spec 通过 Plan 待审")):
+        for value, want in (("recorded", "Spec ✔ Plan 待批准（有参考意见）"),
+                            ("declined", "Spec ✔ Plan 待批准"), ("none", "Spec ✔ Plan 待批准")):
             with self.subTest(value=value):
                 self.assertEqual(mapview.review_cell(dataclasses.replace(base, external_review=value)), want)
 
@@ -207,12 +207,12 @@ class TableTest(MapCase):
             "| 位 | 编号 | 作用 | 状态 | Spec/Plan 批准 | 架构审查 | 备注 |",
             "|---|---|---|---|---|---|---|",
             "| 1–3 | 其余 2 个已完成 | | ✅ | | | |",
-            "| 2 | b | b 的作用 | ✅ 已完成 | Spec 通过 Plan 通过 | — |  |",
-            "| 4 | pay | 支付页：接微信与支付宝，" + "长" * 28 + "… | 🔨 进行中 6/11 | Spec 通过 Plan 通过 | "
+            "| 2 | b | b 的作用 | ✅ 已完成 | Spec ✔ Plan ✔ | — |  |",
+            "| 4 | pay | 支付页：接微信与支付宝，" + "长" * 28 + "… | 🔨 进行中 6/11 | Spec ✔ Plan ✔ | "
             "Spec 通过，附建议1条 · Plan 有须修改项（第 2 轮） | 外部等待：等 API 交付「订单接口」（已等 40 分钟） |",
-            "| 5 | cart | cart 的作用 | ⏸ 挂起：等设计稿 · 挡住 2 个 | Spec 通过 Plan 通过 | — |  |",
-            "| 6 | x | x 的作用 | ⛔ 阻塞：等 cart | Spec 待审 Plan 不适用 | — |  |",
-            "| 7 | y | y 的作用 | 🟢 可以开始 | Spec 不适用 Plan 不适用 | — |  |",
+            "| 5 | cart | cart 的作用 | ⏸ 挂起：等设计稿 · 挡住 2 个 | Spec ✔ Plan ✔ | — |  |",
+            "| 6 | x | x 的作用 | ⛔ 阻塞：等 cart | Spec 待批准 Plan 无标记 | — |  |",
+            "| 7 | y | y 的作用 | 🟢 可以开始 | Spec 无标记 Plan 无标记 | — |  |",
             "| 8–9 | 2 个未就绪 | | ○ | | | |",
         ])
         self.assertMultiLineEqual(mapview.render_table(self.g, NOW, self.fe, line), expected)
@@ -228,7 +228,7 @@ class TableTest(MapCase):
         line = make_map([module_doc("a", 1), module_doc("b", 2), module_doc("c", 5)])
         rows = mapview.table_rows(self.g, NOW, self.fe, line)
         self.assertEqual(rows[1:], ["| 1–2 | 其余 2 个已完成 | | ✅ | | | |",
-                                    "| 5 | c | c 的作用 | ✅ 已完成 | Spec 通过 Plan 通过 | — |  |"])
+                                    "| 5 | c | c 的作用 | ✅ 已完成 | Spec ✔ Plan ✔ | — |  |"])
 
     def test_single_folded_position(self):
         line = make_map([module_doc("a", 1), module_doc("b", 2, last_tick="2026-10-16T11:00:00+08:00"),
