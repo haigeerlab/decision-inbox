@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved edd5260866c5 -->
 
 # Spec: r20-fixes
 
