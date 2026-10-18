@@ -202,10 +202,11 @@ def _cap(ctx: _Context) -> None:
 
 
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
-         relay_error: str | None = None, from_hub: bool = False) -> Plan:
+         relay_error: str | None = None, from_hub: bool = False, crews: dict | None = None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
-    assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"))
+    assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"),
+                               crews=crews)
     result = Plan(now=now, snapshot=assessment.snapshot, by="hub" if from_hub else "schedule")
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
     ctx = _Context(g, now, relay, state, result, from_hub)

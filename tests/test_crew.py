@@ -120,3 +120,72 @@ class ReadModulesTest(CrewCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from helpers import TempHomeTestCase  # noqa: E402
+
+from decision_inbox import store, tickets  # noqa: E402
+
+
+class WiringTest(TempHomeTestCase):
+    """crew-line-status Task 3: every entry point reads the coordinator's modules."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = Path(tempfile.mkdtemp(prefix="di-crew-cli-"))
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        self._old = os.environ.get("DECISION_INBOX_PLUGINS_FILE")
+        os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.tmp / "installed_plugins.json")
+        self.g, _ = store.init_group("demo")
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "hub", "shortName": "收件枢纽", "role": "hub", "line": [],
+                            "host": "claude-desktop"})
+            tx.add_session({"relayName": "coord", "shortName": "门店", "role": "dev", "line": ["门店"],
+                            "host": "claude-desktop", "repo": str(self.repo), "crewCoordinator": True})
+        tickets.receive(self.g, "【等待其他会话】\n结束：无\n在等谁：API\n等什么：接口\n", sender="coord",
+                        relay_id=1, sent_at="2026-10-18T10:00:00+08:00")
+
+    def tearDown(self):
+        if self._old is None:
+            os.environ.pop("DECISION_INBOX_PLUGINS_FILE", None)
+        else:
+            os.environ["DECISION_INBOX_PLUGINS_FILE"] = self._old
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def agents(self, busy=True):
+        rows = [{"name": "coord", "host": {"app": "claude"}, "unread": 0, "lastActivity": None,
+                 "presence": {"state": "running", "activity": "idle"}},
+                {"name": "shop-a", "host": {"app": "claude"}, "unread": 0, "lastActivity": None,
+                 "presence": {"state": "running", "activity": "busy" if busy else "idle"}}]
+        path = self.tmp / f"agents-{os.urandom(4).hex()}.json"
+        path.write_text(json.dumps({"count": len(rows), "agents": rows}), encoding="utf-8")
+        return str(path)
+
+    def cli(self, *argv):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        self.assertEqual(code, 0, err.getvalue())
+        return out.getvalue()
+
+    def test_lines_view_and_reply_show_modules(self):
+        FakeCrew(self.tmp)
+        want = "干活中（模块 a 在忙·构建、b 挂起：等接口；还在等 API #1）"
+        self.assertIn(want, self.cli("query", "lines", "demo", "--agents", self.agents()))
+        self.assertIn(want, self.cli("view", "demo", "--agents", self.agents()))
+        text = self.tmp / "said.txt"
+        text.write_text("卡住了吗", encoding="utf-8")
+        shown = json.loads(self.cli("inbox", "reply", "demo", "--text-file", str(text), "--agents", self.agents()))
+        self.assertIn(want, shown["show"])
+
+    def test_patrol_gives_no_all_waiting_verdict_when_unknown(self):
+        FakeCrew(self.tmp, out="", code=2, err="状态库还没建")
+        out = self.tmp / "plan.json"
+        self.cli("patrol", "plan", "demo", "--agents", self.agents(busy=False), "--out", str(out))
+        self.assertNotIn("all-waiting", json.dumps(json.loads(out.read_text(encoding="utf-8"))))
+        self.assertIn("模块状态未知：状态库还没建", self.cli("view", "demo", "--agents", self.agents(busy=False)))

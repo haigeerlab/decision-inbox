@@ -305,7 +305,7 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
 
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
-              relay_status: str | None = None, relay_error: str | None = None) -> str:
+              relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
@@ -316,7 +316,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
     elif relay is None:
         head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
     previous = store.read_state(g, "patrol").get("snapshot")
-    assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous)
+    assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous, crews=crews)
     return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now))])
 
 
@@ -337,7 +337,7 @@ def _original(g: store.Group, relay_id: str) -> str:
     return f"{_short(g, rec['sender'])} 发来的 #{relay_id} 原文：\n{rec['text']}"
 
 
-def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps) -> Reply:
+def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps, crews=None) -> Reply:
     """「关掉 #编号」: every number must be an open ticket, else nothing is closed."""
     open_ = store.read_state(g, "tickets").get("tickets", {})
     for no in numbers:
@@ -348,11 +348,11 @@ def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, map
     for no in numbers:
         tickets.close_by_user(g, no, reason or None, now)
     listed = "、".join(f"#{n}" for n in numbers)
-    return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps))
+    return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps, crews=crews))
 
 
 def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = None,
-          relayed_from: str | None = None) -> Reply:
+          relayed_from: str | None = None, crews: dict | None = None) -> Reply:
     """Everything the user says in the hub, matched as a whole sentence (spec 关键决策 4).
 
     `relayed_from` names where words came from when the user did not type them in the hub
@@ -376,19 +376,19 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         return Reply(view.render_invalidated(g))
     if m := _CLOSE_RE.match(said):
         numbers = [int(n) for n in re.findall(r"\d+", m.group(1))]
-        return _close(g, numbers, m.group(2).strip(), now, relay, maps)
+        return _close(g, numbers, m.group(2).strip(), now, relay, maps, crews)
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
     parsed = items.interpret_reply(g, text)
     if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
         # Nothing to answer: the user is most likely asking how things stand (「卡住了吗」).
-        return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps)}")
+        return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews)}")
     if parsed.question:
         return Reply(parsed.question)
     sends = _queue_answers(g, items.answer(g, parsed.answers, answered_at=now), now)
     told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in parsed.answers)
-    body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends})
+    body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews)
     return Reply(f"已转达：{told}\n\n{body}", sends)
 
 
