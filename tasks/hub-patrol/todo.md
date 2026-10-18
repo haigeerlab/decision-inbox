@@ -28,6 +28,12 @@
   - 文件：`decision_inbox/hub.py`、`decision_inbox/__main__.py`、`tests/test_hub.py`、`tests/test_consume.py`、两份 `plugin.json`、`tests/test_packaging.py`、`README.md`
   - 记录（2026-10-18）：先写用例（约定块用 patrol-agents.json；`--from-hub` 缺文件退出码 2、提示 bridge_agents、不写计划；定时巡视缺文件仍照旧通知），2 失败；实现后通过。版本 0.0.15（约定块改了，收件枢纽要重跑接入）。Ran 593 tests, OK
 
-- [ ] Checkpoint（gate）：实测，开始前另问用户
+- [x] Checkpoint（gate）：实测，开始前另问用户
+  - 记录（2026-10-18）：用户同意后升级插件（0.0.14，再 0.0.15）、在 di-p0 开新收件枢纽会话重跑接入并接管身份名。
+    - 第一轮（0.0.14，11:18）：收件枢纽读信后 `patrolDue` 为真，顺带巡视并记 `by: hub`；但把 `view` 与 `patrol plan` 写在同一条命令里共用 agents.json，被 view 读完即删，误报「读不到 agent-relay」→ 修为 Task 5（PR #11，0.0.15）。
+    - 第二轮（0.0.15，11:29）：`patrolDue` 为假——距上一轮 10 分 41 秒，分钟数向下取整为 10，未「超过 10 分钟」；实际门槛相当于满 11 分钟。
+    - 第三轮（0.0.15，11:34 读信，11:36:25 记账）：顺带巡视 `by: hub`，没有误报，没有要做的动作；patrol-agents.json 与 plan.json 读完已删。通过。
+  - 另见：空闲的 Claude 收件枢纽会被桌面版停掉，agent-relay 叫不醒停掉的会话（消息排队到会话被打开）；收件枢纽要先被叫醒（巡视的 send_message 或用户打开）才谈得上顺带巡视。全组都没动静、定时任务又不触发时，没人兜底。
 
-- [ ] Checkpoint（gate）：模块最终验收，等用户确认
+- [x] Checkpoint（gate）：模块最终验收，等用户确认
+  - 记录（2026-10-18）：用户验收通过；实测记录另开小 PR。第 ⑥ 阶段 P0 由用户判定通过，P1 开始前另问用户。
