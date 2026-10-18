@@ -458,3 +458,34 @@ class LegacyFormatTest(ItemsCase):
         r = self.receive(MULTI, sender="coord")
         self.assertFalse(r.accepted)
         self.assertIn("scope-session-unknown:API", codes(r.problems))
+
+    def test_legacy_supersede_and_withdraw_by_own_mail_id(self):
+        self.mark("fe-codex", legacyFormat=True)
+        old = self.receive(SINGLE, relay_id=5990).item
+        r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5990】"), relay_id=6000, at=T2)
+        self.assertTrue(r.accepted, r.problems)
+        self.assertEqual(self.item(old)["status"], "superseded")
+        r = self.receive("【撤回】\n事项：#6000\n原因：需求取消\n", relay_id=6001)
+        self.assertTrue(r.accepted, r.problems)
+        self.assertEqual(self.item(r.item)["status"], "withdrawn")
+
+    def test_legacy_cannot_reach_someone_elses_item(self):
+        self.mark("fe-codex", legacyFormat=True)
+        self.receive(SINGLE, sender="api-codex", relay_id=7000)
+        r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #7000】"), relay_id=7001)
+        self.assertFalse(r.accepted)
+        self.assertIn("not-owner", codes(r.problems))
+
+    def test_formal_line_still_needs_the_item_number(self):
+        self.receive(SINGLE, relay_id=5990)
+        r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5990】"), relay_id=6000, at=T2)
+        self.assertFalse(r.accepted)
+        self.assertIn("#5990 是邮箱号", r.return_text)
+
+    def test_legacy_hint_names_both_numbers(self):
+        self.mark("fe-codex", legacyFormat=True)
+        old = self.receive(SINGLE, relay_id=5990).item
+        r = self.receive(SINGLE, relay_id=6000, at=T2)
+        hint = next(h.text for h in r.hints if h.code == "auto-superseded")
+        self.assertTrue(hint.startswith(f"#5990（hub 编号 {old}） 已被新事项自动取代"), hint)
+        self.assertIn("【与 #5990 并行】", hint)
