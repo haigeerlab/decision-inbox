@@ -165,6 +165,8 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("archive_session", body)
         self.assertIn("后续步骤", body)
         self.assertIn("归档巡视会话", meta["description"])
+        self.assertIn("mcp__ccd_session_mgmt__send_message", meta["allowed-tools"])  # patrol-stop-fixes
+        self.assertLess(body.index("停止巡视"), body.index("archive_session"))
         readme = (REPO / "README.md").read_text(encoding="utf-8")
         self.assertIn("归档巡视会话", readme.split("## 卸载", 1)[1].split("\n## ", 1)[0])
         glossary = self.read("commands/glossary.md")  # glossary-rename: the help page shows the copy word for word
