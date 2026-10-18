@@ -22,6 +22,12 @@
   - 文件：`README.md`、`docs/host-differences.md`、两份 `plugin.json`、`tests/test_packaging.py`
   - 记录（2026-10-18）：先改打包测试（0.0.14、「收件枢纽会顺带巡视」「重跑一次 `/decision-inbox:hub-setup`」），2 失败；README 巡视介绍与升级一节、H24 补「已采用对策 B」后通过。Ran 592 tests, OK
 
+- [x] Task 5：顺带巡视用单独的输入文件，`--from-hub` 缺文件时报错不误报
+  - 来源：实测（2026-10-18 11:18）发现：收件枢纽把 `view` 和 `patrol plan` 写在同一条命令里共用 `{io}/agents.json`，`view` 读完即删，`patrol plan` 找不到文件，按「读不到 agent-relay」给用户发了误报。
+  - 做法：约定块的顺带巡视改用 `{io}/patrol-agents.json`；`patrol plan --from-hub` 输入文件不存在时退出码 2、提示先写入，不生成 relay-unreadable 通知（文件在但读不懂才算读不到）。
+  - 文件：`decision_inbox/hub.py`、`decision_inbox/__main__.py`、`tests/test_hub.py`、`tests/test_consume.py`、两份 `plugin.json`、`tests/test_packaging.py`、`README.md`
+  - 记录（2026-10-18）：先写用例（约定块用 patrol-agents.json；`--from-hub` 缺文件退出码 2、提示 bridge_agents、不写计划；定时巡视缺文件仍照旧通知），2 失败；实现后通过。版本 0.0.15（约定块改了，收件枢纽要重跑接入）。Ran 593 tests, OK
+
 - [ ] Checkpoint（gate）：实测，开始前另问用户
 
 - [ ] Checkpoint（gate）：模块最终验收，等用户确认

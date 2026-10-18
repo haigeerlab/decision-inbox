@@ -131,6 +131,18 @@ class CommandsConsumeTest(TempHomeTestCase):
                                  "--from-hub")[0], 0)
         self.assertEqual(json.loads(plan.read_text(encoding="utf-8"))["by"], "hub")
 
+    def test_hub_round_without_agents_file_is_an_error_not_a_notice(self):
+        """hub-patrol Task 5: a file an earlier command already consumed is not 'agent-relay unreadable'."""
+        plan = self.home / "plan.json"
+        code, _, err = run_cli("patrol", "plan", "demo", "--agents", str(self.home / "gone.json"), "--out", str(plan),
+                               "--from-hub")
+        self.assertEqual(code, 2)
+        self.assertIn("bridge_agents", err)
+        self.assertFalse(plan.exists())
+        code, _, _ = run_cli("patrol", "plan", "demo", "--agents", str(self.home / "gone.json"), "--out", str(plan))
+        self.assertEqual(code, 0)  # the scheduled round still plans and tells the user
+        self.assertIn("notify:relay-unreadable", [a["id"] for a in json.loads(plan.read_text())["actions"]])
+
     def test_read_only_query_keeps_its_input(self):
         agents = self.write("agents.json", agents_json())
         run_cli("query", "lines", "demo", "--agents", str(agents))

@@ -255,6 +255,10 @@ def _patrol(argv: list[str]) -> int:
         print(patrol.prompt(args.group))
         return 0
     if args.command == "plan":
+        if args.from_hub and not Path(args.agents).is_file():
+            # hub-patrol Task 5: a file an earlier command consumed is the hub's slip, not agent-relay down
+            print(f"没有 {args.agents}：先用 bridge_agents 读状态，原样写入这个文件，再运行本命令", file=sys.stderr)
+            return 2
         agents, error = None, None
         try:
             agents = relay.parse_agents(Path(args.agents).read_text(encoding="utf-8"), relay_version=args.relay_version)
