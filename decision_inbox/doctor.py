@@ -1,7 +1,9 @@
 """`decision-inbox doctor`: is everything installed and wired as the code expects
 (see spec/doctor-and-observer.md, decision 1).
 
-Read-only: files are read, nothing is written and no dependency command is run.
+Read-only: files are read and nothing is written. The one dependency command run is
+module-crew's published read-only sessions output, since only running it shows whether
+it can be read (spec/crew-line-status.md decision 5).
 Each check says where a problem comes from, so it reaches whoever can fix it.
 """
 
@@ -14,7 +16,7 @@ import shlex
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from decision_inbox import deps, hub, install, onboard, store, view
+from decision_inbox import crew, deps, hub, install, onboard, protocol, store, view
 
 MARKS = {"ok": "✔", "bad": "✘", "unknown": "？"}
 
@@ -165,14 +167,33 @@ def _codex_trust() -> Check:
 _OPTIONAL = {"spec-guard", "delegate"}
 
 
-def _dependency(name: str) -> Check:
+def _contract(d: deps.Dependency, text: str) -> tuple[str, str]:
+    """module-crew names the session-protocol version it speaks; a different major is a mismatch."""
+    theirs = str(d.interface.data.get("contract", ""))
+    if not theirs:
+        return "ok", text
+    text += f"，契约 {theirs}"
+    if theirs.split(".")[0] != protocol.CONTRACT_VERSION.split(".")[0]:
+        return "bad", text
+    if theirs != protocol.CONTRACT_VERSION:
+        text += f"（本插件按 {protocol.CONTRACT_VERSION}）"
+    return "ok", text
+
+
+def _dependency(name: str, required: bool = False) -> Check:
     d = deps.dependency(name)
     label = f"依赖：{name}"
     if d.version is None:
-        if name in _OPTIONAL:
+        if name == "module-crew" and required:
+            return Check(label, "bad", name, d.reason, "名册里有并行开发协调会话，安装 module-crew 才看得到各模块状态")
+        if name in _OPTIONAL or name == "module-crew":
             return Check(label, "ok", name, f"{d.reason}（可选）")
         return Check(label, "bad", name, d.reason, "安装 agent-relay，收件枢纽和各会话靠它收发消息")
     text = deps.describe(d)
+    if name == "module-crew" and d.interface.state == "ok":
+        state, text = _contract(d, text)
+        if state == "bad":
+            return Check(label, "bad", name, text, f"换用与 session-protocol {protocol.CONTRACT_VERSION} 同主版本的 module-crew")
     if d.interface.state == "ok":
         fix = f"能不能用以 {deps.delegate_command(d, 'doctor')} 为准" if name == "delegate" else ""
         return Check(label, "ok", name, text, fix)
@@ -182,6 +203,15 @@ def _dependency(name: str) -> Check:
     if name == "delegate":
         fix += f"；能不能用以 {deps.delegate_command(d, 'doctor')} 为准"
     return Check(label, "unknown", name, text, fix)
+
+
+def _crew_output(entry: dict) -> Check:
+    read = crew.read_modules(entry["repo"])
+    name = f"module-crew 出口：{entry['shortName']}"
+    if read.status == "ok":
+        return Check(name, "ok", "module-crew", f"读到 {len(read.modules)} 个模块会话")
+    return Check(name, "bad", "module-crew", read.reason,
+                 f"按原因处理；处理好之前，主视图里这条线显示「模块状态未知」（在 {entry['repo']} 运行 sessions --json）")
 
 
 def _groups(names) -> list[str]:
@@ -195,15 +225,19 @@ def run(groups=None, now: str | None = None) -> list[Check]:
     now = now or store.now()
     out = [_shim()]
     codex = False
+    coordinators = []
     for group in _groups(groups):
         g = store.open_group(group)
         out += _conventions(g, group)
         out.append(_patrol(g, now))
+        coordinators += crew.coordinators(g)
         left = store.read_state(g, onboard.DOMAIN).get("left", {})
         codex |= any(e.get("host") == "codex-desktop" and e["relayName"] not in left for e in store.roster(g))
     if codex:
         out.append(_codex_trust())
     out += [_dependency(n) for n in ("agent-relay", "spec-guard", "delegate")]
+    out.append(_dependency("module-crew", required=bool(coordinators)))
+    out += [_crew_output(e) for e in coordinators]
     return out
 
 

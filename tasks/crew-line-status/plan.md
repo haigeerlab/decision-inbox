@@ -34,7 +34,7 @@
 - [x] Task 1：`crew.py` 读出口（Spec 验收 1）
 - [x] Task 2：协调会话线的状态判定与括号文字、信号 1、不判停住（Spec 验收 2–6）
 - [x] Task 3：接到主视图、`/lines`、巡视、收件枢纽答复；没有协调会话的协作组输出不变（Spec 验收 7）
-- [ ] Task 4：doctor 与依赖检查（Spec 验收 8）
+- [x] Task 4：doctor 与依赖检查（Spec 验收 8）
 - [ ] Task 5：README 与版本 0.0.18（Spec 验收 9）
 
 ### Checkpoint（gate）：模块最终验收

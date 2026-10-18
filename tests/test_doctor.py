@@ -192,3 +192,57 @@ class CliTest(DoctorCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(main(["doctor", "--group", "nope"]), 2)
             self.assertEqual(main(["doctor", "--json", "--report"]), 2)
+
+
+from test_crew import INTERFACE, FakeCrew  # noqa: E402
+
+
+class ModuleCrewTest(DoctorCase):
+    """crew-line-status Task 4."""
+
+    def join_coordinator(self):
+        (self.work / "crew").mkdir()
+        onboard.join("g", "dev", "g-crew", "并行", "claude-desktop", ["web"], "local_2", self.work / "crew",
+                     None, (), True, NOW, crew_coordinator=True)
+
+    def test_optional_without_coordinator(self):
+        c = self.check("依赖：module-crew")
+        self.assertEqual(c.state, "ok")
+        self.assertIn("可选", c.evidence)
+        self.assertFalse([x for x in doctor.run(["g"], NOW) if x.name.startswith("module-crew 出口")])
+
+    def test_coordinator_without_module_crew_is_bad(self):
+        self.join_coordinator()
+        c = self.check("依赖：module-crew")
+        self.assertEqual((c.state, c.source), ("bad", "module-crew"))
+        self.assertIn("并行开发协调会话", c.fix)
+        out = self.check("module-crew 出口：并行")
+        self.assertEqual(out.state, "bad")
+        self.assertIn("没有安装 module-crew", out.evidence)
+
+    def test_versions_and_contract(self):
+        self.join_coordinator()
+        FakeCrew(self.home)
+        c = self.check("依赖：module-crew")
+        self.assertEqual((c.state, c.evidence), ("ok", "module-crew 0.0.1：接口 1.0，兼容，契约 1.7"))
+        out = self.check("module-crew 出口：并行")
+        self.assertEqual((out.state, out.source, out.evidence), ("ok", "module-crew", "读到 2 个模块会话"))
+        for contract, state, words in (("1.8", "ok", "本插件按 1.7"), ("2.0", "bad", "契约 2.0")):
+            with self.subTest(contract=contract):
+                import shutil
+                shutil.rmtree(self.home / "module-crew")
+                FakeCrew(self.home, interface=dict(INTERFACE, contract=contract))
+                c = self.check("依赖：module-crew")
+                self.assertEqual(c.state, state)
+                self.assertIn(words, c.evidence)
+
+    def test_interface_major_and_unreadable_output(self):
+        self.join_coordinator()
+        FakeCrew(self.home, interface=dict(INTERFACE, interface="2.0"), out="", code=2, err="状态库坏了")
+        self.assertEqual(self.check("依赖：module-crew").state, "bad")
+        import shutil
+        shutil.rmtree(self.home / "module-crew")
+        FakeCrew(self.home, out="", code=2, err="状态库坏了")
+        out = self.check("module-crew 出口：并行")
+        self.assertEqual((out.state, out.evidence), ("bad", "状态库坏了"))
+        self.assertIn("模块状态未知", out.fix)
