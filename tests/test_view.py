@@ -572,3 +572,17 @@ class LetterSelfCheckTest(ViewCase):
         self.assertGreaterEqual(assert_letters_match(self, self.render()), 3)
         self.assertGreaterEqual(assert_letters_match(self, hub.reply(self.g, f"看 {no}", now=NOW).show), 2)
         assert_letters_match(self, view.render_detail(self.g, other))
+
+
+class ConfirmCardLinkTest(ViewCase):
+    """stall-and-patrol Task 3: the card says where to click, never clicks for the user."""
+
+    def test_claude_link_codex_unchanged(self):
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "ui-claude", "shortName": "UI", "role": "dev", "line": ["UI"],
+                            "host": "claude-desktop", "repo": "/tmp/ui", "desktopSession": "local_ui1"})
+        from decision_inbox.relay import AgentFact
+        facts = {n: fact(n) for n in ("ui-claude", "fe-codex")}
+        relay = type("R", (), {"agents": facts})()
+        self.assertIn("claude://claude.ai/epitaxy/local_ui1", view._confirm_card(self.g, NOW, "ui-claude", relay))
+        self.assertNotIn("链接", view._confirm_card(self.g, NOW, "fe-codex", relay))  # Codex: the card names the line

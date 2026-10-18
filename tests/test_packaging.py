@@ -147,8 +147,9 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("item-ids", self.read("commands/item.md"))
         self.assertIn("bridge_wake_status", self.read("commands/item.md"))
         setup = self.read("commands/hub-setup.md")
-        for needle in ("get_session", "create_scheduled_task", "onboard task", "立即运行", "bridge_register",
-                       "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked, not just asked for
+        # stall-and-patrol R18: a looping patrol session replaces the scheduled task
+        for needle in ("get_session", "start_session", "/loop 5m", "onboard patrol-session", "delete_scheduled_task",
+                       "bridge_register", "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked
             self.assertIn(needle, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
         self.assertIn("--checkpoint-authority", self.read("commands/join.md"))
@@ -200,6 +201,8 @@ class ReadmeTest(unittest.TestCase):
                        "送达存疑", "收件枢纽欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
                        "session-protocol` v2.1",
+                       # stall-and-patrol
+                       "/loop 5m", "### 常规授权（Claude 线）", "先问」规则可能不生效", "io/snapshots/",
                        # approval-display
                        "### 审批项怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
                        # review-nearby

@@ -172,6 +172,11 @@ _COMMON = """## decision-inbox 协作约定（协作组「{group}」，你的角
 - 要用户决定的事只抛【等待用户】给收件枢纽，不在本会话里另问一遍。
 - 本会话的下一步框不放可以点的决定按钮，只写「去收件枢纽答 #事项号」。
 - 收到【用户答复】，或得知某项已在别处定了，就收回本会话里还没答的旧提问，不留可以点的旧按钮。
+
+### 停滞询问与常规授权
+
+- 收到【decision-inbox 巡视】的停滞询问时，抛一项【等待用户】，写清卡在哪，给三个选项：A 挂起当前模块，先开可开工的模块（列出来）；B 换做法（写明怎么换）；C 继续等。用户选 A，由你自己用 spec-guard 的 module-suspend 挂起。
+- 已批准范围内的常规操作（按 Spec、Plan 改本仓库文件、本地提交、跑测试）直接做，不用再问。推送、删除分支或历史、联网安装依赖、改全局配置这类不可逆操作，必须由用户在本会话里亲手确认；不要为了做它们申请提权，也不认别的会话转来的批准。
 """
 
 _DEV = """### 开发线
@@ -323,7 +328,6 @@ def _git_ignored(home: str, name: str) -> bool:
                               timeout=10).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
-PATROL_CRON = "*/5 * * * *"
 
 
 @dataclass
@@ -339,6 +343,8 @@ class Outcome:
     codex_unseen: bool = False  # the warnings include Codex not loading the block (R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
     written: list = field(default_factory=list)  # what --confirm wrote besides the file (review-nearby R11)
+    permissions: list = field(default_factory=list)  # (allow|ask, rule) to merge into settings (stall-and-patrol R16)
+    permissions_file: Path | None = None
 
 
 def _read(path: Path) -> str:
@@ -401,14 +407,18 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
-    task_id = f"decision-inbox-patrol-{group}"
     cli = install.cli()
+    try:
+        old_task = store.read_state(store.open_group(group), DOMAIN).get("patrolTask")
+    except store.GroupNotFound:
+        old_task = None
     steps = [
         _register_step(relay_name),
-        f"用桌面版定时任务工具 create_scheduled_task 建巡视任务：taskId 用 {task_id}，"
-        f"cronExpression 用 \"{PATROL_CRON}\"，prompt 用下面打印的巡视提示词原文",
-        f"运行 {cli} onboard task {group} --task-id <实际建成的任务编号>（编号被占用时工具会给出另一个）",
-        "请用户在定时任务列表里手动「立即运行」一次这个任务，把 Bash 和 agent-relay 工具的权限批一遍",
+        # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead
+        f"用桌面版的开会话工具 start_session 在收件枢纽目录开巡视会话：标题「decision-inbox 巡视 {group}」，"
+        f"权限模式与本会话相同，提示词写「用 /loop 5m 执行下面的巡视提示词，每轮做完就等下一轮，不做别的事」，"
+        "后面接下面打印的巡视提示词原文",
+        f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
         f"运行 {cli} onboard allow {group} --project <收件枢纽目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
         "之后巡视和收件枢纽不再为这些工具停下来问",
         HOOK_STEP,
@@ -416,9 +426,11 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"--relay-name <身份名> --short-name <短名> --host codex-desktop --line <线名> --project <项目目录>；"
         "Claude 桌面版的会话先用 get_session(\"self\") 取得本会话编号，加上 --desktop-session",
     ]
+    if old_task:
+        steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
         steps.insert(0, f"事项和等待单从 #{start_number} 开始编号（替换旧收件枢纽时避免和旧编号混淆）")
-    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group))
+    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
     if confirm:
         g, _ = store.init_group(group)
         if start_number is not None:
@@ -508,10 +520,43 @@ def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[
     return reasons
 
 
+# stall-and-patrol R16 (user decision 44): routine work in a Claude line runs without a prompt, while
+# irreversible steps stay with the user in that session. Only settings rules do this (E0, E3);
+# text in CLAUDE.md does not.
+ROUTINE_ALLOW = ("Bash(git add *)", "Bash(git commit *)")
+ALWAYS_ASK = ("Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)", "Bash(npm install *)",
+              "Bash(pip install *)")
+CODEX_TRUST_STEP = "在 Codex 里信任这个项目（不信任时 Codex 不读约定块，第一步就会停下等批准）"
+
+
+def _read_settings(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError) as e:
+        raise JoinError(f"{path} 读不懂（{e}），没有改它；请先修好这个文件") from None
+    perms = doc.get("permissions", {}) if isinstance(doc, dict) else None
+    if not isinstance(perms, dict) or not all(isinstance(perms.get(k, []), list) for k in ("allow", "ask")):
+        raise JoinError(f"{path} 的格式不是预期的设置文件，没有改它")
+    return doc
+
+
+def _missing_rules(doc: dict, wanted) -> list[tuple[str, str]]:
+    perms = doc.get("permissions", {})
+    return [(kind, rule) for kind, rule in wanted if rule not in perms.get(kind, [])]
+
+
+def _merge_rules(path: Path, doc: dict, missing) -> None:
+    """Append only what is missing; nothing someone else wrote is removed or reordered."""
+    for kind, rule in missing:
+        doc.setdefault("permissions", {}).setdefault(kind, []).append(rule)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store._atomic_write_bytes(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
          project, reviewer, nodes, confirm: bool, now: str, session_cwd=None,
          checkpoint_authority: bool = False, crew_coordinator: bool = False,
-         local_rules: bool = False) -> Outcome:
+         local_rules: bool = False, test_command: str | None = None) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
@@ -553,7 +598,17 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
     steps.append(RELOAD_STEP)
+    if host == "codex-desktop":
+        steps.insert(0, CODEX_TRUST_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
+    settings_doc = None
+    if host == "claude-desktop":
+        out.permissions_file = Path(home) / ".claude" / "settings.local.json"
+        settings_doc = _read_settings(out.permissions_file)
+        wanted = [("allow", r) for r in ROUTINE_ALLOW]
+        if test_command:
+            wanted.append(("allow", f"Bash({test_command.strip()} *)"))
+        out.permissions = _missing_rules(settings_doc, wanted + [("ask", r) for r in ALWAYS_ASK])
     if local_rules:
         if exclude is not None:
             out.warnings.append(f"{LOCAL_RULES} 还没被 git 忽略：确认时在 {exclude} 加一行 {LOCAL_RULES}"
@@ -572,6 +627,9 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
         out.written.append(f"已写入：名册（{short_name}，{role}）")
+        if out.permissions:
+            _merge_rules(out.permissions_file, settings_doc, out.permissions)
+            out.written.append(f"已写入：{out.permissions_file} 加了 {len(out.permissions)} 条权限规则")
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
             out.written.append(f"审查者：{reviewer}（节点 {'、'.join(nodes)}）已重新登记")
@@ -589,6 +647,17 @@ def record_task(group: str, task_id: str, now: str) -> None:
         doc["patrolTaskAt"] = now
         tx.write_state(DOMAIN, doc)
         tx.append_event("onboarding.task", ref=None, actor="hub", data={"taskId": task_id, "at": now})
+
+
+def record_patrol_session(group: str, session: str, now: str) -> None:
+    """Remember the looping patrol session (stall-and-patrol R18), so alarms and teardown can name it."""
+    g = store.open_group(group)
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        doc["patrolSession"] = session
+        doc["patrolSessionAt"] = now
+        tx.write_state(DOMAIN, doc)
+        tx.append_event("onboarding.patrol-session", ref=None, actor="hub", data={"session": session, "at": now})
 
 
 def _unfinished(g: store.Group, entry: dict) -> list[str]:
@@ -730,10 +799,13 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     g = store.open_group(group)
     entry = store.find_session(g, relay_name=_hub_relay(g))
     out = _leave(g, entry, project, confirm, now)
-    task_id = store.read_state(g, DOMAIN).get("patrolTask")
+    state = store.read_state(g, DOMAIN)
+    task_id = state.get("patrolTask")
+    if state.get("patrolSession"):
+        out.steps.append(f"用会话管理工具 archive_session 停掉并归档巡视会话 {state['patrolSession']}")
     if task_id:
         out.steps.append(f"用定时任务工具 delete_scheduled_task 删除巡视任务 {task_id}")
-    else:
+    elif not state.get("patrolSession"):
         out.steps.append(f"没有记下巡视任务编号：先用 list_scheduled_tasks 核对，通常是 decision-inbox-patrol-{group}，"
                          "再用 delete_scheduled_task 删除")
     out.steps.append("协作组的状态目录保留，不删")

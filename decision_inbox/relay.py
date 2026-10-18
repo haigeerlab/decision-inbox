@@ -67,6 +67,7 @@ class MessageFact:
     reply_ids: tuple[int, ...]
     reply_to: int | None
     wake_doubt: bool = False                # wake.doubt: accepted but unread (0.8.2+)
+    wake_pending: str | None = None         # wake.pendingReason: offline, unreachable or busy (stall-and-patrol R19)
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,8 @@ def parse_outbox(text: str, sender: str) -> Outbox:
             reply_ids=tuple(x for x in e.get("replies") or [] if _int_or_none(x) is not None),
             reply_to=_int_or_none(e.get("replyTo")),
             wake_doubt=_doubt(e.get("wake")),
+            wake_pending=_str_or_none((e.get("wake") or {}).get("pendingReason"))
+            if isinstance(e.get("wake"), dict) else None,
         ))
     return Outbox(sender=sender, messages=tuple(messages), warnings=tuple(warnings))
 

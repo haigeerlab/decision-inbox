@@ -171,7 +171,11 @@ def _confirm_card(g: store.Group, now: str, relay_name: str, relay) -> str:
     if fact is not None and fact.presence_since:
         title += f" · {ago(now, fact.presence_since)}"
     detail = f"（{fact.presence_detail}）" if fact is not None and fact.presence_detail else ""
-    return f"{title}\n要你做：打开「{short}」会话，确认它弹出的请求{detail}"
+    card = f"{title}\n要你做：打开「{short}」会话，确认它弹出的请求{detail}"
+    entry = store.find_session(g, relay_name=relay_name) or {}
+    if entry.get("host") == "claude-desktop" and entry.get("desktopSession"):
+        card += f"\n  链接：claude://claude.ai/epitaxy/{entry['desktopSession']}"  # stall-and-patrol R16; never approves
+    return card
 
 
 def _source(g: store.Group, it: dict) -> str:
