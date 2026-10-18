@@ -69,13 +69,15 @@ def _validate_session(entry: dict, others: list[dict]) -> dict:
         desktop = entry["desktopSession"]
         if not isinstance(desktop, str) or not desktop.startswith("local_") or len(desktop) <= len("local_"):
             raise bad("desktopSession 必须是桌面版会话编号（local_ 开头）")
-    if role == "dev" and (len(line) != 1 or repo is None):
+    if role == "dev" and (len(line) != 1 or (repo is None and not entry.get("legacyFormat"))):
         raise bad("开发线必须恰好属于一条线，并填写 repo")
-    for flag in ("crewCoordinator", "localRules"):
+    for flag in ("crewCoordinator", "localRules", "legacyFormat"):
         if flag in entry and not isinstance(entry[flag], bool):
             raise bad(f"{flag} 只能是 true 或 false")
     if entry.get("crewCoordinator") and role != "dev":
         raise bad("只有开发线能标为并行开发协调会话")
+    if entry.get("legacyFormat") and role != "dev":
+        raise bad("只有开发线能登记为旧格式（迁移期还没接入的线）")
     if entry.get("localRules") and host != "claude-desktop":
         raise bad("只有 Claude 桌面版的会话能把约定块写进 CLAUDE.local.md")
     if role == "owner" and not line:

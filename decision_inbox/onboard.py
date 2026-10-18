@@ -312,7 +312,7 @@ PATROL_CRON = "*/5 * * * *"
 
 @dataclass
 class Outcome:
-    file: Path
+    file: Path | None  # None: an enrolled entry has no rules file (transition-compat)
     before: str
     after: str
     changed: bool
@@ -576,6 +576,8 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
         rules = rules_path(entry, project)
     elif recorded:
         rules = Path(recorded)
+    elif entry.get("legacyFormat"):
+        return _leave_enrolled(g, entry, confirm, now)
     else:
         raise JoinError(f"没有记下 {entry['relayName']} 的规则文件，请用 --project 指出项目目录")
     before = _read(rules)
@@ -596,6 +598,18 @@ def _leave(g: store.Group, entry: dict, project, confirm: bool, now: str) -> Out
             tx.write_state(DOMAIN, doc)
             tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": str(rules), "at": now})
         _drop_exclude(g, entry["relayName"])
+    return out
+
+
+def _leave_enrolled(g: store.Group, entry: dict, confirm: bool, now: str) -> Outcome:
+    """An enrolled entry has no block: only mark it left so the hub stops sending to it."""
+    out = Outcome(None, "", "", False, entry, ["这个会话没有约定块，只从收件范围里移除（名册条目保留）"])
+    if confirm:
+        with g.transaction() as tx:
+            doc = tx.read_state(DOMAIN)
+            doc.setdefault("left", {})[entry["relayName"]] = now
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.left", ref=None, actor=entry["relayName"], data={"file": None, "at": now})
     return out
 
 
@@ -634,6 +648,34 @@ def _drop_created_rules(rules: Path) -> None:
     Group state is never deleted; files the user had before joining are never deleted.
     """
     rules.unlink()
+
+
+def enroll(group: str, relay_name: str, short_name: str, host: str, lines, desktop_session, confirm: bool,
+           now: str, role: str = "dev") -> Outcome:
+    """transition-compat: a line not migrated yet goes into the roster only, marked legacy, no rules file."""
+    if role != "dev":
+        raise JoinError("onboard enroll 只用于开发线：负责人、总协调要正式接入")
+    g = store.open_group(group)
+    _hub_relay(g)
+    entry = {"relayName": relay_name, "shortName": short_name, "role": "dev", "line": list(lines), "host": host,
+             "legacyFormat": True}
+    if desktop_session:
+        entry["desktopSession"] = desktop_session
+    _check_entry(group, entry)
+    out = Outcome(None, "", "", False, entry,
+                  ["这条线还按旧规则工作：收件枢纽发给它的答复用旧编号写法，不发【答复告知】；"
+                   "它以后用 onboard join 正式接入时，旧格式标记自动去掉"])
+    if confirm:
+        with g.transaction() as tx:
+            if store.find_session(g, relay_name=relay_name) is None:
+                tx.add_session(entry)
+            else:
+                tx.replace_session(entry)
+            doc = tx.read_state(DOMAIN)
+            doc.get("left", {}).pop(relay_name, None)
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.enrolled", ref=None, actor=relay_name, data={"at": now})
+    return out
 
 
 def leave(group: str, relay_name: str, project, confirm: bool, now: str) -> Outcome:

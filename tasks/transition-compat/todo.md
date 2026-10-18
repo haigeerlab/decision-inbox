@@ -11,9 +11,15 @@
     - README「消息协议」一节和打包测试同步改为 v1.7。
     - 全部测试：Ran 616 tests, OK
 
-- [ ] Task 2：`legacyFormat` 字段、`onboard enroll`、leave 只登记的条目
+- [x] Task 2：`legacyFormat` 字段、`onboard enroll`、leave 只登记的条目
   - 验收：Spec 验收 1；验收 5 里 leave 的部分
   - 文件：`decision_inbox/store.py`、`decision_inbox/onboard.py`、`decision_inbox/__main__.py`、`tests/test_store_roster.py`、`tests/test_onboard.py`
+  - 记录（2026-10-18）：
+    - 先写用例：预览什么都不写；确认后只改协作组目录，`projects/` 下的文件一个都不碰，名册条目带 `legacyFormat`；负责人和总协调用 enroll 会报错；之后正式 join 时标记消失；leave 只登记的条目不报错，只记 `left`；字段只认布尔值，并且只能用于开发线。先跑，2 个失败、5 个报错。
+    - 实现时多改了一处名册校验：开发线原本必须填 repo，旧格式条目例外。因为填了 repo，停止钩子就会按工作目录把它认出来，再用它不认识的约定去拦它。这一点 Plan 里没写到，已核对过：所有读 repo 的地方都先判断 `e.get("repo")`。
+    - 新增：`onboard.enroll`、`_leave_enrolled`、`Outcome.file` 允许为 None、命令行 `onboard enroll`；命令行输出写「规则文件：无（只登记进名册，不写约定块）」。
+    - 实测：在临时目录跑 `onboard enroll` 预览，退出码 0，输出和预期一致。
+    - 全部测试：Ran 621 tests, OK
 
 - [ ] Task 3：输出旧写法；答复告知、多线事项跳过旧格式和已退出的会话
   - 验收：Spec 验收 2、3、5

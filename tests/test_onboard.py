@@ -701,6 +701,57 @@ class LocalRulesTest(OnboardCase):
         self.assertTrue(any("不再读 AGENTS.md" in w for w in out.warnings), out.warnings)
 
 
+class EnrollTest(OnboardCase):
+    """transition-compat: roster only, no rules file, marked legacy; a later join drops the mark."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    def enroll(self, role="dev", confirm=True):
+        return onboard.enroll("demo", relay_name="old-fe", short_name="旧前端", host="codex-desktop",
+                              lines=["前端"], desktop_session=None, confirm=confirm, now=NOW, role=role)
+
+    def entry(self):
+        return store.find_session(store.open_group("demo"), relay_name="old-fe")
+
+    def test_preview_then_confirm_writes_only_the_roster(self):
+        before = self.files()
+        out = self.enroll(confirm=False)
+        self.assertEqual(self.files(), before)
+        self.assertIsNone(out.file)
+        self.enroll()
+        entry = self.entry()
+        self.assertTrue(entry["legacyFormat"])
+        self.assertEqual((entry["role"], entry["line"]), ("dev", ["前端"]))
+        changed = {k for k, v in self.files().items() if before.get(k) != v}
+        self.assertTrue(changed)
+        self.assertFalse([k for k in changed if k.startswith("projects/")], changed)
+
+    def test_dev_only(self):
+        for role in ("owner", "coordinator"):
+            with self.subTest(role=role):
+                with self.assertRaises(onboard.JoinError):
+                    self.enroll(role=role)
+
+    def test_join_later_drops_the_mark(self):
+        self.enroll()
+        onboard.join("demo", role="dev", relay_name="old-fe", short_name="旧前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        self.assertNotIn("legacyFormat", self.entry())
+
+    def test_leave_an_enrolled_entry(self):
+        self.enroll()
+        before = self.files()
+        out = onboard.leave("demo", "old-fe", project=None, confirm=True, now=NOW)
+        self.assertIsNone(out.file)
+        self.assertTrue(any("没有约定块" in s for s in out.steps), out.steps)
+        self.assertIn("old-fe", store.read_state(store.open_group("demo"), onboard.DOMAIN)["left"])
+        rules = {k for k, v in self.files().items() if before.get(k) != v and k.startswith("projects/")}
+        self.assertEqual(rules, set())
+
+
 AUTONOMY = """### 检查点之间自主处理
 
 用户只在检查点（Spec 批准、Plan 批准、接口提案、最终验收）做决定。检查点之间：
