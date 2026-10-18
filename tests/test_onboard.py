@@ -1115,3 +1115,48 @@ class PatrolSessionTest(OnboardCase):
         self.assertEqual((state["patrolSession"], state["patrolSessionAt"]), ("local_patrol1", NOW))
         out = onboard.teardown("demo", self.dir("hub"), confirm=False, now=NOW)
         self.assertTrue(any("archive_session" in s and "local_patrol1" in s for s in out.steps))
+
+
+class RoutinePermissionsTest(OnboardCase):
+    """stall-and-patrol Task 3 (R16): routine work allowed, irreversible steps still asked, only on confirm."""
+
+    def setUp(self):
+        super().setUp()
+        HubTest.hub(self)
+
+    def join_claude(self, confirm, test_command="python3 -m unittest"):
+        return onboard.join("demo", role="dev", relay_name="fe-claude", short_name="前端", host="claude-desktop",
+                            lines=["前端"], desktop_session="local_00000000-0000-0000-0000-00000000fe01",
+                            project=self.dir("fe"), reviewer=None, nodes=[], confirm=confirm, now=NOW,
+                            test_command=test_command)
+
+    def settings(self):
+        return self.project / "fe" / ".claude" / "settings.local.json"
+
+    def test_preview_lists_rules_and_writes_nothing(self):
+        out = self.join_claude(confirm=False)
+        self.assertIn(("allow", "Bash(git commit *)"), out.permissions)
+        self.assertIn(("allow", "Bash(python3 -m unittest *)"), out.permissions)
+        self.assertIn(("ask", "Bash(git push *)"), out.permissions)
+        self.assertFalse(self.settings().exists())
+
+    def test_confirm_merges_and_keeps_existing(self):
+        import json
+        self.settings().parent.mkdir(parents=True)
+        self.settings().write_text(json.dumps({"permissions": {"allow": ["Read"]}, "x": 1}), encoding="utf-8")
+        self.join_claude(confirm=True)
+        doc = json.loads(self.settings().read_text(encoding="utf-8"))
+        self.assertEqual(doc["x"], 1)
+        self.assertEqual(doc["permissions"]["allow"][0], "Read")
+        self.assertIn("Bash(git add *)", doc["permissions"]["allow"])
+        self.assertIn("Bash(git push *)", doc["permissions"]["ask"])
+        import os
+        os.utime(self.settings(), (1_000_000_000, 1_000_000_000))
+        again = self.join_claude(confirm=True)
+        self.assertEqual(again.permissions, [])
+        self.assertEqual(self.settings().stat().st_mtime, 1_000_000_000)
+
+    def test_codex_gets_trust_step_and_no_settings(self):
+        out = JoinTest.join(self, confirm=False)
+        self.assertEqual(out.permissions, [])
+        self.assertTrue(out.steps[0].startswith("在 Codex 里信任这个项目"))

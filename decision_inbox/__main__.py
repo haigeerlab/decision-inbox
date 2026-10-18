@@ -482,6 +482,11 @@ def _print_outcome(out, confirm: bool) -> None:
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
+    if out.permissions:
+        verb = "已加" if confirm else "要加"
+        print(f"权限规则（{out.permissions_file}）：")
+        for kind, rule in out.permissions:
+            print(f"  {verb} {'放行' if kind == 'allow' else '先问'}：{rule}")
     for line in out.written:
         print(line)
     if out.changed and not out.drops:
@@ -521,6 +526,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--checkpoint-authority", action="store_true")
     p.add_argument("--crew-coordinator", action="store_true")
     p.add_argument("--local-rules", action="store_true")
+    p.add_argument("--test-command")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("enroll")
     p.add_argument("group")
@@ -561,7 +567,8 @@ def _onboard(argv: list[str]) -> int:
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
-                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules)
+                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules,
+                               test_command=args.test_command)
         elif args.command == "enroll":
             out = onboard.enroll(args.group, args.relay_name, args.short_name, args.host, args.line,
                                  args.desktop_session, args.confirm, now)

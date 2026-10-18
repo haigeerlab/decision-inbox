@@ -5,7 +5,7 @@
 - [x] Checkpoint A（report）：R19 测试全过（759 个）
 - [x] Task 2：R18 巡视会话（Spec 验收 2）
   - 验证：`tests/test_onboard.py`、`tests/test_doctor.py`：开巡视会话步骤、删旧定时任务步骤、record-patrol、doctor 超时与未登记
-- [ ] Task 3：R16 常规授权（Spec 验收 3）
+- [x] Task 3：R16 常规授权（Spec 验收 3）
   - 验证：`tests/test_onboard.py`、`tests/test_view.py`：settings 规则预览与写入（保留已有、不变不写）、Codex 信任步骤、确认卡片链接
 - [ ] Task 4：R14 停滞提问（Spec 验收 4）
   - 验证：`tests/test_health.py`、`tests/test_patrol.py`、`tests/test_view.py`：三种触发、stall-ask 正文、30 分钟后主视图列选项、12 小时不重问、阈值可配

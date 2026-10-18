@@ -338,6 +338,8 @@ class Outcome:
     codex_unseen: bool = False  # the warnings include Codex not loading the block (R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
     written: list = field(default_factory=list)  # what --confirm wrote besides the file (review-nearby R11)
+    permissions: list = field(default_factory=list)  # (allow|ask, rule) to merge into settings (stall-and-patrol R16)
+    permissions_file: Path | None = None
 
 
 def _read(path: Path) -> str:
@@ -513,10 +515,43 @@ def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[
     return reasons
 
 
+# stall-and-patrol R16 (user decision 44): routine work in a Claude line runs without a prompt, while
+# irreversible steps stay with the user in that session. Only settings rules do this (E0, E3);
+# text in CLAUDE.md does not.
+ROUTINE_ALLOW = ("Bash(git add *)", "Bash(git commit *)")
+ALWAYS_ASK = ("Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)", "Bash(npm install *)",
+              "Bash(pip install *)")
+CODEX_TRUST_STEP = "在 Codex 里信任这个项目（不信任时 Codex 不读约定块，第一步就会停下等批准）"
+
+
+def _read_settings(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError) as e:
+        raise JoinError(f"{path} 读不懂（{e}），没有改它；请先修好这个文件") from None
+    perms = doc.get("permissions", {}) if isinstance(doc, dict) else None
+    if not isinstance(perms, dict) or not all(isinstance(perms.get(k, []), list) for k in ("allow", "ask")):
+        raise JoinError(f"{path} 的格式不是预期的设置文件，没有改它")
+    return doc
+
+
+def _missing_rules(doc: dict, wanted) -> list[tuple[str, str]]:
+    perms = doc.get("permissions", {})
+    return [(kind, rule) for kind, rule in wanted if rule not in perms.get(kind, [])]
+
+
+def _merge_rules(path: Path, doc: dict, missing) -> None:
+    """Append only what is missing; nothing someone else wrote is removed or reordered."""
+    for kind, rule in missing:
+        doc.setdefault("permissions", {}).setdefault(kind, []).append(rule)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store._atomic_write_bytes(path, (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
          project, reviewer, nodes, confirm: bool, now: str, session_cwd=None,
          checkpoint_authority: bool = False, crew_coordinator: bool = False,
-         local_rules: bool = False) -> Outcome:
+         local_rules: bool = False, test_command: str | None = None) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；收件枢纽用 onboard hub")
@@ -558,7 +593,17 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
                      "重跑这条 join；不登记的话，巡视叫不醒这个会话，只能通知用户")
     steps.append(HOOK_STEP)
     steps.append(RELOAD_STEP)
+    if host == "codex-desktop":
+        steps.insert(0, CODEX_TRUST_STEP)
     out = Outcome(rules, before, after, after != before, entry, steps)
+    settings_doc = None
+    if host == "claude-desktop":
+        out.permissions_file = Path(home) / ".claude" / "settings.local.json"
+        settings_doc = _read_settings(out.permissions_file)
+        wanted = [("allow", r) for r in ROUTINE_ALLOW]
+        if test_command:
+            wanted.append(("allow", f"Bash({test_command.strip()} *)"))
+        out.permissions = _missing_rules(settings_doc, wanted + [("ask", r) for r in ALWAYS_ASK])
     if local_rules:
         if exclude is not None:
             out.warnings.append(f"{LOCAL_RULES} 还没被 git 忽略：确认时在 {exclude} 加一行 {LOCAL_RULES}"
@@ -577,6 +622,9 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
         out.written.append(f"已写入：名册（{short_name}，{role}）")
+        if out.permissions:
+            _merge_rules(out.permissions_file, settings_doc, out.permissions)
+            out.written.append(f"已写入：{out.permissions_file} 加了 {len(out.permissions)} 条权限规则")
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
             out.written.append(f"审查者：{reviewer}（节点 {'、'.join(nodes)}）已重新登记")
