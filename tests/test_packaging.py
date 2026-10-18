@@ -201,6 +201,8 @@ class ReadmeTest(unittest.TestCase):
                        "送达存疑", "收件枢纽欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
                        "session-protocol` v2.1",
+                       # stall-and-patrol
+                       "/loop 5m", "### 常规授权（Claude 线）", "先问」规则可能不生效", "io/snapshots/",
                        # approval-display
                        "### 审批项怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
                        # review-nearby

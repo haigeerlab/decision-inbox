@@ -1160,3 +1160,14 @@ class RoutinePermissionsTest(OnboardCase):
         out = JoinTest.join(self, confirm=False)
         self.assertEqual(out.permissions, [])
         self.assertTrue(out.steps[0].startswith("在 Codex 里信任这个项目"))
+
+
+class StallRuleTest(unittest.TestCase):
+    """stall-and-patrol Task 5: every working role answers a stall ask by raising the question itself."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("停滞询问", "A 挂起当前模块", "module-suspend", "必须由用户在本会话里亲手确认"):
+                    self.assertIn(words, text)

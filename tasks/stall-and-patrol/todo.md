@@ -9,9 +9,9 @@
   - 验证：`tests/test_onboard.py`、`tests/test_view.py`：settings 规则预览与写入（保留已有、不变不写）、Codex 信任步骤、确认卡片链接
 - [x] Task 4：R14 停滞提问（Spec 验收 4）
   - 验证：`tests/test_health.py`、`tests/test_patrol.py`、`tests/test_view.py`：三种触发、stall-ask 正文、30 分钟后主视图列选项、12 小时不重问、阈值可配
-- [ ] Task 5：协作规则段与 README
+- [x] Task 5：协作规则段与 README
   - 验证：三种角色规则段、Codex 授权说明、打包关键词
-- [ ] Checkpoint B（report）：全量测试通过
+- [x] Checkpoint B（report）：全量测试通过（774 个）
 - [ ] Task 6：上报 module-crew（原文先给用户看）
 
 ## Checkpoint（gate）：模块最终验收
