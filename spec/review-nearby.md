@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 7bb16715a491 -->
 
 # Spec: review-nearby
 
