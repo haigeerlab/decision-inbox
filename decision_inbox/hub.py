@@ -261,6 +261,18 @@ PATROL_STALE_MINUTES = 15  # three missed */5 runs
 HOST = "Claude 桌面版"  # the patrol is a desktop scheduled task; a stuck run is the host waiting on a prompt
 
 
+HUB_PATROL_MINUTES = 10  # hub-patrol: the hub runs a round itself when the patrol has been quiet this long
+
+
+def patrol_due(g: store.Group, now: str) -> bool:
+    """The scheduled patrol barely fires on some hosts (H24); the hub fills in (hub-patrol)."""
+    onboarding = store.read_state(g, "onboarding")
+    if not onboarding.get("patrolTask"):
+        return False
+    since = store.read_state(g, "patrol").get("lastRunAt") or onboarding.get("patrolTaskAt")
+    return since is not None and view._minutes(now, since) > HUB_PATROL_MINUTES
+
+
 def patrol_fix(task: str) -> str:
     """Both reasons a patrol goes quiet (patrol-cadence): a run stuck on a prompt, or the host not firing (H24)."""
     return (f"去定时任务列表看 {task}：最近一次运行停在权限确认上，就批完；"

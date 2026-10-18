@@ -618,6 +618,21 @@ class PatrolAlarmTest(HubCase):
         self.assertEqual(hub.patrol_alarm(self.g, NOW), f"⚠ 巡视 30 分钟没跑：{self.FIX}（来源：Claude 桌面版）")
 
 
+    def test_patrol_due_after_ten_minutes(self):
+        """hub-patrol: the hub runs a round itself when the patrol has been quiet over 10 minutes."""
+        self.patrol(task_at="2026-10-16T05:19:00Z")
+        self.assertTrue(hub.patrol_due(self.g, NOW))          # never ran, registered 11 minutes ago
+        self.patrol(task_at="2026-10-16T05:21:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:19:00Z")
+        self.assertTrue(hub.patrol_due(self.g, NOW))
+        self.patrol(task_at="2026-10-16T04:00:00Z", last_run="2026-10-16T05:21:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
+
+    def test_no_patrol_task_not_due(self):
+        self.patrol(task=None, last_run="2026-10-16T01:00:00Z")
+        self.assertFalse(hub.patrol_due(self.g, NOW))
+
 class EndLineRelayIdTest(HubCase):
     """e2e-round1-fixes F10 regression: dev-a waits on the hub (#4544), then raises #4610 with 结束：#4544."""
 
