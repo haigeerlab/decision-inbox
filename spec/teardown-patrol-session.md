@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 1c39f86ec173 -->
 
 # Spec: teardown-patrol-session
 
