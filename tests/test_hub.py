@@ -940,3 +940,4 @@ class PatrolSessionAlarmTest(HubCase):
         self.assertIn("巡视 20 分钟没跑", alarm)
         self.assertIn("claude://claude.ai/epitaxy/local_patrol1", alarm)
         self.assertTrue(hub.patrol_due(self.g, NOW))
+        self.assertIn("停止巡视", hub.patrol_session_fix("local_patrol1"))  # patrol-stop-fixes: restart keeps the stop rule

@@ -311,9 +311,14 @@ def _patrol_runner(onboarding: dict) -> tuple[str, str, str | None] | None:
     return None
 
 
+# patrol-stop-fixes: /loop leaves a task in the patrol session that blocks archiving it until the session deletes it
+PATROL_STOP = "收到『停止巡视』时，用 CronDelete 删掉这个循环任务，回一句『已停』就结束"
+PATROL_LOOP = f"用 /loop 5m 执行下面的巡视提示词，每轮做完就等下一轮，不做别的事；{PATROL_STOP}"
+
+
 def patrol_session_fix(session: str) -> str:
     return (f"打开巡视会话 claude://claude.ai/epitaxy/{session}：它停在权限确认上就批完；循环停了就在里面重新发一次"
-            "「/loop 5m」加巡视提示词；会话不在了就重跑 /decision-inbox:hub-setup")
+            f"「{PATROL_LOOP}」加巡视提示词；会话不在了就重跑 /decision-inbox:hub-setup")
 
 
 def patrol_fix(task: str) -> str:

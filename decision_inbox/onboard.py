@@ -416,7 +416,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         _register_step(relay_name),
         # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead
         f"用桌面版的开会话工具 start_session 在决策收件箱目录开巡视会话：标题「decision-inbox 巡视 {group}」，"
-        f"权限模式与本会话相同，提示词写「用 /loop 5m 执行下面的巡视提示词，每轮做完就等下一轮，不做别的事」，"
+        f"权限模式与本会话相同，提示词写「{hub_loop.PATROL_LOOP}」，"
         "后面接下面打印的巡视提示词原文",
         f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
         f"运行 {cli} onboard allow {group} --project <决策收件箱目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
@@ -802,7 +802,10 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     state = store.read_state(g, DOMAIN)
     task_id = state.get("patrolTask")
     if state.get("patrolSession"):
-        out.steps.append(f"用会话管理工具 archive_session 停掉并归档巡视会话 {state['patrolSession']}")
+        session = state["patrolSession"]  # patrol-stop-fixes: its /loop task must go before the host lets it be archived
+        out.steps.append(f"用会话消息工具 send_message 给巡视会话 {session} 发「停止巡视」，等它回「已停」")
+        out.steps.append(f"用会话管理工具 archive_session 归档巡视会话 {session}；它不认这句话（旧版巡视会话）或归档仍被拒时，"
+                         "请用户在那个会话里停掉循环，或从侧边栏归档")
     if task_id:
         out.steps.append(f"用定时任务工具 delete_scheduled_task 删除巡视任务 {task_id}")
     elif not state.get("patrolSession"):

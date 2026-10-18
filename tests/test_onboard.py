@@ -1116,6 +1116,20 @@ class PatrolSessionTest(OnboardCase):
         out = onboard.teardown("demo", self.dir("hub"), confirm=False, now=NOW)
         self.assertTrue(any("archive_session" in s and "local_patrol1" in s for s in out.steps))
 
+    def test_patrol_session_knows_how_to_stop(self):  # patrol-stop-fixes: /loop keeps it from being archived
+        steps = "\n".join(self.hub(confirm=False).steps)
+        for needle in ("收到『停止巡视』", "CronDelete", "已停"):
+            self.assertIn(needle, steps)
+
+    def test_teardown_stops_the_loop_before_archiving(self):
+        self.hub()
+        onboard.record_patrol_session("demo", "local_patrol1", NOW)
+        steps = "\n".join(onboard.teardown("demo", self.dir("hub"), confirm=False, now=NOW).steps)
+        stop, archive = steps.index("send_message"), steps.index("archive_session")
+        self.assertLess(stop, archive)
+        self.assertIn("停止巡视", steps[stop:archive])
+        self.assertIn("从侧边栏归档", steps[archive:])
+
 
 class RoutinePermissionsTest(OnboardCase):
     """stall-and-patrol Task 3 (R16): routine work allowed, irreversible steps still asked, only on confirm."""
