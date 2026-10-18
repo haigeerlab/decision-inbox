@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved f696d459128e -->
 
 # Spec: approval-display
 
