@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-CONTRACT_VERSION = "1.7"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+CONTRACT_VERSION = "2.0.1"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
 
 KIND_TAGS = {
     "等待用户": "wait-user",
@@ -18,17 +18,19 @@ KIND_TAGS = {
     "已恢复": "resumed",
     "撤回": "withdraw",
     "审查结论": "review-conclusion",
+    "登记回执": "hub-receipt",  # v2.0: the hub tells the sender which item it became (review-nearby)
 }
 
 # Field names each kind knows, in the order they are usually written.
 FIELDS = {
-    "wait-user": ("来自", "项目", "要你决定", "要点", "架构审查", "选项与我的建议", "你该回",
+    "wait-user": ("来自", "项目", "要你决定", "要点", "待用户决定", "架构审查", "选项与我的建议", "你该回",
                   "是否完全停住", "适用会话", "各线范围"),
     "user-reply": ("事项", "用户原话", "选项原文", "适用于你的范围", "答复时间", "原事项全文"),
     "wait-session": ("在等谁", "等什么"),
     "resumed": (),
     "withdraw": ("事项", "原因"),
-    "review-conclusion": ("审查编号", "节点", "模块", "送审方", "结论", "来自", "要点"),
+    "review-conclusion": ("审查编号", "节点", "模块", "送审方", "结论", "来自", "要点", "须修改", "待用户决定"),
+    "hub-receipt": ("原消息", "事项", "状态", "取代", "写法提示"),
     "unknown": (),
 }
 # A terminal field takes every remaining line, whatever it looks like.
@@ -36,9 +38,11 @@ TERMINAL = {"原事项全文"}
 
 # Stable issue codes (spec 关键决策 5): only ever added to. A trailing ":" takes a suffix.
 PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-options", "bad-stop-flag",
-                 "scope-missing:", "scope-unknown:", "bad-node", "bad-verdict")
+                 "scope-missing:", "scope-unknown:", "bad-node", "bad-verdict",
+                 # v2.0 (review-nearby)
+                 "change-count-mismatch", "bad-decision-item:", "duplicate-decision:", "bad-receipt-status")
 REVIEW_NODES = {"Spec": "spec", "Plan": "plan", "接口提案": "interface", "最终验收": "final"}
-HINT_CODES = ("no-consequence:", "no-recommendation", "brief-thin")
+HINT_CODES = ("no-consequence:", "no-recommendation", "brief-thin", "change-count-missing")
 
 _TAG_RE = re.compile(r"【([^】]*)】")
 _COLON = "[：:]"
@@ -114,6 +118,27 @@ class Conclusion:
     verdict: str
     advice_count: int | None = None
     module: str | None = None   # optional 模块 field (map-view), verbatim without surrounding spaces
+    # v2.0 有须修改项N条 and 须修改; both None for the v1 form that writes neither (contract sample basic)
+    change_count: int | None = None
+    changes: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
+class Decision:
+    """One 「待用户决定」 question (v2.0): D-number, question, lettered options, the reviewer's lean."""
+    id: str
+    question: str
+    options: tuple[tuple[str, str], ...]
+    lean: str | None
+    lean_reason: str | None
+
+
+@dataclass(frozen=True)
+class Receipt:
+    """【登记回执】 (v2.0): the sender's own mail id, and the items the new one replaced."""
+    original: int | None
+    status: str | None
+    supersedes: tuple[int, ...] = ()
 
 
 def _verdict(raw: str) -> tuple[str, int | None] | None:
@@ -122,6 +147,9 @@ def _verdict(raw: str) -> tuple[str, int | None] | None:
         return "passed", None
     if value == "有须修改项":
         return "changes-required", None
+    m = re.match(r"^有须修改项(\d+)条$", value)
+    if m:
+        return "changes-required", int(m.group(1))
     m = re.match(r"^通过，附建议(\d+)条(（.*）)?$", value)
     return ("passed-with-advice", int(m.group(1))) if m else None
 
@@ -144,6 +172,9 @@ class Message:
     scopes: dict[str, str] = field(default_factory=dict)
     review: ReviewLine = field(default_factory=lambda: ReviewLine("absent"))
     conclusion: Conclusion | None = None
+    decisions: tuple[Decision, ...] = ()
+    receipt: Receipt | None = None
+    local_item: str | None = None  # v2.0: a coordinator's own C-number in 【用户答复】「事项」
 
     @property
     def ok(self) -> bool:
@@ -225,6 +256,44 @@ def _item(value: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
+_DECISION_HEAD_RE = re.compile(rf"^(D\d+)\s*{_COLON}\s*(.*)$")
+_DECISION_OPTION_RE = re.compile(r"^([A-Z])\s*[：:.、]\s*(.*)$")
+_LEAN_RE = re.compile(rf"^倾向\s*{_COLON}\s*([A-Z])\s*(?:[（(](.*)[）)])?\s*$")
+_CHANGE_RE = re.compile(r"^\d+\s*[.．、]\s*(.*)$")
+LOCAL_ITEM_RE = re.compile(r"^\s*(C\d+)(?![A-Za-z0-9])")
+
+
+def _decisions(block: str, problems: list[Issue]) -> tuple[Decision, ...]:
+    """「待用户决定」 (v2.0): bad items first in writing order, then duplicates."""
+    found: list[dict] = []
+    for line in block.split("\n"):
+        text = line.strip()
+        head = _DECISION_HEAD_RE.match(text)
+        if head:
+            found.append({"id": head.group(1), "question": head.group(2).strip(), "options": [],
+                          "lean": None, "reason": None})
+            continue
+        if not found or not text:
+            continue
+        lean = _LEAN_RE.match(text)
+        option = _DECISION_OPTION_RE.match(text)
+        if lean:
+            found[-1]["lean"] = lean.group(1)
+            found[-1]["reason"] = (lean.group(2) or "").strip() or None
+        elif option:
+            found[-1]["options"].append((option.group(1), option.group(2).strip()))
+    out = tuple(Decision(d["id"], d["question"], tuple(d["options"]), d["lean"], d["reason"]) for d in found)
+    for d in out:
+        if len(d.options) < 2 or d.lean is None:
+            problems.append(Issue(f"bad-decision-item:{d.id}", f"待用户决定 {d.id} 少于两个选项或没写倾向"))
+    seen: set[str] = set()
+    for d in out:
+        if d.id in seen:
+            problems.append(Issue(f"duplicate-decision:{d.id}", f"待用户决定里 {d.id} 重复"))
+        seen.add(d.id)
+    return out
+
+
 def _require(fields: dict, names, problems: list[Issue]) -> None:
     for name in names:
         if not fields.get(name, "").strip():
@@ -303,6 +372,9 @@ def parse(text: str) -> Message:
     stopped = None
     in_scope: tuple[str, ...] = ()
     scopes: dict[str, str] = {}
+    decisions: tuple[Decision, ...] = ()
+    receipt = None
+    local_item = None
 
     if kind == "unknown":
         problems.append(Issue("unknown-kind", "认不出消息类型"))
@@ -341,6 +413,8 @@ def parse(text: str) -> Message:
                 for name in scopes:
                     if name not in in_scope:
                         problems.append(Issue(f"scope-unknown:{name}", f"「各线范围」里的 {name} 不在「适用会话」中"))
+        if "待用户决定" in fields:
+            decisions = _decisions(fields["待用户决定"], problems)
     elif kind == "wait-session":
         if not end.present:
             problems.append(Issue("missing-end", "开头缺少「结束：#编号」或「结束：无」"))
@@ -349,28 +423,56 @@ def parse(text: str) -> Message:
         if not (end.ids or end.unnumbered_reason):
             problems.append(Issue("missing-end", "【已恢复】开头要写「结束：#编号」或「结束：无编号（原因）」"))
     elif kind == "user-reply":
-        item = _item(fields.get("事项"))
-        if item is None:
+        local = LOCAL_ITEM_RE.match(fields.get("事项", ""))
+        if local:  # v2.0: no hub, the coordinator's own C-number; the mail id in brackets is not an item
+            local_item = local.group(1)
+        item = None if local else _item(fields.get("事项"))
+        if item is None and local is None:
             problems.append(Issue("missing-field:事项", "缺少「事项：#编号」"))
         _require(fields, ("用户原话", "答复时间"), problems)
         if "多线事项" in fields.get("事项", ""):
             _require(fields, ("适用于你的范围", "原事项全文"), problems)
     elif kind == "review-conclusion":
         before = len(problems)
-        _require(fields, ("审查编号", "节点", "送审方", "结论"), problems)
+        verdict = _verdict(fields.get("结论", "")) if fields.get("结论", "").strip() else None
+        counted = verdict is not None and verdict[0] == "changes-required" and verdict[1] is not None
+        _require(fields, ("审查编号", "节点", "送审方", "结论") + (("须修改",) if counted else ()), problems)
+        base_ok = not any(p.code.removeprefix("missing-field:") in ("审查编号", "节点", "送审方", "结论")
+                          for p in problems[before:])
         node = REVIEW_NODES.get(fields.get("节点", "").strip())
         if fields.get("节点", "").strip() and node is None:
             problems.append(Issue("bad-node", "「节点」只能是 Spec、Plan、接口提案、最终验收之一"))
-        verdict = _verdict(fields.get("结论", "")) if fields.get("结论", "").strip() else None
         if fields.get("结论", "").strip() and verdict is None:
             problems.append(Issue("bad-verdict", "「结论」只能是 通过、通过，附建议N条、有须修改项之一"))
-        if len(problems) == before:
-            conclusion = Conclusion(fields["审查编号"].strip(), node, fields["送审方"].strip(), *verdict,
-                                    module=fields.get("模块", "").strip() or None)
+        changes = None
+        if verdict is not None and verdict[0] == "changes-required" and (counted or "须修改" in fields):
+            changes = tuple(m.group(1).strip() for m in (_CHANGE_RE.match(x.strip())
+                                                         for x in fields.get("须修改", "").split("\n")) if m)
+            if counted and "须修改" in fields and len(changes) != verdict[1]:
+                problems.append(Issue("change-count-mismatch",
+                                      f"「有须修改项{verdict[1]}条」与「须修改」的 {len(changes)} 条对不上"))
+            if not counted:
+                hints.append(Issue("change-count-missing", "「有须修改项」没写条数，写成「有须修改项N条」"))
+        if "待用户决定" in fields:
+            decisions = _decisions(fields["待用户决定"], problems)
+        if base_ok and node is not None and verdict is not None:
+            conclusion = Conclusion(fields["审查编号"].strip(), node, fields["送审方"].strip(), verdict[0],
+                                    None if verdict[0] == "changes-required" else verdict[1],
+                                    module=fields.get("模块", "").strip() or None,
+                                    change_count=verdict[1] if verdict[0] == "changes-required" else None,
+                                    changes=changes)
     elif kind == "withdraw":
         item = _item(fields.get("事项"))
         if item is None:
             problems.append(Issue("missing-field:事项", "缺少「事项：#编号」"))
+    elif kind == "hub-receipt":
+        _require(fields, ("原消息", "事项", "状态"), problems)
+        item = _item(fields.get("事项"))
+        status = fields.get("状态", "").strip()
+        if status and status != "已登记":
+            problems.append(Issue("bad-receipt-status", f"「状态」只能写「已登记」，现在是「{status}」"))
+        receipt = Receipt(_item(fields.get("原消息")), "registered" if status == "已登记" else None,
+                          tuple(int(x) for x in _NUM_RE.findall(fields.get("取代", ""))))
 
     return Message(kind=kind, markers=tuple(markers), ends=end, reply_to=reply_to,
                    fields=fields, item=item, problems=tuple(problems), hints=tuple(hints),
@@ -378,7 +480,7 @@ def parse(text: str) -> Message:
                    suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
                    lines_in_scope=in_scope, scopes=scopes,
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
-                   conclusion=conclusion)
+                   conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item)
 
 
 def _source(relay_id) -> str:
@@ -397,6 +499,16 @@ def format_user_reply(item: int, original: str, answered_at: str, option_text: s
             raise ValueError(f"option_text must start with an option letter: {option_text!r}")
         lines.append(f"选项 {m.group(2)} 原文：{option_text}")
     lines.append(f"答复时间：{answered_at}")
+    return "\n".join(lines) + "\n"
+
+
+def format_hub_receipt(original, item: int, supersedes=(), notes=()) -> str:
+    """【登记回执】 (v2.0): sent silently, never as a reply, so the sender's request stays open."""
+    lines = ["【登记回执】", f"原消息：#{original}", f"事项：#{item}", "状态：已登记"]
+    if supersedes:
+        lines.append("取代：" + "、".join(f"#{n}" for n in supersedes))
+    if notes:
+        lines.append("写法提示：" + "；".join(notes))
     return "\n".join(lines) + "\n"
 
 

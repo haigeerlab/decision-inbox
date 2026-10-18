@@ -1018,3 +1018,54 @@ class JoinReloadTest(OnboardCase):
         self.assertFalse(out.changed)
         self.assertEqual(path.stat().st_mtime, 1_000_000_000)
         self.assertEqual(store.find_session(store.open_group("demo"), relay_name="fe-codex")["shortName"], "前端2")
+
+
+class JoinWriteEchoTest(OnboardCase):
+    """review-nearby Task 1 (R11, O-rejoin-echo): --confirm says what it wrote, even when the file is unchanged."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    join = JoinTest.join
+    owner = JoinTest.owner
+
+    def test_confirm_echoes_roster(self):
+        out = self.join()
+        self.assertEqual(out.written, ["已写入：名册（前端，dev）"])
+
+    def test_preview_echoes_nothing(self):
+        self.assertEqual(self.join(confirm=False).written, [])
+
+    def test_rejoin_unchanged_file_still_echoes_reviewer(self):
+        self.owner()
+        self.join(reviewer="fe-owner", nodes=("spec", "plan"))
+        out = self.join(reviewer="fe-owner", nodes=("spec", "plan"))
+        self.assertFalse(out.changed)
+        self.assertEqual(out.written, ["已写入：名册（前端，dev）",
+                                       "审查者：fe-owner（节点 spec、plan）已重新登记"])
+
+    def test_printed_after_rules_state(self):
+        import contextlib
+        import io
+        from decision_inbox import __main__ as cli
+        out = self.join()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cli._print_outcome(out, True)
+        self.assertIn("已写入：名册（前端，dev）", buf.getvalue())
+
+
+class ReviewNearbyBlockTest(unittest.TestCase):
+    """review-nearby Task 9: the working blocks name the receipt, 「待用户决定」 and prefixed numbers."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("【登记回执】", "事项号以回执为准", "待用户决定", "倾向：字母", "交审 C15"):
+                    self.assertIn(words, text)
+
+    def test_hub_block_sends_wake(self):
+        from decision_inbox import hub
+        self.assertIn("有 `wake` 就照填", hub.CONVENTION)

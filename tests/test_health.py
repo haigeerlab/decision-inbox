@@ -430,6 +430,15 @@ class CrewLineTest(HealthCase):
         r = self.run_(None)
         self.assertEqual(r.lines["coord"].text, f"{health.NO_RELAY}（模块 a 构建、b 等合并、c 挂起：等接口）")
 
+    def test_review_rounds_shown(self):
+        """review-nearby Task 3 (R1): rework and review rounds replace the stage word."""
+        read = crew.CrewRead("ok", (crew.Module("a", "shop-a", "build", None, ("rework", 2)),
+                                    crew.Module("b", "shop-b", "spec-plan", None, ("reviewing", 0)),
+                                    crew.Module("c", "shop-c", "spec-plan", None, ("reviewing", 1)),
+                                    crew.Module("d", "shop-d", "build", None, None)))
+        text = self.run_(None, read=read).lines["coord"].text
+        self.assertIn("a 返工中（审查第 2 轮）、b 审查中、c 审查中（第 2 轮）、d 构建", text)
+
     def test_long_suspend_reason_is_cut(self):
         read = crew.CrewRead("ok", (crew.Module("c", "shop-c", "build", "一" * 25),))
         self.assertIn("c 挂起：" + "一" * 20 + "…）", self.run_(self.quiet(), read=read).lines["coord"].text)

@@ -27,6 +27,7 @@ class ReceiveResult:
     problems: tuple[Issue, ...] = ()
     hints: tuple[Issue, ...] = ()
     return_text: str | None = None
+    superseded: tuple[int, ...] = ()  # explicit and default, for the 【登记回执】 (review-nearby R10)
 
 
 FINAL = ("superseded", "withdrawn", "closed")
@@ -120,6 +121,7 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "text": None,
         "from": msg.fields.get("来自", "").strip(),
         "decide": msg.fields.get("要你决定", "").strip(),
+        "brief": msg.fields.get("要点", "").strip("\n"),
         "options": [{"letter": o.letter, "text": o.text, "consequence": o.consequence} for o in msg.options],
         "recommended": msg.recommended,
         "suggestedReply": msg.suggested_reply,
@@ -131,6 +133,8 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "review": {"text": label.text, "warn": label.warn, "highlight": label.highlight, "ref": label.ref,
                    "mentions": list(label.mentions)},
         "writingNotes": [text for _, text in writing_notes(msg)],
+        "decisions": [{"id": d.id, "question": d.question, "options": [list(o) for o in d.options],
+                       "lean": d.lean, "leanReason": d.lean_reason} for d in msg.decisions],
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
@@ -195,7 +199,7 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
             _set_status(doc, old, "superseded", received_at)
             tx.append_event("items.superseded", ref=old, actor=sender, data={"by": no, "auto": True})
         tx.write_state(DOMAIN, doc)
-    return ReceiveResult(True, True, no, (), tuple(hints))
+    return ReceiveResult(True, True, no, (), tuple(hints), superseded=tuple(superseded + auto))
 
 
 def _set_status(doc: dict, no, status: str, at: str) -> None:
@@ -257,6 +261,7 @@ class Answer:
     item: int
     letter: str | None
     original: str
+    decisions: tuple[tuple[str, str], ...] = ()  # (D-number, letter) for 「待用户决定」 (review-nearby R2)
 
 
 @dataclass(frozen=True)
@@ -265,9 +270,13 @@ class ReplyParse:
     question: str | None = None
 
 
-_SEGMENT_RE = re.compile(r"^\s*#?(\d+)\s*(.*)$", re.S)
-_LETTER_RE = re.compile(r"^([A-Z])(?:\s+.*)?$", re.S)
+# A digit run glued to lowercase letters is a commit hash, not an item (review-nearby R6); 「12B」 still is one.
+_SEGMENT_RE = re.compile(r"^\s*#?(\d+)(?![0-9a-z])\s*(.*)$", re.S)
+# The option letter may be followed by punctuation: 「21 B，C15 退回」 (review-nearby R6).
+_LETTER_RE = re.compile(r"^([A-Z])(?:[\s，；,;、：:].*)?$", re.S)
 _SPLIT_RE = re.compile(r"[，；;,]")
+# session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
+_PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
 ANSWERED = ("forwarded", "picked", "acknowledged")
 
 
@@ -277,13 +286,65 @@ def _segments(text: str, known: dict) -> list[str]:
         m = _SEGMENT_RE.match(piece)
         return bool(m) and m.group(1) in known
 
-    lines = [line for line in text.split("\n") if line.strip()]
+    def grouped(pieces: list[str], seps: list[str]) -> list[str] | None:
+        """Numbered pieces, each carrying the prefixed pieces after it (「21 B，C15 退回」 is one answer)."""
+        if not numbered(pieces[0]) or not all(numbered(x) or _PREFIXED_RE.match(x) for x in pieces):
+            return None
+        out = [pieces[0]]
+        for sep, piece in zip(seps, pieces[1:]):
+            if numbered(piece):
+                out.append(piece)
+            else:
+                out[-1] += sep + piece
+        return out
+
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     if len(lines) > 1:
-        return [line.strip() for line in lines] if all(numbered(l) for l in lines) else [text]
-    pieces = [x.strip() for x in _SPLIT_RE.split(text) if x.strip()]
-    if len(pieces) > 1 and all(numbered(x) for x in pieces):
-        return pieces
+        return grouped(lines, ["\n"] * len(lines)) or [text]
+    pieces = [x.strip() for x in _SPLIT_RE.split(text)]
+    if len(pieces) > 1 and all(pieces):
+        out = grouped(pieces, _SPLIT_RE.findall(text))
+        if out is not None and len(out) > 1:
+            return out
     return [text]
+
+
+_DECISION_ANSWER_RE = re.compile(r"(?<![A-Za-z0-9])(D\d+)\s*(?:[：:]|选)?\s*([A-Z])(?![A-Za-z])")
+
+
+def _decision_answers(key: str, it: dict, letter: str | None, segment: str):
+    """The D answers of one segment, or the question to ask when any is missing or wrong (session-protocol v2.0 §8).
+
+    Nothing is filled from the reviewer's lean: it only appears in the example of how to write it.
+    """
+    asked = {d["id"]: d for d in it["decisions"]}
+    given: dict[str, set[str]] = {}
+    for d_id, picked in _DECISION_ANSWER_RE.findall(segment):
+        given.setdefault(d_id, set()).add(picked)
+    gaps = []
+    if letter is None:
+        gaps.append("主选项（" + "／".join(o["letter"] for o in it["options"]) + "）没答")
+    for d_id, picks in given.items():
+        d = asked.get(d_id)
+        if d is None:
+            gaps.append(f"没有 {d_id}")
+        elif len(picks) > 1:
+            gaps.append(f"{d_id} 答了两个不同的选项")
+        elif not picks <= {o[0] for o in d["options"]}:
+            gaps.append(f"{d_id} 没有选项 {next(iter(picks))}")
+    for d_id, d in asked.items():
+        if d_id not in given:
+            choices = "／".join(f"{o[0]}. {o[1]}" for o in d["options"])
+            gaps.append(f"没答 {d_id} {d['question']}（{choices}）")
+    if not gaps:
+        return tuple((d_id, next(iter(given[d_id]))) for d_id in asked), None
+    good = {d_id: next(iter(p)) for d_id, p in given.items()
+            if d_id in asked and len(p) == 1 and p <= {o[0] for o in asked[d_id]["options"]}}
+    main = letter or it.get("recommended") or it["options"][0]["letter"]
+    example = "；".join([f"{key} {main}"] + [f"{d_id} {good.get(d_id) or d['lean'] or d['options'][0][0]}"
+                                             for d_id, d in asked.items()])
+    return (), (f"#{key} 还没答全：{'；'.join(gaps)}。请把主选项和每个待你决定的问题写在同一条回复里重发，"
+                f"例如「{example}」（这只是写法示例，不是默认答案）。")
 
 
 NO_ITEM_QUESTION = "没看出这句是答哪一项的，请在开头写上编号，例如「12 B」。"
@@ -316,7 +377,12 @@ def interpret_reply(g: store.Group, text: str) -> ReplyParse:
             letter = lm.group(1)
             if letter not in {o["letter"] for o in it["options"]}:
                 return ReplyParse(question=f"#{key} 没有选项 {letter}，请确认。")
-        answer = Answer(int(key), letter, segment)
+        picked = ()
+        if it.get("decisions"):
+            picked, question = _decision_answers(key, it, letter, segment)
+            if question:
+                return ReplyParse(question=question)
+        answer = Answer(int(key), letter, segment, picked)
         same = [a for a in answers if a.item == answer.item]
         if same and (same[0].letter != letter or (letter is None and same[0].original != segment)):
             return ReplyParse(question=f"#{key} 这次回复里有两个不同的答复，请说明以哪个为准。")
@@ -361,11 +427,13 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
                     if to in legacy and it["relayId"] is not None:
                         text = protocol.legacy_head(text, a.item, it["relayId"], multi_sender=it["sender"])
                     batch.append(Outgoing(to, text, a.item))
-            it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at})
+            it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at,
+                                  "decisions": [list(d) for d in a.decisions]})
             it["recipients"] = [o.to for o in batch]
             _set_status(doc, a.item, "forwarded", answered_at)
             tx.append_event("items.answered", ref=a.item, actor="user",
-                            data={"letter": a.letter, "original": a.original, "recipients": it["recipients"]})
+                            data={"letter": a.letter, "original": a.original, "recipients": it["recipients"],
+                                  "decisions": [list(d) for d in a.decisions]})
             out += batch
         tx.write_state(DOMAIN, doc)
     return tuple(out)

@@ -471,6 +471,8 @@ def _print_outcome(out, confirm: bool) -> None:
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
+    for line in out.written:
+        print(line)
     if out.changed and not out.drops:
         print("改动后的规则文件全文：")
         print(out.after, end="" if out.after.endswith("\n") else "\n")

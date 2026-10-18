@@ -286,6 +286,96 @@ class InterpretTest(ItemsCase):
         self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B")])
 
 
+class PrefixTest(InterpretTest):
+    """review-nearby Task 6 (R6): only an unprefixed number is an item; C15, R-3, D1 stay in the user's words."""
+
+    def test_letter_followed_by_punctuation(self):
+        for text in (f"{self.a} B，C15 退回", f"{self.a} B；C15 退回", f"{self.a} B、C16 也退回"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual(p.answers, (items.Answer(self.a, "B", text),))
+
+    def test_prefixed_pieces_join_the_item_before_them(self):
+        for text in (f"{self.a} B，C15 退回，{self.b} A", f"{self.a} B\nC15 退回\n{self.b} A"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B"), (self.b, "A")])
+                self.assertIn("C15 退回", p.answers[0].original)
+
+    def test_prefixed_number_is_never_an_item(self):
+        for text in (f"C{self.a} A", f"#C{self.a} A", f"R-{self.a} A", f"D{self.a} A", f"4c5d6e{self.a} A"):
+            with self.subTest(text=text):
+                self.assertEqual(self.parse(text).question, items.NO_ITEM_QUESTION)
+
+    def test_old_forms_unchanged(self):
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B").answers], [(self.a, "B")])
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"#{self.a} B").answers], [(self.a, "B")])
+        self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B，{self.b} A").answers],
+                         [(self.a, "B"), (self.b, "A")])
+        self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
+        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, None, "A"),))
+
+
+CONTRACT = Path(__file__).resolve().parent / "fixtures" / "session-protocol" / f"v{protocol.CONTRACT_VERSION}"
+DECISIONS = (CONTRACT / "wait-user" / "decisions.txt").read_text(encoding="utf-8")  # A/B, D1 and D2 (A/B)
+
+
+class DecisionReplyTest(ItemsCase):
+    """review-nearby Task 7 (R2): every 「待用户决定」 must be answered; nothing half-answered goes out."""
+
+    def setUp(self):
+        super().setUp()
+        self.no = self.receive(DECISIONS, sender="coord").item
+        self.other = self.receive(SINGLE, at=T2).item
+
+    def parse(self, text):
+        return items.interpret_reply(self.g, text)
+
+    def test_recorded(self):
+        ds = self.item(self.no)["decisions"]
+        self.assertEqual([(d["id"], d["lean"], [o[0] for o in d["options"]]) for d in ds],
+                         [("D1", "B", ["A", "B"]), ("D2", "A", ["A", "B"])])
+
+    def test_full_answers_pass(self):
+        n = self.no
+        for text in (f"{n} A；D1 B；D2 A", f"{n} A\nD1 B\nD2 A", f"{n} A；D1 选 B，D2：A"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual(p.answers, (items.Answer(n, "A", text, (("D1", "B"), ("D2", "A"))),))
+
+    def test_missing_or_wrong_asks_again(self):
+        n = self.no
+        cases = {f"{n} A": ("D1", "D2"), f"{n} A；D1 B": ("D2",), f"{n} A；D1 Z；D2 A": ("D1",),
+                 f"{n} A；D1 B；D1 A；D2 A": ("D1",), f"{n} A；D1 B；D2 A；D3 A": ("D3",),
+                 f"{n} D1 B；D2 A": ("主选项",)}
+        for text, named in cases.items():
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertEqual(p.answers, ())
+                for word in named:
+                    self.assertIn(word, p.question)
+                self.assertIn(f"例如「{n} A；D1 B；D2 A」", p.question)
+
+    def test_question_names_what_is_missing(self):
+        q = self.parse(f"{self.no} A；D1 B").question
+        self.assertIn("D2 错误日志保留多久？（A. 7 天／B. 30 天）", q)
+        self.assertNotIn("D1 alpha", q)
+
+    def test_other_items_unchanged(self):
+        p = self.parse(f"{self.other} B；D1 A")
+        self.assertIsNone(p.question)
+        self.assertEqual(p.answers, (items.Answer(self.other, "B", f"{self.other} B；D1 A"),))
+
+    def test_forwarded_whole_and_recorded(self):
+        text = f"{self.no} A；D1 B；D2 A"
+        out = items.answer(self.g, self.parse(text).answers, answered_at=T3)
+        self.assertIn(f"用户原话：{text}", out[0].text)
+        self.assertEqual(self.item(self.no)["answers"][0]["decisions"], [["D1", "B"], ["D2", "A"]])
+
+
 class AnswerTest(ItemsCase):
     def test_single_answer_with_option_text(self):
         no = self.receive(SINGLE).item

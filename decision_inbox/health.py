@@ -238,6 +238,16 @@ NO_RECORD = "无活动记录（agent-relay 没有它的数据）"
 NO_RELAY = "本次没有 agent-relay 状态，无法判断"  # not read this time, not missing (wait-honesty-and-briefs A3)
 
 
+def _review_word(review) -> str | None:
+    """module-crew's review state in place of the stage word (review-nearby R1)."""
+    if review is None:
+        return None
+    state, rounds = review
+    if state == "rework":
+        return f"返工中（审查第 {rounds} 轮）"
+    return f"审查中（第 {rounds + 1} 轮）" if rounds else "审查中"
+
+
 def _crew_suffix(f: _Facts, state: LineState, stale, names: dict) -> str:
     """The module list after a coordinator line's state (crew-line-status)."""
     if f.crew is None:
@@ -250,7 +260,7 @@ def _crew_suffix(f: _Facts, state: LineState, stale, names: dict) -> str:
             reason = m.suspended if len(m.suspended) <= SUSPEND_CLIP else m.suspended[:SUSPEND_CLIP] + "…"
             parts.append(f"{m.module} 挂起：{reason}")
         else:
-            stage = CREW_STAGES.get(m.stage, m.stage)
+            stage = _review_word(m.review) or CREW_STAGES.get(m.stage, m.stage)
             parts.append(f"{m.module} {word}·{stage}" if word else f"{m.module} {stage}")
     text = "模块 " + "、".join(parts) if parts else "没有在用的模块会话"
     live = [t for t in f.tickets if t["no"] not in stale]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import doctor, install, onboard, store
+from decision_inbox import doctor, install, onboard, protocol, store
 
 NOW = "2026-10-17T22:00:00+08:00"
 
@@ -224,10 +224,13 @@ class ModuleCrewTest(DoctorCase):
         self.join_coordinator()
         FakeCrew(self.home)
         c = self.check("依赖：module-crew")
-        self.assertEqual((c.state, c.evidence), ("ok", "module-crew 0.0.1：接口 1.0，兼容，契约 1.7"))
+        self.assertEqual((c.state, c.evidence),
+                         ("ok", f"module-crew 0.0.1：接口 1.0，兼容，契约 {protocol.CONTRACT_VERSION}"))
         out = self.check("module-crew 出口：并行")
         self.assertEqual((out.state, out.source, out.evidence), ("ok", "module-crew", "读到 2 个模块会话"))
-        for contract, state, words in (("1.8", "ok", "本插件按 1.7"), ("2.0", "bad", "契约 2.0")):
+        # review-nearby: pinned to 2.x now, so a 1.x module-crew (0.2.x speaks 1.9) is a mismatch
+        for contract, state, words in (("2.9", "ok", f"本插件按 {protocol.CONTRACT_VERSION}"),
+                                       ("1.9", "bad", "契约 1.9")):
             with self.subTest(contract=contract):
                 import shutil
                 shutil.rmtree(self.home / "module-crew")
@@ -313,6 +316,16 @@ class HostVersionsTest(DoctorCase):
         c = self.check(self.NAME)
         self.assertEqual(c.state, "ok")
         self.assertIn("Claude 没装", c.evidence)
+
+    def test_neither_side_is_bad(self):
+        """review-nearby Task 2 (O-doctor-none): nothing installed on either side is not ok."""
+        self.write_records({})
+        self.set_codex("0.0.19", enabled=False)
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "bad")
+        self.assertIn("两边都没装", c.evidence)
+        self.assertIn("codex plugin add", c.fix)
+        self.assertIn("固定副本安装", c.fix)
 
     def test_unreadable_codex_cache_is_unknown(self):
         self.claude("0.0.19")

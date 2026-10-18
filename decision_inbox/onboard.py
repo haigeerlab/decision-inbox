@@ -119,13 +119,15 @@ _COMMON = """## decision-inbox 协作约定（协作组「{group}」，你的角
 - 【等待其他会话】：告诉收件枢纽你在等谁的什么，发给收件枢纽，`wake` 设为 false（静默送达）。
 - 【已恢复】：等的东西到了、你继续干活，发给收件枢纽。
 - 【撤回】：放弃自己抛过、用户还没答的事项。
+- 一项里要用户另外定几个独立的小问题时，在「要点」之后写「待用户决定」：每条「D1：问题」，下面至少两个带字母的选项，再写一行「倾向：字母（理由）」；「你该回」写完整，例如「A；D1 B」。用户没答全，收件枢纽会追问。
+- 给用户看的编号：#数字只写收件枢纽的事项号；你自己的编号带字母前缀，例如交审 C15、审查 R-3。
 - 要点写 3–5 行，按事项类型写：
   - Spec 批准：做什么、不做什么、关键取舍、未决问题；
   - Plan 批准：步骤和各步怎么验证、改动位置、最大风险；
   - 最终验收：交付了什么、实际验证结果、没验证的范围和遗留；
   - 选方案：各选项的差别和代价。
   不写「详见文件」「已明确」「同上」这类话，用户要能只看要点就做决定。
-- 事项有效性标记：新的【等待用户】默认取代你之前还没答的同类事项（包括刚发出、还不知道事项号的那项），所以取代刚发的事项时不用写标记。两项确实各自独立、都要用户答时，第一行写【与 #旧编号 并行】。要明确只取代某一项时写【取代 #事项号】：事项号是收件枢纽编的号，不是邮箱号，还不知道事项号就别写。取代（包括默认取代）或【撤回】自己的事项时，`bridge_send` 带上 `withdraws: [旧那条的邮箱号]`，把旧请求从收件枢纽欠你的回复里撤掉。
+- 事项有效性标记：新的【等待用户】默认取代你之前还没答的同类事项（包括刚发出、还不知道事项号的那项），所以取代刚发的事项时不用写标记。两项确实各自独立、都要用户答时，第一行写【与 #旧编号 并行】。要明确只取代某一项时写【取代 #事项号】：事项号是收件枢纽编的号，不是邮箱号，还不知道事项号就别写。收件枢纽收下事项后会静默回一条【登记回执】（原消息、事项、取代、写法提示），事项号以回执为准，写法提示下次照着改。取代（包括默认取代）或【撤回】自己的事项时，`bridge_send` 带上 `withdraws: [旧那条的邮箱号]`，把旧请求从收件枢纽欠你的回复里撤掉。
 
 结束写法：
 - 每条【已恢复】第一行写「结束：#编号」，同时结束多条就全列出；对不上编号写「结束：无编号（原因）」。
@@ -329,6 +331,7 @@ class Outcome:
     warnings: list = field(default_factory=list)  # shown first in the preview (relay-checkpoint-authority R1)
     codex_unseen: bool = False  # the warnings include Codex not loading the block (R1)
     drops: bool = False  # the leave removes a rules file the join created (e2e-round1-fixes F6)
+    written: list = field(default_factory=list)  # what --confirm wrote besides the file (review-nearby R11)
 
 
 def _read(path: Path) -> str:
@@ -561,8 +564,10 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     if confirm:
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
+        out.written.append(f"已写入：名册（{short_name}，{role}）")
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
+            out.written.append(f"审查者：{reviewer}（节点 {'、'.join(nodes)}）已重新登记")
         if exclude is not None:
             _add_exclude(g, relay_name, exclude)
     return out

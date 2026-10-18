@@ -51,9 +51,18 @@ def to_contract(m: protocol.Message) -> dict:
         "reviewLine": {"status": m.review.status, "adviceCount": m.review.advice_count, "ref": m.review.ref},
         "conclusion": None if c is None else {
             "ref": c.ref, "node": c.node, "submitter": c.submitter, "verdict": c.verdict,
-            "adviceCount": c.advice_count, "module": c.module},
+            "adviceCount": c.advice_count, "module": c.module,
+            # v2.0: only for 有须修改项 written the new way (the v1 sample has neither key)
+            **({} if c.changes is None else {"changeCount": c.change_count, "changes": list(c.changes)})},
         "problems": [p.code for p in m.problems],
         "hints": [h.code for h in m.hints],
+        "decisions": [{"id": d.id, "question": d.question,
+                       "options": [{"letter": letter, "text": text} for letter, text in d.options],
+                       "lean": d.lean, "leanReason": d.lean_reason} for d in m.decisions],
+        "localItem": m.local_item,
+        "receipt": None if m.receipt is None else {
+            "original": m.receipt.original, "status": m.receipt.status,
+            "supersedes": list(m.receipt.supersedes)},
     }
 
 
@@ -91,15 +100,17 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "1e14a49"])
+                         ["session-protocol", VERSION, "a17f3b0"])
 
 
 class ConformanceTest(unittest.TestCase):
     def test_counts(self):
         docs = [json.loads(p.read_text(encoding="utf-8")) for p in cases()]
-        self.assertEqual(sum("parse" in d for d in docs), 63)
+        # v2.0 (review-nearby): 90 parse samples; 40 skipped = coordination-notice 20, review-request 8,
+        # user-reply/relay-* 5, shared-change-request 4, owner-handoff 3.
+        self.assertEqual(sum("parse" in d for d in docs), 90)
         self.assertEqual(sum("generate" in d for d in docs), 6)
-        self.assertEqual(len([p for p in cases() if skipped(p)]), 26,
+        self.assertEqual(len([p for p in cases() if skipped(p)]), 40,
                          "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")
 
     def test_parse(self):
@@ -120,6 +131,16 @@ class ConformanceTest(unittest.TestCase):
             with self.subTest(sample=path.relative_to(CONTRACT).as_posix()):
                 self.assertEqual(generate(spec["kind"], spec["inputs"]),
                                  path.with_suffix(".txt").read_text(encoding="utf-8"))
+
+    def test_hub_receipt_round_trip(self):
+        """The contract has no generate sample for 【登记回执】; what the hub writes must parse back as given."""
+        for supersedes, notes in (((), ()), ((21,), ("「要点」只有一行",)), ((21, 23), ("缺「项目：」", "x"))):
+            with self.subTest(supersedes=supersedes):
+                m = protocol.parse(protocol.format_hub_receipt(4551, 22, supersedes, notes))
+                self.assertEqual((m.kind, m.ok, m.item, m.reply_to, m.ends.present, m.hints),
+                                 ("hub-receipt", True, 22, None, False, ()))
+                self.assertEqual((m.receipt.original, m.receipt.status, m.receipt.supersedes),
+                                 (4551, "registered", supersedes))
 
     def test_original_samples_are_in_the_contract(self):
         pairs = {"wait-user.txt": "wait-user/basic.txt", "wait-user-multiline.txt": "wait-user/multiline.txt",

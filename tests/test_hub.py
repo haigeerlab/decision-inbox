@@ -5,7 +5,7 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import health, hub, install, items, relay, reviews, store, tickets, view
+from decision_inbox import health, hub, install, items, protocol, relay, reviews, store, tickets, view
 
 PROTO = Path(__file__).resolve().parent / "fixtures" / "protocol"
 WAIT_USER = (PROTO / "wait-user.txt").read_text(encoding="utf-8")
@@ -62,7 +62,16 @@ class HubCase(TempHomeTestCase):
         super().tearDown()
 
     def receive(self, *messages, more=False):
-        return hub.receive(self.g, inbox(*messages, more=more), now=NOW)
+        """Receive like the hub, then send its 【登记回执】s (review-nearby) so they never sit as unsent."""
+        r = hub.receive(self.g, inbox(*messages, more=more), now=NOW)
+        receipts = {s["id"]: 9000 + int(s["id"].partition(":")[2]) for s in r.sends if s["kind"] == "receipt"}
+        if receipts:
+            hub.sent(self.g, done=receipts, failed=[], at=NOW)
+        return r
+
+    @staticmethod
+    def others(sends):
+        return [s for s in sends if s["kind"] != "receipt"]
 
     def tickets(self):
         return store.read_state(self.g, "tickets").get("tickets", {})
@@ -87,9 +96,9 @@ class ReceiveDispatchTest(HubCase):
         self.assertEqual(ticket["close"]["reason"], 1)
         review = store.read_state(self.g, "reviews")["reviews"]["R-1"]
         self.assertEqual(len(review["rounds"]), 1)
-        self.assertEqual(len(r.sends), 1)
-        send = r.sends[0]
-        self.assertEqual((send["id"], send["to"], send["replyTo"], send["kind"]), ("out:1", "api-codex", 1002, "return"))
+        self.assertEqual([x["kind"] for x in r.sends], ["receipt", "return"])  # review-nearby: receipt for 1001
+        send = r.sends[1]
+        self.assertEqual((send["id"], send["to"], send["replyTo"], send["kind"]), ("out:2", "api-codex", 1002, "return"))
         body = Path(send["bodyFile"]).read_text(encoding="utf-8")
         self.assertTrue(body.startswith("退回：你的【等待用户】没有收进待答表"))
         self.assertIn("前端 称：随便说一句（说「1006 原文」看全文）", r.notes)
@@ -107,6 +116,14 @@ class ReceiveDispatchTest(HubCase):
         self.assertTrue(body.startswith("退回：你的【审查结论】没有处理"))
         self.assertIn("不是 前端 登记的审查者", body)
 
+    def test_changes_required_conclusion_makes_no_item(self):
+        """review-nearby Task 3 (R1): a 有须修改项 conclusion only counts a round, never an item."""
+        r = self.receive(message(1013, "fe-owner", conclusion("有须修改项")))
+        self.assertEqual(r.sends, [])
+        self.assertEqual(items.pending(self.g), [])
+        rounds = store.read_state(self.g, "reviews")["reviews"]["R-1"]["rounds"]
+        self.assertEqual([x["verdict"] for x in rounds], ["changes-required"])
+
     def test_wait_session_missing_field_is_returned_without_ticket(self):
         r = self.receive(message(1012, "api-codex", "【等待其他会话】\n结束：无\n在等谁：前端\n"))
         self.assertEqual(self.tickets(), {})
@@ -120,7 +137,7 @@ class ReceiveDispatchTest(HubCase):
         r = self.receive(message(1014, "fe-codex", WAIT_USER.replace("结束：无", "结束：#1")))
         self.assertEqual([it["no"] for it in items.pending(self.g)], [2])
         self.assertEqual(self.tickets()["1"]["close"]["reason"], 2)
-        self.assertEqual(r.sends, [])
+        self.assertEqual(self.others(r.sends), [])
 
     def test_resumed_ends_answered_item(self):
         self.receive(message(1015, "fe-codex", WAIT_USER))
@@ -148,7 +165,7 @@ class ReceiveOnceTest(HubCase):
         first = self.receive(*self.batch())
         counter = (self.g.path / "counter.json").read_text(encoding="utf-8")
         second = self.receive(*self.batch())
-        self.assertEqual(len(first.sends), 1)
+        self.assertEqual([s["kind"] for s in first.sends], ["receipt", "return"])
         self.assertEqual(second.sends, [])
         self.assertEqual(second.notes, [])
         self.assertEqual(second.ack, [1101, 1102, 1103])
@@ -194,12 +211,12 @@ class SentTest(HubCase):
     def test_answer_queued_with_reply_to(self):
         sends = self.answered()
         self.assertEqual([(s["id"], s["to"], s["replyTo"], s["kind"]) for s in sends],
-                         [("out:1", "fe-codex", 1201, "answer")])
+                         [("out:2", "fe-codex", 1201, "answer")])  # out:1 is #1's 【登记回执】
         self.assertIn("用户原话：1 A", Path(sends[0]["bodyFile"]).read_text(encoding="utf-8"))
 
     def test_sent_records_relay_id_closes_ticket_and_keeps_body(self):
         sends = self.answered()
-        closed = hub.sent(self.g, done={"out:1": 3950}, failed=[], at=NOW)
+        closed = hub.sent(self.g, done={sends[0]["id"]: 3950}, failed=[], at=NOW)
         self.assertEqual(closed, (2,))
         self.assertEqual(items.get(self.g, 1)["sent"][0]["relayId"], 3950)
         self.assertEqual(self.tickets()["2"]["close"], {"reason": 3, "basis": "已转发 #3950", "at": NOW})
@@ -207,25 +224,25 @@ class SentTest(HubCase):
         self.assertEqual(hub.outgoing(self.g), [])
 
     def test_failed_and_unrecorded_stay(self):
-        self.answered()
-        self.receive(message(1203, "api-codex", "【等待用户】\n结束：无\n"))
-        hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+        answer = self.answered()[0]["id"]
+        r = self.receive(message(1203, "api-codex", "【等待用户】\n结束：无\n"))
+        hub.sent(self.g, done={}, failed=[answer], at=NOW)
         left = hub.outgoing(self.g)
-        self.assertEqual([s["id"] for s in left], ["out:1", "out:2"])
+        self.assertEqual([s["id"] for s in left], [answer, r.sends[0]["id"]])
         self.assertTrue(all(Path(s["bodyFile"]).exists() for s in left))
         self.assertEqual(self.tickets()["2"]["status"], "open")
         state = store.read_state(self.g, "hub")["outgoing"]
-        self.assertTrue(state["out:1"]["failed"])
-        hub.sent(self.g, done={"out:1": 3951}, failed=[], at=NOW)
-        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:2"])
+        self.assertTrue(state[answer]["failed"])
+        hub.sent(self.g, done={answer: 3951}, failed=[], at=NOW)
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])
 
     def test_unknown_or_already_sent_id_rejected(self):
-        self.answered()
+        answer = self.answered()[0]["id"]
         with self.assertRaises(hub.UnknownOutgoing):
             hub.sent(self.g, done={"out:9": 1}, failed=[], at=NOW)
-        hub.sent(self.g, done={"out:1": 3950}, failed=[], at=NOW)
+        hub.sent(self.g, done={answer: 3950}, failed=[], at=NOW)
         with self.assertRaises(hub.UnknownOutgoing):
-            hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+            hub.sent(self.g, done={}, failed=[answer], at=NOW)
 
     def test_return_send_does_not_touch_items(self):
         r = self.receive(message(1204, "api-codex", "【等待用户】\n结束：无\n"))
@@ -310,10 +327,10 @@ class ReplyTest(HubCase):
 
     def test_resend(self):
         self.assertEqual(self.reply("重发").show, "没有没发出去的消息")
-        self.reply("1 A")
-        hub.sent(self.g, done={}, failed=["out:1"], at=NOW)
+        answer = self.reply("1 A").sends[0]["id"]
+        hub.sent(self.g, done={}, failed=[answer], at=NOW)
         r = self.reply("重发")
-        self.assertEqual([s["id"] for s in r.sends], ["out:1"])
+        self.assertEqual([s["id"] for s in r.sends], [answer])
         self.assertEqual(r.show, "重新列出 1 条没发出去的消息")
 
     def test_main_view_warns_unsent_and_unreadable_relay(self):
@@ -413,14 +430,16 @@ class CommandLineTest(HubCase):
         code, out, _ = self.run_cli("inbox", "receive", "demo", "--inbox", f)
         self.assertEqual(code, 0)
         got = json.loads(out)
-        self.assertEqual((got["ack"], got["sends"], got["unread"], got["more"]), ([1401, 1402], [], [], False))
+        self.assertEqual((got["ack"], [s["kind"] for s in got["sends"]], got["unread"], got["more"]),
+                         ([1401, 1402], ["receipt"], [], False))
+        self.assertEqual((got["sends"][0]["replyTo"], got["sends"][0]["wake"]), (None, False))
         said = self.write("said.txt", "1 A\n")
         code, out, _ = self.run_cli("inbox", "reply", "demo", "--text-file", said)
         self.assertEqual(code, 0)
         got = json.loads(out)
-        self.assertEqual([s["id"] for s in got["sends"]], ["out:1"])
+        self.assertEqual([s["id"] for s in got["sends"]], ["out:2"])
         self.assertIn("已转达：#1 → 前端", got["show"])
-        code, out, _ = self.run_cli("inbox", "sent", "demo", "--done", "out:1=3950")
+        code, out, _ = self.run_cli("inbox", "sent", "demo", "--done", "out:1=3949", "out:2=3950")
         self.assertEqual((code, json.loads(out)), (0, {"closedTickets": []}))
         outbox = self.write("outbox.json", json.dumps({"agent": "di-hub", "entries": [
             {"id": 3950, "toAgent": "fe-codex", "createdAt": NOW, "deliveryState": "accepted",
@@ -517,12 +536,12 @@ class AnswerNoticeTest(HubCase):
 
     def test_notice_sent_does_not_move_the_item(self):
         self.receive(message(1504, "fe-owner", WAIT_USER))
-        hub.reply(self.g, "1 A", now=NOW)
-        closed = hub.sent(self.g, done={"out:2": 3990}, failed=[], at=NOW)
+        sends = {s["kind"]: s["id"] for s in hub.reply(self.g, "1 A", now=NOW).sends}
+        closed = hub.sent(self.g, done={sends["notice"]: 3990}, failed=[], at=NOW)
         it = items.get(self.g, 1)
         self.assertEqual((it["status"], it["sent"], closed), ("forwarded", [], ()))
-        self.assertEqual(store.read_state(self.g, "hub")["outgoing"]["out:2"]["relayId"], 3990)
-        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], ["out:1"])
+        self.assertEqual(store.read_state(self.g, "hub")["outgoing"][sends["notice"]]["relayId"], 3990)
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [sends["answer"]])
 
 
 def asking(mid, sender, body, reply_to=None, expects=True):
@@ -817,3 +836,71 @@ class MultiWaitTest(HubCase):
         self.receive(message(5006, "fe-codex", wait_session(target="API", what="支付接口"), created=LATER))
         orphans = [s.sessions for s in health.assess(self.g, now=NOW).signals if s.code == "orphan-wait"]
         self.assertEqual(orphans, [("fe-codex",)])
+
+
+REHEARSAL = Path(__file__).resolve().parent / "fixtures" / "rehearsal"
+
+
+class HubReceiptTest(HubCase):
+    """review-nearby Task 8 (R10, O-wait-user-lax B): the sender learns its item number, silently."""
+
+    def receipt(self, r):
+        sends = [x for x in r.sends if x["kind"] == "receipt"]
+        return sends, [protocol.parse(Path(x["bodyFile"]).read_text(encoding="utf-8")) for x in sends]
+
+    def test_receipt_is_silent_and_not_a_reply(self):
+        r = self.receive(message(1001, "fe-codex", WAIT_USER))
+        sends, parsed = self.receipt(r)
+        self.assertEqual(len(sends), 1)
+        self.assertEqual((sends[0]["to"], sends[0]["replyTo"], sends[0]["wake"]), ("fe-codex", None, False))
+        m = parsed[0]
+        self.assertEqual((m.kind, m.ok, m.item, m.receipt.original, m.receipt.status, m.receipt.supersedes),
+                         ("hub-receipt", True, 1, 1001, "registered", ()))
+
+    def test_supersede_listed(self):
+        self.receive(message(1001, "fe-codex", WAIT_USER))
+        r = self.receive(message(1002, "fe-codex", WAIT_USER))
+        m = self.receipt(r)[1][0]
+        self.assertEqual((m.item, m.receipt.supersedes), (2, (1,)))
+        self.assertIn("【与 #1 并行】", m.fields["写法提示"])
+
+    def test_writing_notes_from_rehearsal_batch(self):
+        text = (REHEARSAL / "wait-user-batch-thin.txt").read_text(encoding="utf-8")
+        m = self.receipt(self.receive(message(1001, "coord", text)))[1][0]
+        notes = m.fields["写法提示"]
+        for word in ("缺「项目：」", "只写了选项字母", "括号里没写建议内容", "要点只有"):
+            self.assertIn(word, notes)
+
+    def test_no_receipt_for_returns_withdrawals_and_legacy(self):
+        r = self.receive(message(1001, "api-codex", "【等待用户】\n结束：无\n来自：API\n"))
+        self.assertEqual([x["kind"] for x in r.sends], ["return"])
+        self.receive(message(1002, "fe-codex", WAIT_USER))
+        r = self.receive(message(1003, "fe-codex", "【撤回】\n事项：#1\n"))
+        self.assertEqual(r.sends, [])
+        with self.g.transaction() as tx:
+            tx.replace_session(dict(store.find_session(self.g, relay_name="api-codex"), legacyFormat=True))
+        r = self.receive(message(1004, "api-codex", WAIT_USER))
+        self.assertEqual(r.sends, [])
+
+    def test_receipt_send_recorded(self):
+        r = hub.receive(self.g, inbox(message(1001, "fe-codex", WAIT_USER)), now=NOW)
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])  # unsent until recorded
+        hub.sent(self.g, done={r.sends[0]["id"]: 5001}, failed=[], at=NOW)
+        self.assertEqual(store.read_state(self.g, "hub")["outgoing"][r.sends[0]["id"]]["relayId"], 5001)
+        self.assertEqual(items.get(self.g, 1)["sent"], [])  # a receipt is not an answer
+
+
+class DecoupledTest(HubCase):
+    """review-nearby Task 9 (decoupling): without module-crew an ordinary line behaves as in 0.0.20,
+    except that each accepted 【等待用户】 now also queues one silent 【登记回执】."""
+
+    def test_plain_line_round_trip(self):
+        r = self.receive(message(1601, "fe-codex", WAIT_USER), message(1602, "api-codex", wait_session()))
+        self.assertEqual([(s["kind"], s["to"]) for s in r.sends], [("receipt", "fe-codex")])
+        self.assertEqual([it["no"] for it in items.pending(self.g)], [1])
+        out = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual([(s["kind"], s["to"], s["replyTo"]) for s in out.sends], [("answer", "fe-codex", 1601)])
+        self.assertIn("用户原话：1 A", Path(out.sends[0]["bodyFile"]).read_text(encoding="utf-8"))
+        card = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
+        self.assertNotIn("要点（摘要）", card)
+        self.assertNotIn("待你决定的问题", card)

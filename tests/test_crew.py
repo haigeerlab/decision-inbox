@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from decision_inbox import crew
+from decision_inbox import crew, protocol
 
-INTERFACE = {"interface": "1.0", "plugin": "module-crew", "version": "0.0.1", "contract": "1.7",
+INTERFACE = {"interface": "1.0", "plugin": "module-crew", "version": "0.0.1", "contract": protocol.CONTRACT_VERSION,
              "sessions": {"command": ["bin/module-crew", "sessions", "--json"], "schemaVersion": 1}}
 SESSIONS = {"schemaVersion": 1, "sessions": [
     {"module": "a", "relayName": "shop-a", "worktree": "/w/a", "stage": "build", "stageText": "可以构建",
@@ -74,6 +74,21 @@ class ReadModulesTest(CrewCase):
         out = {"schemaVersion": 1, "sessions": [dict(SESSIONS["sessions"][0], stage="review")]}
         r = self.read(out=out)
         self.assertEqual((r.status, r.modules[0].stage), ("ok", "review"))
+
+    def test_review_field(self):
+        """review-nearby Task 3 (R1): module-crew 0.3.0's optional review field; anything odd is None."""
+        row = SESSIONS["sessions"][0]
+        cases = [({"state": "rework", "round": 2}, ("rework", 2)),
+                 ({"state": "reviewing", "round": 0}, ("reviewing", 0)),
+                 (None, None), ("rework", None), ({"state": "done", "round": 1}, None),
+                 ({"state": "rework", "round": -1}, None), ({"state": "rework", "round": True}, None)]
+        for value, want in cases:
+            with self.subTest(value=value):
+                shutil.rmtree(self.tmp / "module-crew", ignore_errors=True)
+                r = self.read(out={"schemaVersion": 1, "sessions": [dict(row, review=value)]})
+                self.assertEqual((r.status, r.modules[0].review), ("ok", want))
+        shutil.rmtree(self.tmp / "module-crew", ignore_errors=True)
+        self.assertIsNone(self.read().modules[0].review)
 
     def assertUnknown(self, r, words):
         self.assertEqual(r.status, "unknown")

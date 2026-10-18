@@ -26,6 +26,7 @@ class Module:
     relay_name: str
     stage: str
     suspended: str | None
+    review: tuple[str, int] | None = None  # (reviewing|rework, round) from 0.3.0's optional field (review-nearby)
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,19 @@ def _argv(root: str, sessions) -> list[str] | str:
     return [str(program), *command[1:]]
 
 
+REVIEW_STATES = ("reviewing", "rework")
+
+
+def _review(value) -> tuple[str, int] | None:
+    """The optional review field; an odd shape is read as absent so a module-crew tweak never blinds a line."""
+    if not isinstance(value, dict) or value.get("state") not in REVIEW_STATES:
+        return None
+    rounds = value.get("round")
+    if type(rounds) is not int or rounds < 0:
+        return None
+    return value["state"], rounds
+
+
 def _parse(out: str) -> tuple[Module, ...] | str:
     try:
         doc = json.loads(out)
@@ -67,7 +81,8 @@ def _parse(out: str) -> tuple[Module, ...] | str:
                 return f"输出缺少契约字段 {key}"
         if "suspended" not in row or not isinstance(row["suspended"], (str, type(None))):
             return "输出缺少契约字段 suspended"
-        modules.append(Module(row["module"], row["relayName"], row["stage"], row["suspended"]))
+        modules.append(Module(row["module"], row["relayName"], row["stage"], row["suspended"],
+                              _review(row.get("review"))))
     return tuple(modules)
 
 

@@ -508,3 +508,38 @@ class DoubtRowTest(ViewCase):
         codex = Signal(5, "idle-backlog", ("api-codex",), "API 空闲，有 1 条消息没读")
         self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 收件枢纽；叫不醒就打开它")
         self.assertEqual(view.advice(self.g, codex), "打开 API 的任务")
+
+
+DECISIONS = (Path(__file__).resolve().parent / "fixtures" / "session-protocol" /
+             f"v{__import__('decision_inbox.protocol').protocol.CONTRACT_VERSION}" / "wait-user" / "decisions.txt")
+
+
+class DecisionCardTest(ViewCase):
+    """review-nearby Task 7 (R2): each 「待用户决定」 is its own question on the card."""
+
+    def test_card_lists_each_decision(self):
+        no = self.ask(DECISIONS.read_text(encoding="utf-8"), sender="coord")
+        c = card(self.render(), no)
+        self.assertIn("\n".join([
+            "待你决定的问题（每条都要答，没答全会被追问）：",
+            "D1：alpha 首字母要不要大写？",
+            "  A. 大写　B. 保持小写",
+            "  审查倾向：B（与现有命名一致）",
+            "D2：错误日志保留多久？",
+            "  A. 7 天　B. 30 天",
+            "  审查倾向：A"]), c)
+        self.assertIn(f"```\n{no} A；D1 B；D2 A\n```", c)
+
+    def test_reply_without_decisions_names_them(self):
+        text = DECISIONS.read_text(encoding="utf-8").replace("你该回：21 A；D1 B；D2 A", "你该回：A 批准")
+        no = self.ask(text, sender="coord")
+        c = card(self.render(), no)
+        self.assertIn(f"```\n{no} A 批准\n```\n  还要答 D1、D2，写在同一条回复里", c)
+
+    def test_combined_skips_items_with_decisions(self):
+        a = self.ask(SINGLE)
+        b = self.ask(SINGLE, sender="api-codex")
+        d = self.ask(DECISIONS.read_text(encoding="utf-8"), sender="coord")
+        out = self.render()
+        self.assertIn(f"{a} A，{b} A", out)
+        self.assertIn(f"#{d} 带待你决定的问题，要单独回", out)
