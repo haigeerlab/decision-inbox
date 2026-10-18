@@ -318,7 +318,7 @@ PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 
 
 逐条执行：
 - kind 为 wake：用桌面版的会话消息工具 send_message，把 text 原样发给会话 target（桌面版会话编号）。
-- kind 为 owner-alert：用 agent-relay 的 bridge_send，把 text 原样发给身份 target，不要求回复。
+- kind 为 owner-alert：用 agent-relay 的 bridge_send，把 text 原样发给邮箱名 target，不要求回复。
 - kind 为 notify：运行下面这条命令发桌面通知，把 text 原样作为一个参数传入：
   {cli} notify "<text>"
 

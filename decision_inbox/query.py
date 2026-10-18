@@ -186,7 +186,7 @@ def _classify(g: store.Group, now: str, name: str, assessment, relay) -> _Verdic
                  else f"{it['no']} 你的决定")
         return _Verdict(f"等你决定 #{it['no']}：{it['decide'].splitlines()[0]}", f"回「{reply}」", "用户")
     if fact is not None and fact.retired:
-        return _Verdict("身份失效（agent-relay 里这个身份已退役）", "叫醒后用原名重登", "插件 + agent-relay")
+        return _Verdict("邮箱名失效（agent-relay 里这个邮箱名已退役）", "叫醒后用原名重登", "插件 + agent-relay")
     if word == "offline":
         return _Verdict("掉线", f"巡视会自动叫醒，叫不醒请打开「{short}」", "插件，兜底用户")
     picked = next((s for s in assessment.signals if s.no == 2 and name in s.sessions), None)

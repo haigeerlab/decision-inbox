@@ -40,7 +40,7 @@ def _who(g: store.Group, payload: dict, session: str | None) -> tuple[dict | Non
     if session:
         entry = store.find_session(g, relay_name=session)
         if entry is None:
-            return None, f"名册里没有身份 {session}"
+            return None, f"名册里没有邮箱名 {session}"
         return (None, f"{session} 已退出协作组") if session in left else (entry, None)
     cwd = payload.get("cwd")
     if not isinstance(cwd, str) or not cwd:

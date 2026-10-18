@@ -165,7 +165,7 @@ class FlowCategoryTest(QueryCase):
     def test_retired(self):
         fe = agent("fe", state="unknown", activity_ago=300)
         fe["retiredAt"] = at(100)
-        self.assertEqual(self.verdict(fe), ["为什么：身份失效（agent-relay 里这个身份已退役）",
+        self.assertEqual(self.verdict(fe), ["为什么：邮箱名失效（agent-relay 里这个邮箱名已退役）",
                                             "你要做：叫醒后用原名重登（谁来做：插件 + agent-relay）"])
 
     def test_offline(self):
