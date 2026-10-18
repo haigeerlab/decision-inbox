@@ -1,6 +1,6 @@
 # Todo: approval-display
 
-- [ ] Task 1：改钉契约 v2.1（Spec 验收 1）
+- [x] Task 1：改钉契约 v2.1（Spec 验收 1）
   - 验证：`tests/test_contract.py` 指纹 188 行、解析样例全过；原有测试全过
 - [ ] Task 2：取原文 `sources.py`（Spec 验收 2、3）
   - 验证：`tests/test_sources.py`：全文逐字一致（含 150KB）、上一版差异、六种读不到各一条

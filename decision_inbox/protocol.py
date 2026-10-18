@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-CONTRACT_VERSION = "2.0.1"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+CONTRACT_VERSION = "2.1"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
 
 KIND_TAGS = {
     "等待用户": "wait-user",
@@ -23,7 +23,7 @@ KIND_TAGS = {
 
 # Field names each kind knows, in the order they are usually written.
 FIELDS = {
-    "wait-user": ("来自", "项目", "要你决定", "要点", "待用户决定", "架构审查", "选项与我的建议", "你该回",
+    "wait-user": ("来自", "项目", "要你决定", "要点", "产物", "交审原文", "审查原文", "待用户决定", "架构审查", "选项与我的建议", "你该回",
                   "是否完全停住", "适用会话", "各线范围"),
     "user-reply": ("事项", "用户原话", "选项原文", "适用于你的范围", "答复时间", "原事项全文"),
     "wait-session": ("在等谁", "等什么"),
@@ -40,7 +40,9 @@ TERMINAL = {"原事项全文"}
 PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-options", "bad-stop-flag",
                  "scope-missing:", "scope-unknown:", "bad-node", "bad-verdict",
                  # v2.0 (review-nearby)
-                 "change-count-mismatch", "bad-decision-item:", "duplicate-decision:", "bad-receipt-status")
+                 "change-count-mismatch", "bad-decision-item:", "duplicate-decision:", "bad-receipt-status",
+                 # v2.1 (approval-display)
+                 "bad-artifact-line", "bad-file-line")
 REVIEW_NODES = {"Spec": "spec", "Plan": "plan", "接口提案": "interface", "最终验收": "final"}
 HINT_CODES = ("no-consequence:", "no-recommendation", "brief-thin", "change-count-missing")
 
@@ -134,6 +136,23 @@ class Decision:
 
 
 @dataclass(frozen=True)
+class Artifact:
+    """「产物」 (v2.1): a file at a commit, shown in full by the hub (approval-display)."""
+    module: str | None
+    path: str
+    commit: str
+    previous: str | None = None
+
+
+@dataclass(frozen=True)
+class OriginalRef:
+    """「交审原文」「审查原文」 (v2.1): a file holding the text verbatim, pinned by a sha256 prefix."""
+    module: str | None
+    path: str
+    fingerprint: str
+
+
+@dataclass(frozen=True)
 class Receipt:
     """【登记回执】 (v2.0): the sender's own mail id, and the items the new one replaced."""
     original: int | None
@@ -175,6 +194,8 @@ class Message:
     decisions: tuple[Decision, ...] = ()
     receipt: Receipt | None = None
     local_item: str | None = None  # v2.0: a coordinator's own C-number in 【用户答复】「事项」
+    artifacts: tuple[Artifact, ...] = ()
+    originals: dict[str, tuple[OriginalRef, ...]] = field(default_factory=dict)  # submission / conclusion
 
     @property
     def ok(self) -> bool:
@@ -294,6 +315,41 @@ def _decisions(block: str, problems: list[Issue]) -> tuple[Decision, ...]:
     return out
 
 
+_MODULE_PREFIX = r"(?:-\s*)?(?:([^\s：:/]+)\s*[：:]\s*)?"
+_ARTIFACT_RE = re.compile(rf"^{_MODULE_PREFIX}(/.+?)\s*[＠@]\s*([0-9a-f]{{7,40}})\s*(?:（上一版\s*([0-9a-f]{{7,40}})\s*）)?\s*$")
+_FILE_LINE_RE = re.compile(rf"^{_MODULE_PREFIX}(/.+?)\s+(sha256:[0-9a-f]{{12,64}})\s*$")
+
+
+def _artifacts(block: str, problems: list[Issue]) -> tuple[Artifact, ...]:
+    found, bad = [], False
+    for line in (x.strip() for x in block.split("\n")):
+        if not line:
+            continue
+        m = _ARTIFACT_RE.match(line)
+        if m:
+            found.append(Artifact(m.group(1), m.group(2), m.group(3), m.group(4)))
+        else:
+            bad = True
+    if bad:
+        problems.append(Issue("bad-artifact-line", "「产物」有一行不是「绝对路径 ＠ 提交」"))
+    return tuple(found)
+
+
+def _original_refs(name: str, block: str, problems: list[Issue]) -> tuple[OriginalRef, ...]:
+    found, bad = [], False
+    for line in (x.strip() for x in block.split("\n")):
+        if not line:
+            continue
+        m = _FILE_LINE_RE.match(line)
+        if m:
+            found.append(OriginalRef(m.group(1), m.group(2), m.group(3)))
+        else:
+            bad = True
+    if bad:
+        problems.append(Issue("bad-file-line", f"「{name}」有一行不是「绝对路径 sha256:指纹」"))
+    return tuple(found)
+
+
 def _require(fields: dict, names, problems: list[Issue]) -> None:
     for name in names:
         if not fields.get(name, "").strip():
@@ -375,6 +431,8 @@ def parse(text: str) -> Message:
     decisions: tuple[Decision, ...] = ()
     receipt = None
     local_item = None
+    artifacts: tuple[Artifact, ...] = ()
+    originals: dict[str, tuple[OriginalRef, ...]] = {}
 
     if kind == "unknown":
         problems.append(Issue("unknown-kind", "认不出消息类型"))
@@ -413,6 +471,9 @@ def parse(text: str) -> Message:
                 for name in scopes:
                     if name not in in_scope:
                         problems.append(Issue(f"scope-unknown:{name}", f"「各线范围」里的 {name} 不在「适用会话」中"))
+        artifacts = _artifacts(fields.get("产物", ""), problems)
+        originals = {"submission": _original_refs("交审原文", fields.get("交审原文", ""), problems),
+                     "conclusion": _original_refs("审查原文", fields.get("审查原文", ""), problems)}
         if "待用户决定" in fields:
             decisions = _decisions(fields["待用户决定"], problems)
     elif kind == "wait-session":
@@ -480,7 +541,8 @@ def parse(text: str) -> Message:
                    suggested_reply=fields.get("你该回") or None, fully_stopped=stopped,
                    lines_in_scope=in_scope, scopes=scopes,
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
-                   conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item)
+                   conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item,
+                   artifacts=artifacts, originals=originals)
 
 
 def _source(relay_id) -> str:
