@@ -1,6 +1,6 @@
 # Todo: glossary-rename
 
-- [ ] Task 1：旧称扫描测试骨架
+- [x] Task 1：旧称扫描测试骨架
   - 验证：`tests/test_glossary.py` 辅助函数测试过（标签、字段名、复合词不算命中）；各区域扫描先标 expectedFailure
 - [ ] Task 2：等待记录 W 编号（Spec 验收 2）
   - 验证：主视图、列表显示 W3；「关掉 W3」「关掉 #3」都能关，回复写 W3；「看 W3」能查；「结束：#3」照旧
