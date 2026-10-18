@@ -2,7 +2,7 @@
 
 - [x] Task 1：改钉契约 v2.1（Spec 验收 1）
   - 验证：`tests/test_contract.py` 指纹 188 行、解析样例全过；原有测试全过
-- [ ] Task 2：取原文 `sources.py`（Spec 验收 2、3）
+- [x] Task 2：取原文 `sources.py`（Spec 验收 2、3）
   - 验证：`tests/test_sources.py`：全文逐字一致（含 150KB）、上一版差异、六种读不到各一条
 - [ ] Task 3：记录与背景 `approval.py`（Spec 验收 4）
   - 验证：`tests/test_approval.py`：能力图位置（假 /map）、/map 读不到、模块节点、第几次交审与上次原话、相关决定
