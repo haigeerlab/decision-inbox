@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from decision_inbox import crew
+from decision_inbox import crew, protocol
 
-INTERFACE = {"interface": "1.0", "plugin": "module-crew", "version": "0.0.1", "contract": "1.7",
+INTERFACE = {"interface": "1.0", "plugin": "module-crew", "version": "0.0.1", "contract": protocol.CONTRACT_VERSION,
              "sessions": {"command": ["bin/module-crew", "sessions", "--json"], "schemaVersion": 1}}
 SESSIONS = {"schemaVersion": 1, "sessions": [
     {"module": "a", "relayName": "shop-a", "worktree": "/w/a", "stage": "build", "stageText": "可以构建",
