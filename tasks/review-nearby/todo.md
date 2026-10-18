@@ -9,7 +9,7 @@
 - [x] Task 4：合批摘要卡片（Spec 验收 6）
   - 验证：`tests/test_view.py`：module-crew 新格式样例显示摘要段与「回『N 详情』」；bodies/8.txt 取前 5 行；单项卡片快照不变；详情照旧
 - [x] Checkpoint A（report）：Phase 1 测试全过（708 个）；契约未发布时停在这里等
-- [ ] Task 5：改钉契约 v2.0.1（Spec 验收 1）
+- [x] Task 5：改钉契约 v2.0.1（Spec 验收 1）
   - 验证：`tests/test_contract.py`：指纹核对、解析样例全过、回执生成后再解析一致、跳过数写明；原有测试全过
 - [x] Task 6：编号前缀（Spec 验收 3）
   - 验证：`tests/test_items.py`：「21 B，C15 退回」；C15、#C15、R-3、D1、4c5d6e7 不当事项号；四种老写法不变

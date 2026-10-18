@@ -33,7 +33,7 @@
     "receipt": {
       "original": 4540,
       "status": "registered",
-      "supersedes": null
+      "supersedes": []
     }
   }
 }

@@ -13,8 +13,7 @@
     "item": 21,
     "fields": {
       "原消息": "#4540",
-      "事项": "#21",
-      "状态": "已退回"
+      "事项": "#21"
     },
     "options": [],
     "recommended": null,
@@ -29,13 +28,13 @@
     },
     "conclusion": null,
     "problems": [
-      "bad-receipt-status"
+      "missing-field:状态"
     ],
     "hints": [],
     "receipt": {
       "original": 4540,
       "status": null,
-      "supersedes": null
+      "supersedes": []
     }
   }
 }

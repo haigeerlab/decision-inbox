@@ -62,7 +62,7 @@ def to_contract(m: protocol.Message) -> dict:
         "localItem": m.local_item,
         "receipt": None if m.receipt is None else {
             "original": m.receipt.original, "status": m.receipt.status,
-            "supersedes": m.receipt.supersedes[0] if m.receipt.supersedes else None},
+            "supersedes": list(m.receipt.supersedes)},
     }
 
 
@@ -100,7 +100,7 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "c5a0944"])
+                         ["session-protocol", VERSION, "a17f3b0"])
 
 
 class ConformanceTest(unittest.TestCase):
