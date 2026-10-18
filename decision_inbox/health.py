@@ -7,7 +7,7 @@ store reads; the new progress snapshot is returned for patrol to save.
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 
 from decision_inbox import deps, items, reviews, store, tickets
@@ -92,9 +92,43 @@ class _Facts:
     activity: datetime | None
     progress: datetime | None      # last progress: newest of changedAt and (complete history) lastTickAt
     changed: datetime | None       # newest snapshot changedAt
+    crew: object | None = None     # crew.CrewRead for a module-crew coordinator's line
+    modules: tuple = ()            # (crew.Module, session word or None) for modules not merged yet
+    crew_busy: bool = False        # a module that is not suspended is busy (crew-line-status)
 
 
-def _facts(g, relay, maps, snap) -> dict[str, _Facts]:
+# Stage words for module-crew's sessions output (crew-line-status); unknown stages show as given.
+CREW_STAGES = {"spec-plan": "写 Spec／Plan", "build": "构建", "returned": "被退回", "wait-merge": "等合并"}
+SUSPEND_CLIP = 20
+
+
+def _busy(fact, now: datetime, also=()) -> bool:
+    """agent-relay 0.8.1+ says busy outright; older ones fall back to recent activity."""
+    activity = fact.activity if fact is not None else None
+    if activity is not None:   # relay-presence-and-doubt
+        return activity == "busy"
+    window = timedelta(minutes=WORKING_MINUTES)
+    last = _instant(fact.last_activity_at) if fact is not None else None
+    return any(t is not None and now - t <= window for t in (last, *also))
+
+
+def _module_word(fact, now: datetime) -> str:
+    if fact is None:
+        return "无记录"
+    if fact.presence in ("offline", "unreachable"):
+        return "掉线"
+    return "在忙" if _busy(fact, now) else "停着"
+
+
+def _crew_modules(read, relay, now: datetime) -> tuple:
+    if read is None or read.status != "ok":
+        return ()
+    agents = relay.agents if relay is not None else None
+    return tuple((m, _module_word(agents.get(m.relay_name), now) if agents is not None else None)
+                 for m in read.modules if m.stage != "merged")
+
+
+def _facts(g, relay, maps, snap, crews=None, now: datetime | None = None) -> dict[str, _Facts]:
     ticket_doc = store.read_state(g, "tickets").get("tickets", {})
     pending = items.pending(g)
     out = {}
@@ -112,6 +146,8 @@ def _facts(g, relay, maps, snap) -> dict[str, _Facts]:
         progress = list(changed)
         if line_map is not None and line_map.history == "complete":
             progress += [_instant(m.last_tick_at) for m in line_map.modules if m.last_tick_at]
+        crew_read = (crews or {}).get(name) if entry.get("crewCoordinator") else None
+        modules = _crew_modules(crew_read, relay, now)
         out[name] = _Facts(
             entry=entry, fact=fact, read=read,
             tickets=sorted((dict(t, no=int(k)) for k, t in ticket_doc.items()
@@ -122,19 +158,20 @@ def _facts(g, relay, maps, snap) -> dict[str, _Facts]:
             activity=_instant(fact.last_activity_at) if fact is not None else None,
             progress=max(progress) if progress else None,
             changed=max(changed) if changed else None,
+            crew=crew_read, modules=modules,
+            crew_busy=any(word == "在忙" and m.suspended is None for m, word in modules),
         )
     return out
 
 
 def _is_working(f: _Facts, now: datetime) -> bool:
-    activity = f.fact.activity if f.fact is not None else None
-    if activity is not None:   # agent-relay 0.8.1+ says it outright (relay-presence-and-doubt)
-        return activity == "busy"
-    window = timedelta(minutes=WORKING_MINUTES)
-    return any(t is not None and now - t <= window for t in (f.activity, f.changed))
+    return _busy(f.fact, now, (f.changed,))
 
 
 def _has_open_work(f: _Facts) -> bool:
+    """A coordinator's own activeModule says nothing while modules run in parallel (crew-line-status)."""
+    if f.entry.get("crewCoordinator"):
+        return False
     m = f.module
     return (m is not None and m.step == "build" and m.review_plan == "approved"
             and m.progress_done < m.progress_total)
@@ -155,6 +192,8 @@ def _state(f: _Facts, now: datetime, stale=frozenset(), names: dict | None = Non
         return LineState("offline", "掉线")
     if presence == "needs-user":
         return LineState("needs-user", "等你确认")
+    if f.crew_busy:
+        return LineState("working", "干活中")
     live = [t for t in f.tickets if t["no"] not in stale]
     if live:
         t = live[0]
@@ -181,6 +220,30 @@ NO_RECORD = "无活动记录（agent-relay 没有它的数据）"
 NO_RELAY = "本次没有 agent-relay 状态，无法判断"  # not read this time, not missing (wait-honesty-and-briefs A3)
 
 
+def _crew_suffix(f: _Facts, state: LineState, stale, names: dict) -> str:
+    """The module list after a coordinator line's state (crew-line-status)."""
+    if f.crew is None:
+        return ""
+    if f.crew.status != "ok":
+        return f"（模块状态未知：{f.crew.reason}）"
+    parts = []
+    for m, word in f.modules:
+        if m.suspended is not None:
+            reason = m.suspended if len(m.suspended) <= SUSPEND_CLIP else m.suspended[:SUSPEND_CLIP] + "…"
+            parts.append(f"{m.module} 挂起：{reason}")
+        else:
+            stage = CREW_STAGES.get(m.stage, m.stage)
+            parts.append(f"{m.module} {word}·{stage}" if word else f"{m.module} {stage}")
+    text = "模块 " + "、".join(parts) if parts else "没有在用的模块会话"
+    live = [t for t in f.tickets if t["no"] not in stale]
+    if state.word == "working" and live:
+        grouped: dict[str, list[int]] = {}
+        for t in live:
+            grouped.setdefault(_target_name(f, t, names), []).append(t["no"])
+        text += "；还在等 " + "，".join(f"{who} " + "、".join(f"#{n}" for n in nos) for who, nos in grouped.items())
+    return f"（{text}）"
+
+
 def _short(f: _Facts) -> str:
     return f.entry["shortName"]
 
@@ -191,7 +254,9 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
     out = []
     open_count = sum(1 for f in facts.values() for t in f.tickets if t["no"] not in stale)
     # Without agent-relay this time nobody can be seen working, so no verdict (relay-presence-and-doubt).
-    if relay_read and open_count and all(state.word != "working" for state in lines.values()):
+    # A coordinator line whose modules cannot be read gives no verdict either (crew-line-status).
+    crew_unknown = any(f.crew is not None and f.crew.status != "ok" for f in facts.values())
+    if relay_read and not crew_unknown and open_count and all(state.word != "working" for state in lines.values()):
         out.append(Signal(1, "all-waiting", tuple(sorted(facts)),
                           f"全线互等：所有会话都没在干活，还有 {open_count} 张等待单没关"))
     for name, f in facts.items():
@@ -293,16 +358,17 @@ def _progress_signals(g, facts: dict[str, _Facts], lines: dict[str, LineState], 
 
 
 def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
-           previous: dict | None = None) -> Assessment:
+           previous: dict | None = None, crews: dict | None = None) -> Assessment:
     maps = maps or {}
     snap = _new_snapshot(now, maps, previous)
     moment = _instant(now)
-    facts = _facts(g, relay, maps, snap)
+    facts = _facts(g, relay, maps, snap, crews, moment)
     stale = frozenset(tickets.stale_tickets(g))  # waits the sender has moved past (wait-honesty-and-briefs A2)
     names = {e["relayName"]: e["shortName"] for e in store.roster(g)}
     lines = {name: _state(f, moment, stale, names) for name, f in facts.items()}
     if relay is None:
         lines = {name: LineState(s.word, NO_RELAY) if s.text == NO_RECORD else s for name, s in lines.items()}
+    lines = {name: replace(s, text=s.text + _crew_suffix(facts[name], s, stale, names)) for name, s in lines.items()}
     signals = (_session_signals(facts, lines, moment, stale, relay_read=relay is not None)
                + _progress_signals(g, facts, lines, snap, moment))
     return Assessment(lines, tuple(sorted(signals, key=lambda x: (x.no, x.sessions))), snap)

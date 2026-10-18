@@ -370,3 +370,80 @@ class DeliveryDoubtTest(HealthCase):
         self.assertEqual(sig.text, "前端 有 2 条消息送达存疑（#8、#9）（来源：agent-relay）")
         self.assertNotIn("delivery-doubt",
                          [x.code for x in self.assess(snapshot(agent("fe", app="codex", activity_ago=1))).signals])
+
+
+from decision_inbox import crew  # noqa: E402
+
+CREW = crew.CrewRead("ok", (crew.Module("a", "shop-a", "build", None),
+                            crew.Module("b", "shop-b", "wait-merge", None),
+                            crew.Module("c", "shop-c", "build", "等接口"),
+                            crew.Module("d", "shop-d", "merged", None)))
+
+
+class CrewLineTest(HealthCase):
+    """crew-line-status Task 2: a coordinator's line counts its module sessions."""
+
+    def setUp(self):
+        super().setUp()
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "coord", "shortName": "门店", "role": "dev", "line": ["门店"],
+                            "host": "claude-desktop", "repo": "/tmp/coord", "crewCoordinator": True})
+
+    def quiet(self, *extra):
+        return [agent(n, activity_ago=60) for n in ("fe", "api", "owner", "coord")] + list(extra)
+
+    def run_(self, agents, read=CREW, maps=None):
+        return health.assess(self.g, now=NOW, relay=snapshot(*agents) if agents is not None else None,
+                             maps=maps or {}, crews={"coord": read})
+
+    def test_busy_module_beats_blocked_and_lists_all_tickets(self):
+        one, two = self.wait("coord", "API"), self.wait("coord", "API")
+        r = self.run_(self.quiet(with_activity(agent("shop-a", activity_ago=1), "busy"),
+                                 with_activity(agent("shop-b", activity_ago=1), "idle"),
+                                 with_activity(agent("shop-c", activity_ago=1), "busy")))
+        self.assertEqual((r.lines["coord"].word, r.lines["coord"].text),
+                         ("working", f"干活中（模块 a 在忙·构建、b 停着·等合并、c 挂起：等接口；还在等 API #{one}、#{two}）"))
+        self.assertNotIn("all-waiting", [x.code for x in r.signals])
+
+    def test_all_modules_quiet_is_blocked_and_all_waiting(self):
+        self.wait("coord", "API")
+        r = self.run_(self.quiet(with_activity(agent("shop-a", activity_ago=1), "idle"),
+                                 agent("shop-b", state="stopped"),
+                                 with_activity(agent("shop-c", activity_ago=1), "busy")))
+        self.assertEqual(r.lines["coord"].text,
+                         "阻塞：等 API（模块 a 停着·构建、b 掉线·等合并、c 挂起：等接口）")
+        self.assertIn("all-waiting", [x.code for x in r.signals])
+
+    def test_unknown_output(self):
+        self.wait("coord", "API")
+        r = self.run_(self.quiet(), read=crew.CrewRead("unknown", (), "不在 git 仓库里"))
+        self.assertEqual(r.lines["coord"].text, "阻塞：等 API（模块状态未知：不在 git 仓库里）")
+        self.assertNotIn("all-waiting", [x.code for x in r.signals])
+
+    def test_missing_agent_and_old_relay(self):
+        r = self.run_(self.quiet())
+        self.assertIn("a 无记录·构建", r.lines["coord"].text)
+        old = self.run_(self.quiet(agent("shop-a", activity_ago=3)))
+        self.assertEqual(old.lines["coord"].word, "working")
+
+    def test_without_relay_only_stages(self):
+        r = self.run_(None)
+        self.assertEqual(r.lines["coord"].text, f"{health.NO_RELAY}（模块 a 构建、b 等合并、c 挂起：等接口）")
+
+    def test_long_suspend_reason_is_cut(self):
+        read = crew.CrewRead("ok", (crew.Module("c", "shop-c", "build", "一" * 25),))
+        self.assertIn("c 挂起：" + "一" * 20 + "…）", self.run_(self.quiet(), read=read).lines["coord"].text)
+
+    def test_coordinator_line_is_never_stalled(self):
+        maps = {"coord": line_map([module(last_tick=at(130), first_tick=at(500), ticks=3)]),
+                "fe": line_map([module(last_tick=at(130), first_tick=at(500), ticks=3)])}
+        agents = [agent(n, activity_ago=180) for n in ("fe", "api", "owner", "coord")]
+        r = self.run_(agents, maps=maps)
+        self.assertNotEqual(r.lines["coord"].word, "stalled")
+        self.assertEqual(r.lines["fe"].word, "stalled")
+        self.assertEqual([x.sessions for x in r.signals if x.no == 3], [("fe",)])
+
+    def test_no_crews_argument_changes_nothing(self):
+        self.wait("coord", "API")
+        r = health.assess(self.g, now=NOW, relay=snapshot(*self.quiet()), maps={})
+        self.assertEqual(r.lines["coord"].text, "阻塞：等 API")
