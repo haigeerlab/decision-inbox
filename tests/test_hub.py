@@ -758,3 +758,62 @@ class AlsoAnswersTest(HubCase):
 
     def test_hub_convention_says_to_fill_it(self):
         self.assertIn("有 `alsoAnswers` 就照填", hub.convention("demo"))
+
+
+LATER = "2026-10-16T05:10:00.000Z"
+
+
+class MultiWaitTest(HubCase):
+    """crew-line-status revision 1: one sender's waits do not stale each other; coordinators are never inferred."""
+
+    def add_coordinator(self):
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "crew", "shortName": "门店", "role": "dev", "line": ["门店"],
+                            "host": "claude-desktop", "repo": "/tmp/crew", "crewCoordinator": True})
+
+    def open_two(self, sender):
+        self.receive(message(5001, sender, wait_session(target="API", what="a 的订单接口")))
+        self.receive(message(5002, sender, wait_session(target="API", what="b 的支付接口"), created=LATER))
+        return sorted(int(k) for k in self.tickets())
+
+    def stale(self):
+        return {t.no: t.maybe_stale for t in tickets.open_tickets(self.g, NOW)}
+
+    def test_second_wait_does_not_stale_the_first(self):
+        first, second = self.open_two("fe-codex")
+        self.assertEqual(self.stale(), {first: None, second: None})
+        self.assertNotIn("可能已失效", hub.main_view(self.g, now=NOW))
+        tickets.close_by_user(self.g, first, None, NOW)
+        self.assertEqual(self.stale(), {second: None})
+
+    def test_both_count_in_the_coordinator_line(self):
+        from decision_inbox import crew
+        self.add_coordinator()
+        first, second = self.open_two("crew")
+        agents = relay.parse_agents(
+            '{"agents": [{"name": "shop-a", "host": {"app": "claude"}, "unread": 0, "lastActivity": null,'
+            ' "presence": {"state": "running", "activity": "busy"}}]}', relay_version="0.8.2")
+        read = crew.CrewRead("ok", (crew.Module("a", "shop-a", "build", None),))
+        a = health.assess(self.g, now=NOW, relay=agents, crews={"crew": read})
+        self.assertEqual(a.lines["crew"].text, f"干活中（模块 a 在忙·构建；还在等 API #{first}、#{second}）")
+
+    def test_other_messages_still_stale_an_ordinary_wait(self):
+        self.receive(message(5001, "fe-codex", wait_session(target="API", what="订单接口")))
+        no = int(next(iter(self.tickets())))
+        self.receive(message(5003, "fe-codex", "【已恢复】\n结束：#999\n"))
+        self.assertEqual(self.stale()[no], 5003)
+
+    def test_coordinator_waits_are_never_inferred_stale(self):
+        self.add_coordinator()
+        first, second = self.open_two("crew")
+        self.receive(message(5003, "crew", WAIT_USER))
+        self.receive(message(5004, "crew", "【已恢复】\n结束：#999\n"))
+        self.assertEqual(self.stale(), {first: None, second: None})
+
+    def test_signal_nine_skips_coordinators(self):
+        self.add_coordinator()
+        self.open_two("crew")
+        self.receive(message(5005, "fe-codex", wait_session(target="API", what="订单接口")))
+        self.receive(message(5006, "fe-codex", wait_session(target="API", what="支付接口"), created=LATER))
+        orphans = [s.sessions for s in health.assess(self.g, now=NOW).signals if s.code == "orphan-wait"]
+        self.assertEqual(orphans, [("fe-codex",)])

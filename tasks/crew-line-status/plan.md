@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 # Implementation Plan: crew-line-status
 
 > 依据：`spec/crew-line-status.md`（用户 2026-10-18 批准，doctor 实际运行出口命令）。任务清单：`tasks/crew-line-status/todo.md`。分支 `claude/crew-line-status`。
@@ -68,7 +68,7 @@
 
 ### Task List
 
-- [ ] Task 6：同一会话的多张等待单不互判失效；协调会话不做失效推断、不报信号 9（Spec 验收 11–15）
+- [x] Task 6：同一会话的多张等待单不互判失效；协调会话不做失效推断、不报信号 9（Spec 验收 11–15）
 
 ### Checkpoint（gate）：修订 1 验收
 

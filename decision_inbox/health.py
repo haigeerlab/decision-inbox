@@ -345,7 +345,9 @@ def _progress_signals(g, facts: dict[str, _Facts], lines: dict[str, LineState], 
                               f"{who} 的审查 {ref}（{node}）已来回 {rounds} 轮，超过本组常见水平"))
     ticket_doc = store.read_state(g, "tickets").get("tickets", {})
     for key, t in ticket_doc.items():
-        if t["status"] != "open":
+        # A coordinator keeps one wait per module by design (crew-line-status revision 1).
+        waiter = facts.get(t["waiter"])
+        if t["status"] != "open" or waiter is not None and waiter.entry.get("crewCoordinator"):
             continue
         later = [int(k) for k, o in ticket_doc.items() if o["waiter"] == t["waiter"]
                  and _instant(o["sentAt"]) > _instant(t["sentAt"])]

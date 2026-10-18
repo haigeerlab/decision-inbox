@@ -176,19 +176,30 @@ def stale_tickets(g: store.Group) -> dict[int, int]:
     A wait the sender has moved past without ending it is most likely forgotten
     (wait-honesty-and-briefs A2). Only the hub's own receipts count; receipts written
     before they carried the sender are read back from the hub.received events.
+
+    A later 【等待其他会话】 opens another wait and moves past nothing; a module-crew
+    coordinator speaks for several modules, so its waits are never inferred stale
+    (crew-line-status revision 1).
     """
     senders: dict[int, str] = {}
+    kinds: dict[int, str] = {}
     for e in store.read_events(g):
         if e.get("type") == "hub.received" and isinstance(e.get("data", {}).get("relayId"), int):
             senders[e["data"]["relayId"]] = e.get("actor")
+            if e["data"].get("kind"):
+                kinds[e["data"]["relayId"]] = e["data"]["kind"]
     for key, rec in store.read_state(g, "hub").get("received", {}).items():
         if rec.get("sender") and key.isdigit():
             senders[int(key)] = rec["sender"]
+        if rec.get("kind") and key.isdigit():
+            kinds[int(key)] = rec["kind"]
+    coordinators = {e["relayName"] for e in store.roster(g) if e.get("crewCoordinator")}
     out = {}
     for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
-        if t["status"] != "open" or not isinstance(t.get("relayId"), int):
+        if t["status"] != "open" or not isinstance(t.get("relayId"), int) or t["waiter"] in coordinators:
             continue
-        later = [i for i, who in senders.items() if who == t["waiter"] and i > t["relayId"]]
+        later = [i for i, who in senders.items()
+                 if who == t["waiter"] and i > t["relayId"] and kinds.get(i) != "wait-session"]
         if later:
             out[int(key)] = min(later)
     return out
