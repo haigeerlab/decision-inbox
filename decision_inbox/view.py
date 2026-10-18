@@ -253,13 +253,26 @@ NODE_EFFECTS = {"Spec": "Spec 批准后，授权写 Plan；不授权开始实现
                 "接口提案": "接口提案批准后，授权按提案改接口；用到它的模块要跟着改。"}
 
 
+def _verbatim(text: str, path: str) -> list[str]:
+    """Markdown files render as they do in their project; anything else is fenced so every line shows as is.
+
+    The fence is longer than any backtick run inside, so the original can never close it early.
+    """
+    body = text.rstrip("\n")
+    if path.endswith(".md"):
+        return [body]
+    longest = max((len(run) for run in re.findall(r"`+", body)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [fence + "text", body, fence]
+
+
 def _original_lines(kind: str, ref: dict) -> list[str]:
     title = {"submission": "开发会话的交审原文", "conclusion": "审查结论原文"}[kind]
     got = sources.read_original(ref["path"], ref["fingerprint"])
     head = f"━━ {title}（{ref['path']}）{ORIGINAL}"
     if not got.ok:
         return [head, f"原文取不到：{ref['path']} {ref['fingerprint']} —— {got.reason}"]
-    return [head, got.text.rstrip("\n")]
+    return [head, *_verbatim(got.text, ref["path"])]
 
 
 def _artifact_lines(a: dict) -> list[str]:
@@ -269,8 +282,8 @@ def _artifact_lines(a: dict) -> list[str]:
         return [head, f"原文取不到：{a['path']} ＠ {a['commit']} —— {got.reason}"]
     out = [head]
     if got.diff is not None:
-        out += [f"与上一版 {a['previous']} 的差异：", got.diff.rstrip("\n"), "全文："]
-    return out + [got.text.rstrip("\n")]
+        out += [f"与上一版 {a['previous']} 的差异：", *_verbatim(got.diff, "diff"), "全文："]
+    return out + _verbatim(got.text, a["path"])
 
 
 def _module_sources(it: dict, keep) -> list[str]:
