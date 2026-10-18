@@ -1,3 +1,4 @@
+import os
 import re
 import unittest
 
@@ -594,6 +595,95 @@ class CrewCoordinatorTest(OnboardCase):
     def test_other_roles_never_get_the_section(self):
         for role in ("dev", "owner", "coordinator"):
             self.assertNotIn("并行开发协调会话", onboard.block(role, "demo", "di-hub"))
+
+
+def git(*args, cwd):
+    import subprocess
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
+                   env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                            GIT_COMMITTER_EMAIL="t@t"))
+
+
+class LocalRulesTest(OnboardCase):
+    """crew-coordinator-seam: the block goes to CLAUDE.local.md, kept out of git through info/exclude."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+
+    def repo(self, name="crew"):
+        path = self.dir(name)
+        git("init", "-q", cwd=path)
+        (path / "CLAUDE.md").write_text("# 项目规则\n", encoding="utf-8")
+        return path
+
+    def join_local(self, project, host="claude-desktop", confirm=True, relay="crew-coord"):
+        return onboard.join("demo", role="dev", relay_name=relay, short_name="前端并行", host=host,
+                            lines=["前端"], desktop_session="local_00000000-0000-0000-0000-00000000c0rd"
+                            if host == "claude-desktop" else None,
+                            project=project, reviewer=None, nodes=[], confirm=confirm, now=NOW, local_rules=True)
+
+    def exclude(self, repo):
+        return (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+
+    def test_writes_local_file_and_excludes_it_once(self):
+        repo = self.repo()
+        out = self.join_local(repo, confirm=False)
+        self.assertEqual(out.file, repo / "CLAUDE.local.md")
+        self.assertTrue(any("info/exclude" in w for w in out.warnings), out.warnings)
+        self.assertFalse((repo / "CLAUDE.local.md").exists())
+        self.join_local(repo)
+        self.assertEqual((repo / "CLAUDE.md").read_text(encoding="utf-8"), "# 项目规则\n")
+        self.assertIn("<!-- BEGIN decision-inbox dev -->", (repo / "CLAUDE.local.md").read_text(encoding="utf-8"))
+        self.assertTrue(store.find_session(store.open_group("demo"), relay_name="crew-coord")["localRules"])
+        self.join_local(repo)
+        self.assertEqual(self.exclude(repo).splitlines().count("CLAUDE.local.md"), 1)
+        import subprocess
+        self.assertEqual(subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True,
+                                        text=True).stdout.strip(), "?? CLAUDE.md")
+
+    def test_leave_removes_block_and_its_exclude_line(self):
+        repo = self.repo()
+        self.join_local(repo)
+        onboard.leave("demo", "crew-coord", project=repo, confirm=True, now=NOW)
+        self.assertFalse((repo / "CLAUDE.local.md").exists())
+        self.assertNotIn("CLAUDE.local.md", self.exclude(repo).splitlines())
+        self.assertEqual((repo / "CLAUDE.md").read_text(encoding="utf-8"), "# 项目规则\n")
+
+    def test_already_ignored_adds_nothing(self):
+        repo = self.repo()
+        (repo / ".gitignore").write_text("CLAUDE.local.md\n", encoding="utf-8")
+        before = self.exclude(repo)
+        out = self.join_local(repo)
+        self.assertFalse(any("info/exclude" in w for w in out.warnings))
+        self.assertEqual(self.exclude(repo), before)
+        onboard.leave("demo", "crew-coord", project=None, confirm=True, now=NOW)
+        self.assertEqual(self.exclude(repo), before)
+
+    def test_worktree_uses_the_common_exclude(self):
+        main = self.repo("main")
+        git("add", "CLAUDE.md", cwd=main)
+        git("commit", "-qm", "init", cwd=main)
+        wt = self.project / "crew-base"
+        git("worktree", "add", "-q", str(wt), cwd=main)
+        self.join_local(wt)
+        self.assertIn("CLAUDE.local.md", self.exclude(main).splitlines())
+
+    def test_not_a_git_repo_still_writes(self):
+        plain = self.dir("plain")
+        out = self.join_local(plain)
+        self.assertTrue((plain / "CLAUDE.local.md").is_file())
+        self.assertFalse(any("info/exclude" in w for w in out.warnings))
+
+    def test_codex_cannot_use_local_rules(self):
+        with self.assertRaises(onboard.JoinError):
+            self.join_local(self.repo(), host="codex-desktop", relay="fe-codex")
+
+    def test_warns_when_agents_md_would_stop_loading(self):
+        path = self.dir("agents-only")
+        (path / "AGENTS.md").write_text("# 规则\n", encoding="utf-8")
+        out = self.join_local(path, confirm=False)
+        self.assertTrue(any("不再读 AGENTS.md" in w for w in out.warnings), out.warnings)
 
 
 AUTONOMY = """### 检查点之间自主处理

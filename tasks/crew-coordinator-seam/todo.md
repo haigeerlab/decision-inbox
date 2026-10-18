@@ -15,9 +15,23 @@
     - 实现：`_CREW_COORDINATOR`、`block(crew_coordinator=)`、`join(crew_coordinator=)`、doctor 的期望约定块和修复命令（修复命令同时保留 `--checkpoint-authority`，以前漏掉了，照着重跑会把它关掉）、命令参数、`commands/join.md`。Codex 的接入 skill 不改：module-crew 第一版的协调会话只在 Claude 上跑。
     - 结果：Ran 603 tests, OK
 
-- [ ] Task 3：`--local-rules`：写进 CLAUDE.local.md，处理忽略规则，加 AGENTS.md 警告
+- [x] Task 3：`--local-rules`：写进 CLAUDE.local.md，处理忽略规则，加 AGENTS.md 警告
   - 验收：Spec 验收 1、2
   - 文件：`decision_inbox/onboard.py`、`decision_inbox/doctor.py`、`decision_inbox/__main__.py`、`tests/test_onboard.py`、`tests/test_doctor.py`
+  - 记录（2026-10-18）：
+    - 先写 8 个用例，都在真实的临时 git 仓库里跑：
+      - 预览不写文件，并提示会改 info/exclude；
+      - 确认后约定块写进 CLAUDE.local.md，CLAUDE.md 一字不变；
+      - 重跑不会重复加 exclude 行，`git status` 里看不到 CLAUDE.local.md；
+      - leave 删掉约定块，删掉这个由插件新建的文件，也删掉那一行 exclude；
+      - 已经被 .gitignore 忽略时，exclude 不加也不删；
+      - worktree 里接入时，写的是公共目录的 info/exclude；
+      - 不是 git 仓库也照常写；
+      - Codex 接入报错；只有 AGENTS.md 时给出警告；
+      - doctor 核对为 ok，修复命令保留 `--local-rules`。
+    - 先跑，8 个报错。
+    - 实现：`rules_path`、`_git_exclude`（`rev-parse --git-common-dir`）、`_git_ignored`（`check-ignore -q`）、`_add_exclude`、`_drop_exclude`（状态里记 `excludeAdded`；只删插件自己加的那一行，别的会话还要用就不删）、join 和 leave 走同一套路径、命令参数。
+    - 结果：Ran 611 tests, OK
 
 - [ ] Task 4：文档和版本 0.0.16
   - 验收：Spec 验收 5

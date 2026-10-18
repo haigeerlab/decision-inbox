@@ -479,6 +479,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--session-cwd")
     p.add_argument("--checkpoint-authority", action="store_true")
     p.add_argument("--crew-coordinator", action="store_true")
+    p.add_argument("--local-rules", action="store_true")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("allow")
     p.add_argument("group")
@@ -507,7 +508,7 @@ def _onboard(argv: list[str]) -> int:
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
-                               crew_coordinator=args.crew_coordinator)
+                               crew_coordinator=args.crew_coordinator, local_rules=args.local_rules)
         elif args.command == "allow":
             out = onboard.allow(args.group, args.project, args.confirm)
             print(f"设置文件：{out.path}")

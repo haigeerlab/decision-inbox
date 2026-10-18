@@ -72,6 +72,15 @@ class ConventionTest(DoctorCase):
         rules.write_text(rules.read_text(encoding="utf-8").replace("### 开发线", "### 开发线（旧）"), encoding="utf-8")
         self.assertIn("--crew-coordinator", self.check("约定块：并行").fix)
 
+    def test_local_rules_block_is_checked(self):
+        (self.work / "crew").mkdir()
+        onboard.join("g", "dev", "g-crew", "并行", "claude-desktop", ["web"], "local_2", self.work / "crew",
+                     None, (), True, NOW, local_rules=True)
+        self.assertEqual(self.check("约定块：并行").state, "ok")
+        rules = self.work / "crew" / "CLAUDE.local.md"
+        rules.write_text(rules.read_text(encoding="utf-8").replace("### 开发线", "### 开发线（旧）"), encoding="utf-8")
+        self.assertIn("--local-rules", self.check("约定块：并行").fix)
+
     def test_missing_block_is_bad(self):
         (self.work / "dev" / "AGENTS.md").write_text("# 只剩项目规则\n", encoding="utf-8")
         c = self.check("约定块：开发")

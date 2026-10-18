@@ -52,7 +52,8 @@ def _join_command(group: str, entry: dict) -> str:
     if entry["role"] == "hub":
         return f"{cli} onboard hub {group} …（加 --confirm）"
     flags = "".join(f" {flag}" for key, flag in (("checkpointAuthority", "--checkpoint-authority"),
-                                                   ("crewCoordinator", "--crew-coordinator"))
+                                                   ("crewCoordinator", "--crew-coordinator"),
+                                                   ("localRules", "--local-rules"))
                     if entry.get(key))
     return (f"{cli} onboard join {group} --role {entry['role']} --relay-name {entry['relayName']}{flags} "
             "…（加 --confirm）")
