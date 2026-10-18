@@ -32,14 +32,21 @@ def _inside(path: str, root: str) -> bool:
 
 
 def _who(g: store.Group, payload: dict, session: str | None) -> tuple[dict | None, str | None]:
-    """--session wins; otherwise the roster entry whose repo contains cwd (spec 关键决策 2)."""
+    """--session wins; otherwise the roster entry whose repo contains cwd (spec 关键决策 2).
+
+    Entries that left the group take no part either way (r20-fixes, O-who-left).
+    """
+    left = store.left_relays(g)
     if session:
         entry = store.find_session(g, relay_name=session)
-        return (entry, None) if entry else (None, f"名册里没有身份 {session}")
+        if entry is None:
+            return None, f"名册里没有身份 {session}"
+        return (None, f"{session} 已退出协作组") if session in left else (entry, None)
     cwd = payload.get("cwd")
     if not isinstance(cwd, str) or not cwd:
         return None, "认不出本会话：输入里没有 cwd"
-    found = [e for e in store.roster(g) if e.get("repo") and _inside(cwd, e["repo"])]
+    found = [e for e in store.roster(g)
+             if e.get("repo") and e["relayName"] not in left and _inside(cwd, e["repo"])]
     if len(found) > 1:
         return None, "认不出本会话：工作目录同时属于 " + "、".join(e["shortName"] for e in found)
     if not found:

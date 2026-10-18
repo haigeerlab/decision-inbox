@@ -305,3 +305,28 @@ class CrewCoordinatorTest(HookCase):
     def test_ordinary_dev_line_still_blocks(self):
         d = stophook.decide(self.g, payload=self.payload(cwd=self.repos / "api"), now=NOW, read_map=progress(2, 5))
         self.assertTrue(d.block)
+
+
+class LeftEntriesTest(HookCase):
+    """r20-fixes Task 1 (O-who-left): entries that left the group take no part in finding this session."""
+
+    def leave(self, relay):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc.setdefault("left", {})[relay] = NOW
+            tx.write_state("onboarding", doc)
+
+    def test_shared_repo_finds_the_one_still_in(self):
+        self.leave("ui-codex")
+        self.wait("fe-codex", "后台", 10)
+        d = self.decide(cwd=self.repos / "shared")
+        self.assertTrue(d.block)
+        self.assertIn("前端 在等你", d.reason)
+
+    def test_left_session_named_passes(self):
+        self.wait("fe-codex", "API", 10)
+        self.leave("api-codex")
+        d = self.decide(session="api-codex")
+        self.assertFalse(d.block)
+        self.assertIn("api-codex 已退出协作组", d.note)
+        self.assertFalse(self.decide().block)  # by cwd: the only entry for this repo has left
