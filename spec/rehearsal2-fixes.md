@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved d954846d2570 -->
 
 # Spec: rehearsal2-fixes
 
