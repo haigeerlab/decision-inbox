@@ -17,14 +17,14 @@
 
 ## Task List
 
-- [ ] Task 1：编号起点（Spec 验收 1–3）
-- [ ] Task 2：欠回复回归测试和文档（Spec 验收 4、5）
+- [x] Task 1：编号起点（Spec 验收 1–3）
+- [x] Task 2：欠回复回归测试和文档（Spec 验收 4、5）
 
 ### Checkpoint（gate）：模块最终验收
 
-- [ ] 全部测试通过；验收标准逐条有证据；列出实际改动的文件
-- [ ] 授权范围：Task 1–2 的代码、测试、文档；每个任务完成后提交并推送 `claude/livesaas-seam`
-- [ ] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS
+- [x] 全部测试通过；验收标准逐条有证据；列出实际改动的文件
+- [x] 授权范围：Task 1–2 的代码、测试、文档；每个任务完成后提交并推送 `claude/livesaas-seam`
+- [x] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS
 - [ ] 实测（Spec 验收 6）放到联合演练阶段，开始前另问用户
 
 ## Risks

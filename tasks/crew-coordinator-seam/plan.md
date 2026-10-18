@@ -27,16 +27,16 @@
 
 ## Task List
 
-- [ ] Task 1：停止钩子跳过已挂起的模块，并给协调会话开例外（Spec 验收 4；联合测试 T9 ①②②′④）
-- [ ] Task 2：`--crew-coordinator` 标记和约定块里的新一节（Spec 验收 3）
-- [ ] Task 3：`--local-rules`：写进 CLAUDE.local.md，处理忽略规则，加 AGENTS.md 警告（Spec 验收 1、2）
-- [ ] Task 4：文档和版本 0.0.16（Spec 验收 5）
+- [x] Task 1：停止钩子跳过已挂起的模块，并给协调会话开例外（Spec 验收 4；联合测试 T9 ①②②′④）
+- [x] Task 2：`--crew-coordinator` 标记和约定块里的新一节（Spec 验收 3）
+- [x] Task 3：`--local-rules`：写进 CLAUDE.local.md，处理忽略规则，加 AGENTS.md 警告（Spec 验收 1、2）
+- [x] Task 4：文档和版本 0.0.16（Spec 验收 5）
 
 ### Checkpoint（gate）：模块最终验收
 
-- [ ] 全部测试通过；验收标准每一条都有证据；列出实际改动的文件
-- [ ] 授权范围：Task 1–4 的代码、测试、文档；每个任务完成后提交并推送 `claude/livesaas-seam`
-- [ ] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS
+- [x] 全部测试通过；验收标准每一条都有证据；列出实际改动的文件
+- [x] 授权范围：Task 1–4 的代码、测试、文档；每个任务完成后提交并推送 `claude/livesaas-seam`
+- [x] 不授权：改用户配置、开 PR 或合并 PR、碰 LIVE-SAAS
 - [ ] 实测（Spec 验收 6）放到联合演练阶段，开始前另问用户
 
 ## Risks
