@@ -33,9 +33,10 @@
     - 实现：`rules_path`、`_git_exclude`（`rev-parse --git-common-dir`）、`_git_ignored`（`check-ignore -q`）、`_add_exclude`、`_drop_exclude`（状态里记 `excludeAdded`；只删插件自己加的那一行，别的会话还要用就不删）、join 和 leave 走同一套路径、命令参数。
     - 结果：Ran 611 tests, OK
 
-- [ ] Task 4：文档和版本 0.0.16
+- [x] Task 4：文档和版本 0.0.16
   - 验收：Spec 验收 5
-  - 文件：`README.md`、`docs/host-differences.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 文件：`README.md`、`docs/host-differences.md`、`commands/join.md`、两份 `plugin.json`、`tests/test_packaging.py`
+  - 记录（2026-10-18）：先改打包测试（版本 0.0.16；README 里要有 `--crew-coordinator`、`--local-rules`、`CLAUDE.local.md`、「不再读 AGENTS.md」；join 命令说明里要有两个新参数），3 处失败。然后补齐：README 接入一节加两条、使用注意事项加一行、升级一节说明 0.0.16 已接入的会话不用重跑；宿主差异新增 H26（依据官方文档，桌面版是否加载列入待复核第 8 条）；join 命令说明；两份清单改为 0.0.16。Ran 611 tests, OK
 
 ### Checkpoint（gate）：模块最终验收
 
