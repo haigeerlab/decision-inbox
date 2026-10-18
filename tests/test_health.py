@@ -303,7 +303,7 @@ class ProgressSignalTest(HealthCase):
         r = self.assess()
         orphans = [x for x in r.signals if x.code == "orphan-wait"]
         self.assertEqual([(x.no, x.sessions) for x in orphans], [(9, ("fe",))])
-        self.assertIn(f"#{old}", orphans[0].text)
+        self.assertIn(f"W{old}", orphans[0].text)
 
 
 if __name__ == "__main__":

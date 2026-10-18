@@ -27,6 +27,13 @@ class RosterTest(TempHomeTestCase):
         self.assertEqual(store.find_session(self.g, short_name="前端负责人")["role"], "owner")
         self.assertIsNone(store.find_session(self.g, short_name="后台"))
 
+    def test_old_hub_name_is_shown_new(self):  # glossary-rename: data keeps 收件枢纽, people see 决策收件箱
+        self.assertEqual(store.find_session(self.g, relay_name="hub-claude")["shortName"], "决策收件箱")
+        self.assertEqual(store.find_session(self.g, short_name="收件枢纽")["relayName"], "hub-claude")
+        self.assertEqual(store.find_session(self.g, short_name="决策收件箱")["relayName"], "hub-claude")
+        raw = (self.g.path / "roster.json").read_text(encoding="utf-8")
+        self.assertIn("收件枢纽", raw)
+
     def test_desktop_session(self):
         with self.g.transaction() as tx:
             tx.add_session(dict(OWNER, relayName="api-owner", shortName="API负责人", line=["API"],

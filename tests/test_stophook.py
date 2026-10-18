@@ -56,9 +56,9 @@ class DecideTest(HookCase):
         self.assertTrue(d.block)
         self.assertEqual(d.reason, "\n".join([
             "【decision-inbox】收工前请先处理：有会话在等你。",
-            f"- #{later} 后台 在等你：字段说明（已等 5 分钟）",
-            f"- #{first} 前端 在等你：订单接口的 Mock 数据，交付后我才能接着做（已等 40 分钟）",
-            "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
+            f"- W{later}（结束行写 #{later}）后台 在等你：字段说明（已等 5 分钟）",
+            f"- W{first}（结束行写 #{first}）前端 在等你：订单接口的 Mock 数据，交付后我才能接着做（已等 40 分钟）",
+            "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这条等待记录的编号（#数字）。",
             "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。",
         ]))
 
@@ -186,11 +186,11 @@ class AnsweredNotResumedTest(HookCase):
         d = self.decide()
         self.assertTrue(d.block)
         self.assertEqual(d.reason, "\n".join([
-            "【decision-inbox】收工前请先处理：用户已答复你抛的事项，你还没发【已恢复】。",
+            "【decision-inbox】收工前请先处理：用户已答复你抛的待决事项，你还没发【已恢复】（表示已结项）。",
             f"- #{no} 用户已答复：「{no} A」（3 分钟前）",
             "做完了：发【已恢复】，结束行写这个编号。",
             "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
-            "已经发过【已恢复】、收件枢纽还没收进：回一句「已发 #邮箱号」即可收工，不用重发。",
+            "已经发过【已恢复】、决策收件箱还没收进：回一句「已发 #邮箱号」即可收工，不用重发。",
         ]))
         self.assertFalse(self.decide(active=True).block)
 
@@ -228,14 +228,14 @@ class AnsweredNotResumedTest(HookCase):
         no = self.answered()
         self.assertEqual(self.decide().reason, "\n".join([
             "【decision-inbox】收工前请先处理：有会话在等你。",
-            f"- #{t} 前端 在等你：字段说明（已等 40 分钟）",
-            "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这张单的编号。",
+            f"- W{t}（结束行写 #{t}）前端 在等你：字段说明（已等 40 分钟）",
+            "已经交付：发消息告诉对方，请它发【已恢复】，结束行写这条等待记录的编号（#数字）。",
             "还没做完：继续做；做不下去就抛【等待其他会话】或【等待用户】，说明卡在哪。",
-            "另外，用户已答复你抛的事项，你还没发【已恢复】：",
+            "另外，用户已答复你抛的待决事项，你还没发【已恢复】（表示已结项）：",
             f"- #{no} 用户已答复：「{no} A」（3 分钟前）",
             "做完了：发【已恢复】，结束行写这个编号。",
             "做不下去：抛【等待其他会话】或【等待用户】，说明卡在哪。",
-            "已经发过【已恢复】、收件枢纽还没收进：回一句「已发 #邮箱号」即可收工，不用重发。",
+            "已经发过【已恢复】、决策收件箱还没收进：回一句「已发 #邮箱号」即可收工，不用重发。",
         ]))
 
 
@@ -255,7 +255,7 @@ class SilentStopTest(HookCase):
         d = self.decide_with(progress(2, 5))
         self.assertTrue(d.block)
         self.assertEqual(d.reason.split("\n")[0],
-                         "【decision-inbox】收工前请先处理：当前模块 pay 还有 3 项没勾，你既没报阻塞也没抛事项。")
+                         "【decision-inbox】收工前请先处理：当前模块 pay 还有 3 项没勾，你既没报阻塞也没抛待决事项。")
         self.assertIn("手上没有已批准、还没做完的下一步：抛一项【等待用户】", d.reason)
         self.assertFalse(self.decide_with(progress(2, 5), active=True).block)
 

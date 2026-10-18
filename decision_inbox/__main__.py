@@ -9,7 +9,7 @@ from decision_inbox import crew, doctor, health, hub, install, items, mapview, o
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
-         "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <身份名>]\n"
+         "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <邮箱名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox notify <文字>\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
@@ -17,6 +17,7 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox onboard <hub|join|allow|task|leave|teardown> <协作组> ...\n"
          "      python3 -m decision_inbox shim [--if-installed]\n"
          "      python3 -m decision_inbox whoami [--cwd <目录>]\n"
+         "      python3 -m decision_inbox glossary\n"
          "      python3 -m decision_inbox doctor [--group <协作组>] [--json|--report]")
 
 
@@ -125,6 +126,11 @@ def _assess(g, args):
             agents, maps)
 
 
+def _number(text: str) -> int:
+    """An item or wait record number as people write it: 3, #3 or W3 (glossary-rename)."""
+    return int(text.strip().lstrip("#WwＷ"))
+
+
 def _query(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="python3 -m decision_inbox query")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -143,7 +149,7 @@ def _query(argv: list[str]) -> int:
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
-        p.add_argument("number", type=int)
+        p.add_argument("number", type=_number)
         if name == "item":
             p.add_argument("--status", action="append", default=[])
     try:
@@ -471,14 +477,14 @@ def _print_outcome(out, confirm: bool) -> None:
         for note in onboard.CODEX_NOTES if out.codex_unseen else ():
             print(f"  {note}")
     if out.drops:
-        state = ("接入时新建，删掉约定块后为空，已删掉这个文件" if confirm
-                 else "接入时新建，删掉约定块后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
+        state = ("接入时新建，删掉协作规则段后为空，已删掉这个文件" if confirm
+                 else "接入时新建，删掉协作规则段后为空，确认后会删掉这个文件；确认无误后加 --confirm 再运行")
     elif not out.changed:
         state = "没有变化"
     else:
         state = "已写入" if confirm else "预览，未写入；确认无误后加 --confirm 再运行"
     if out.file is None:
-        print("规则文件：无（只登记进名册，不写约定块）")
+        print("规则文件：无（只登记进名册，不写协作规则段）")
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
@@ -647,6 +653,9 @@ def main(argv: list[str]) -> int:
         return _doctor(argv[1:])
     if argv[:1] == ["whoami"]:
         return _whoami(argv[1:])
+    if argv == ["glossary"]:  # glossary-rename: the bundled copy of 术语表 v1.1, word for word
+        sys.stdout.write((install.plugin_root() / "docs" / "glossary.md").read_text(encoding="utf-8"))
+        return 0
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):
         # Silent on purpose: SessionStart runs it in every session.
         install.write_shim(install.plugin_root(), if_installed=argv[1:] == ["--if-installed"])

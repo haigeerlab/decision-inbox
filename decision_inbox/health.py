@@ -286,7 +286,7 @@ def _session_signals(facts: dict[str, _Facts], lines: dict[str, LineState], now:
     crew_unknown = any(f.crew is not None and f.crew.status != "ok" for f in facts.values())
     if relay_read and not crew_unknown and open_count and all(state.word != "working" for state in lines.values()):
         out.append(Signal(1, "all-waiting", tuple(sorted(facts)),
-                          f"全线互等：所有会话都没在干活，还有 {open_count} 张等待单没关"))
+                          f"全线互等：所有会话都没在干活，还有 {open_count} 条等待记录没关"))
     for name, f in facts.items():
         fact = f.fact
         for t in f.tickets:
@@ -383,8 +383,8 @@ def _progress_signals(g, facts: dict[str, _Facts], lines: dict[str, LineState], 
         if later:
             who = facts[t["waiter"]].entry["shortName"] if t["waiter"] in facts else t["waiter"]
             out.append(Signal(9, "orphan-wait", (t["waiter"],),
-                              f"{who} 的等待单 #{key}（等 {t['target']}）还开着，但它后来又开了新的等待 "
-                              f"#{min(later)}"))
+                              f"{who} 的等待记录 W{key}（等 {t['target']}）还开着，但它后来又开了新的等待 "
+                              f"W{min(later)}"))
     return out
 
 

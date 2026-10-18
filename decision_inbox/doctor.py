@@ -67,11 +67,11 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
     hub_relay = next((e["relayName"] for e in store.roster(g) if e["role"] == "hub"), "")
     out = []
     for entry in store.roster(g):
-        name = f"约定块：{entry['shortName']}"
+        name = f"协作规则段：{entry['shortName']}"
         if entry["relayName"] in left:
             continue
         if entry.get("legacyFormat"):
-            out.append(Check(name, "ok", "本插件", "只登记，不写约定块（迁移期旧格式会话）"))
+            out.append(Check(name, "ok", "本插件", "只登记，不写协作规则段（迁移期旧格式会话）"))
             continue
         rules = files.get(entry["relayName"])
         if rules is None:
@@ -86,15 +86,15 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
         want = onboard.block(entry["role"], group, hub_relay, bool(entry.get("checkpointAuthority")),
                              bool(entry.get("crewCoordinator")))
         if current is None:
-            out.append(Check(name, "bad", "本插件", f"{rules} 里没有 decision-inbox 约定块", _join_command(group, entry)))
+            out.append(Check(name, "bad", "本插件", f"{rules} 里没有 decision-inbox 协作规则段", _join_command(group, entry)))
         elif current != want:
-            out.append(Check(name, "bad", "本插件", f"{rules} 里的约定块不是当前版本",
+            out.append(Check(name, "bad", "本插件", f"{rules} 里的协作规则段不是当前版本",
                              "重跑接入命令：" + _join_command(group, entry)))
         else:
             out.append(Check(name, "ok", "本插件", str(rules)))
         if entry.get("host") == "codex-desktop" and current is not None:
             unseen = onboard.codex_loads(rules, Path(rules).parent, rules_text=text)
-            out.append(Check(f"Codex 加载约定块：{entry['shortName']}", "bad" if unseen else "ok", "Codex",
+            out.append(Check(f"Codex 加载协作规则段：{entry['shortName']}", "bad" if unseen else "ok", "Codex",
                              "；".join(unseen) or f"在 {Path(rules).parent} 开的 Codex 会话能加载",
                              "按上面的说明调整后，在 Codex 里新开任务" if unseen else ""))
     return out
@@ -260,10 +260,10 @@ def _dependency(name: str, required: bool = False) -> Check:
     label = f"依赖：{name}"
     if d.version is None:
         if name == "module-crew" and required:
-            return Check(label, "bad", name, d.reason, "名册里有并行开发协调会话，安装 module-crew 才看得到各模块状态")
+            return Check(label, "bad", name, d.reason, "名册里有模块协调，安装 module-crew 才看得到各模块状态")
         if name in _OPTIONAL or name == "module-crew":
             return Check(label, "ok", name, f"{d.reason}（可选）")
-        return Check(label, "bad", name, d.reason, "安装 agent-relay，收件枢纽和各会话靠它收发消息")
+        return Check(label, "bad", name, d.reason, "安装 agent-relay，决策收件箱和各会话靠它收发消息")
     text = deps.describe(d)
     if name == "module-crew" and d.interface.state == "ok":
         state, text = _contract(d, text)

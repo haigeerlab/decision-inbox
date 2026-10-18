@@ -148,13 +148,13 @@ class ValidityAndOrderTest(ItemsCase):
         r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5538】"), relay_id=5539, at=T2)
         self.assertFalse(r.accepted)
         self.assertEqual(codes(r.problems), {"not-owner"})
-        self.assertIn(f"#5538 是邮箱号，对应事项 #{old}；去掉【取代】靠默认取代，或改写【取代 #{old}】", r.return_text)
+        self.assertIn(f"#5538 是邮箱号，对应待决事项 #{old}；去掉【取代】靠默认取代，或改写【取代 #{old}】", r.return_text)
         self.assertEqual(self.item(old)["status"], "pending")
 
     def test_other_senders_mail_id_gets_the_plain_text(self):
         self.receive(SINGLE, sender="api-codex", relay_id=5538)
         r = self.receive(SINGLE.replace("【等待用户】", "【等待用户】【取代 #5538】"), relay_id=5539, at=T2)
-        self.assertIn("#5538 不存在，或不是你抛出的事项", r.return_text)
+        self.assertIn("#5538 不存在，或不是你抛出的待决事项", r.return_text)
         self.assertNotIn("邮箱号", r.return_text)
 
     def test_withdraw_by_mail_id_names_the_item(self):
@@ -163,11 +163,11 @@ class ValidityAndOrderTest(ItemsCase):
         r = self.receive("【撤回】\n事项：#5538\n原因：需求取消\n", relay_id=5539, at=T2)
         self.assertFalse(r.accepted)
         self.assertEqual(codes(r.problems), {"not-owner"})
-        self.assertIn(f"#5538 是邮箱号，对应事项 #{old}；改写「事项：#{old}」重发【撤回】", r.return_text)
+        self.assertIn(f"#5538 是邮箱号，对应待决事项 #{old}；改写「事项：#{old}」重发【撤回】", r.return_text)
         self.assertNotIn("【取代", r.return_text)
         self.assertEqual(self.item(old)["status"], "pending")
         r = self.receive("【撤回】\n事项：#9999\n", relay_id=5540, at=T2)
-        self.assertIn("#9999 不存在，或不是你抛出的事项", r.return_text)
+        self.assertIn("#9999 不存在，或不是你抛出的待决事项", r.return_text)
 
     def test_new_item_supersedes_own_pending_by_default(self):
         """wait-honesty-and-briefs A7: no marker means the new item replaces this session's unanswered one."""
@@ -180,7 +180,7 @@ class ValidityAndOrderTest(ItemsCase):
         event = [e for e in store.read_events(self.g, ref=old) if e["type"] == "items.superseded"][-1]
         self.assertEqual(event["data"], {"by": r.item, "auto": True})
         hint = next(h for h in r.hints if h.code == "auto-superseded")
-        self.assertEqual(hint.text, f"#{old} 已被新事项自动取代；确实要两项都答，请写【与 #{old} 并行】重发")
+        self.assertEqual(hint.text, f"#{old} 已被新的待决事项自动取代；确实要两项都答，请写【与 #{old} 并行】重发")
 
     def test_parallel_marker_keeps_the_old_item(self):
         old = self.receive(SINGLE).item
@@ -589,7 +589,7 @@ class LegacyFormatTest(ItemsCase):
         old = self.receive(SINGLE, relay_id=5990).item
         r = self.receive(SINGLE, relay_id=6000, at=T2)
         hint = next(h.text for h in r.hints if h.code == "auto-superseded")
-        self.assertTrue(hint.startswith(f"#5990（hub 编号 {old}） 已被新事项自动取代"), hint)
+        self.assertTrue(hint.startswith(f"#5990（hub 编号 {old}） 已被新的待决事项自动取代"), hint)
         self.assertIn("【与 #5990 并行】", hint)
 
 

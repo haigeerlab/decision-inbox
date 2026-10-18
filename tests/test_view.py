@@ -97,7 +97,7 @@ class EmptyAndHeaderTest(ViewCase):
         self.assertEqual(text, "前端 干活中 · API 干活中 · 后台 已结项（空闲）\n"
                                "等你决定 0 项 · 异常 0\n"
                                "\n"
-                               "等待中 0 单 · 已失效 0 项 · 今天已关 0 单")
+                               "等待中 0 条 · 已失效 0 项 · 今天已关 0 条")
 
     def test_lines_row_order_and_blocked_spacing(self):
         lines = {"bg-codex": LineState("blocked", "阻塞：等 API", target="API"),
@@ -133,7 +133,7 @@ class EmptyAndHeaderTest(ViewCase):
         tickets.close_by_user(self.g, closed, None, at=at(5))
         gone = self.ask()
         items.receive(self.g, f"【撤回】\n事项：#{gone}\n", sender="fe-codex", relay_id=900, received_at=at(1))
-        self.assertTrue(self.render().endswith("等待中 1 单 · 已失效 1 项 · 今天已关 1 单"))
+        self.assertTrue(self.render().endswith("等待中 1 条 · 已失效 1 项 · 今天已关 1 条"))
 
 
 class PushLineTest(ViewCase):
@@ -335,12 +335,13 @@ def spec_sample() -> str:
     """The 主视图样例 block of the spec, with its code-block placeholder made a real code block.
 
     e2e-round1-fixes F12 reworks hub-view (the accepted spec stays as written): the copy block
-    now has a 「推荐回复」 line above it.
+    now has a 「推荐回复」 line above it. glossary-rename counts wait records in 条, not 单 (等待单 → 等待记录).
     """
     text = SPEC.read_text(encoding="utf-8")
     body = text.split("## 主视图样例", 1)[1].split("```text\n", 1)[1].split("\n```", 1)[0]
     return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）",
-                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```")
+                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```").replace(
+        "等待中 1 单 · 已失效 0 项 · 今天已关 3 单", "等待中 1 条 · 已失效 0 项 · 今天已关 3 条")
 
 
 class AnomalyTest(ViewCase):
@@ -353,7 +354,7 @@ class AnomalyTest(ViewCase):
             Signal(6, "suspended-blocks", ("fe-codex",), "前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart"),
             Signal(7, "rework", ("api-codex",), "API 的审查 R3（spec）已来回 4 轮，超过本组常见水平"),
             Signal(8, "slow-progress", ("bg-codex",), "后台 的 jobs 已 3 小时没有新进展，明显慢于平时"),
-            Signal(9, "orphan-wait", ("fe-codex",), "前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35"),
+            Signal(9, "orphan-wait", ("fe-codex",), "前端 的等待记录 W31（等 API）还开着，但它后来又开了新的等待 W35"),
             Signal(10, "codex-backlog", ("api-codex",), "API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟"),
         ]
         text = self.render(self.assessment(signals=[Signal(1, "all-waiting", ("fe-codex",), "全线互等")] + signals))
@@ -366,8 +367,8 @@ class AnomalyTest(ViewCase):
             "- 后台：后台 已忙 25 分钟，还有 1 条消息在等它。建议：先等它做完这一轮；要插队就去它的会话说明",
             "- 前端：前端 的 pay 挂起（等设计稿）→ 挡住 1 个：cart。建议：看挂起原因是否已经解决",
             "- API：API 的审查 R3（spec）已来回 4 轮，超过本组常见水平。建议：看一下这次审查的分歧点",
-            "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交负责人跟进",
-            "- 前端：前端 的等待单 #31（等 API）还开着，但它后来又开了新的等待 #35。建议：确认旧等待是否还需要，不需要就说「关掉 #31」",
+            "- 后台：后台 的 jobs 已 3 小时没有新进展，明显慢于平时。建议：问 后台 进展，或交审查者跟进",
+            "- 前端：前端 的等待记录 W31（等 API）还开着，但它后来又开了新的等待 W35。建议：确认旧等待是否还需要，不需要就说「关掉 W31」",
             "- API：API（Codex）没被加载，有 2 条消息积压，最早一条已等 12 分钟。建议：在 Codex 里点开 API 让它加载",
         ])
         self.assertNotIn("全线互等", text)
@@ -450,32 +451,32 @@ class ExpandedViewTest(ViewCase):
         self.assertEqual(view.render_detail(self.g, item=999), "#999 不存在")
 
     def test_waits(self):
-        self.assertEqual(view.render_waits(self.g, now=NOW), "没有开着的等待单")
+        self.assertEqual(view.render_waits(self.g, now=NOW), "没有开着的等待记录")
         fresh = self.wait("fe-codex", "API", 5)
         old = tickets.receive(self.g, (PROTO / "wait-session.txt").read_text(encoding="utf-8"),
                               sender="bg-codex", relay_id=1, sent_at=at(70)).opened
         lines = view.render_waits(self.g, now=NOW).split("\n")
         self.assertEqual(lines, [
-            f"#{fresh} 前端 等 API：订单接口 · 已等 5 分钟",
-            f"#{old} 后台 等 API：订单接口的 Mock 数据，交付后我才能接着做支付页 · ⚠ 已等 70 分钟 · "
+            f"W{fresh} 前端 等 API：订单接口 · 已等 5 分钟",
+            f"W{old} 后台 等 API：订单接口的 Mock 数据，交付后我才能接着做支付页 · ⚠ 已等 70 分钟 · "
             "可能卡住：后台 在等 API 的「订单接口的 Mock 数据，\n  交付后我才能接着做支付页」，"
             "请看一下 API 是否已完成却没通知 后台".replace("\n  ", ""),
         ])
 
     def test_closed(self):
         day = view._today(NOW)
-        self.assertEqual(view.render_closed(self.g, day=day), f"{day} 没有关闭的等待单")
+        self.assertEqual(view.render_closed(self.g, day=day), f"{day} 没有关闭的等待记录")
         first = self.wait("fe-codex", "API", 30)
         tickets.close_by_user(self.g, first, "不等了", at=at(20))
         second = self.wait("api-codex", "后台", 30)
         tickets.close_by_user(self.g, second, None, at=at(10))
         self.assertEqual(view.render_closed(self.g, day=day).split("\n"), [
-            f"#{first} 前端 等 API：订单接口 · 用户关闭 · 依据：不等了 · {hhmm(at(20))} 关",
-            f"#{second} API 等 后台：订单接口 · 用户关闭 · 依据：用户关闭 · {hhmm(at(10))} 关",
+            f"W{first} 前端 等 API：订单接口 · 用户关闭 · 依据：不等了 · {hhmm(at(20))} 关",
+            f"W{second} API 等 后台：订单接口 · 用户关闭 · 依据：用户关闭 · {hhmm(at(10))} 关",
         ])
 
     def test_invalidated(self):
-        self.assertEqual(view.render_invalidated(self.g), "没有失效的事项")
+        self.assertEqual(view.render_invalidated(self.g), "没有失效的待决事项")
         old = self.ask(SINGLE)
         new = self.ask(SINGLE.replace("【等待用户】", f"【等待用户】【取代 #{old}】"))
         gone = self.ask(SINGLE, sender="api-codex")
@@ -506,7 +507,7 @@ class DoubtRowTest(ViewCase):
         from decision_inbox.health import Signal
         claude = Signal(5, "idle-backlog", ("hub",), "收件枢纽 空闲，有 1 条消息没读")
         codex = Signal(5, "idle-backlog", ("api-codex",), "API 空闲，有 1 条消息没读")
-        self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 收件枢纽；叫不醒就打开它")
+        self.assertEqual(view.advice(self.g, claude), "巡视会叫醒 决策收件箱；叫不醒就打开它")
         self.assertEqual(view.advice(self.g, codex), "打开 API 的任务")
 
 

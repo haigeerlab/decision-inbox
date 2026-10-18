@@ -376,7 +376,7 @@ class BriefTest(unittest.TestCase):
                 msg = protocol.parse(self.brief(text))
                 self.assertTrue(msg.ok, msg.problems)
                 hint = next(h for h in msg.hints if h.code == "brief-thin")
-                self.assertEqual(hint.text, "要点太简略，用户可能没法直接决定，见约定块里的要点写法")
+                self.assertEqual(hint.text, "要点太简略，用户可能没法直接决定，见协作规则段里的要点写法")
 
     def test_proper_brief_not_flagged(self):
         msg = protocol.parse(self.brief("要点：Mock 已就绪，两种方式工作量差一倍。\n微信支付有现成 SDK，支付宝要补签名接口。\n最大风险是支付宝联调要等 API 三天。\n"))

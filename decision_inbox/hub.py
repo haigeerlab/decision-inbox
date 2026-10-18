@@ -15,7 +15,7 @@ from decision_inbox import deps, health, install, items, protocol, reviews, stal
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
-KIND_LABELS = {"wait-session": "等待其他会话", "resumed": "已恢复", "review-conclusion": "审查结论"}
+KIND_LABELS = {"wait-session": "等待其他会话", "resumed": "已结项", "review-conclusion": "审查结论"}
 
 
 @dataclass
@@ -123,7 +123,7 @@ def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | 
         texts = [_return_text(KIND_LABELS[msg.kind], r.problems)] if r.problems else []
         return msg.kind, texts, _hints(g, m.sender, r.hints), None, None
     if msg.kind == "user-reply":
-        return msg.kind, [], [f"{short} 发来一条【用户答复】，收件枢纽不处理"], None, None
+        return msg.kind, [], [f"{short} 发来一条【用户答复】（你的答复），决策收件箱不处理"], None, None
     note = f"{short} 称：{_first_line(m.body)}（说「{m.id} 原文」看全文）"
     question = _question_return(g, m)
     record = {"sender": m.sender, "text": m.body, "at": at, "returned": question is not None}
@@ -142,12 +142,12 @@ def _question_return(g: store.Group, m) -> str | None:
                     if m.reply_to is not None and e["relayId"] == m.reply_to), None)
     if replied is not None and replied["kind"] == "return":
         return None
-    lines = [f"回复：#{m.id}", "收件枢纽只转达用户的话，不答疑，也不做决定。"]
+    lines = [f"回复：#{m.id}", "决策收件箱只转达用户的话，不答疑，也不做决定。"]
     it = items.get(g, replied["item"]) if replied is not None and replied["item"] is not None else None
     if it is not None and replied["kind"] == "answer":
-        lines.append(f"你回的 #{m.reply_to} 是用户对事项 #{it['no']}（你的原消息 #{it['relayId']}）的答复。")
+        lines.append(f"你回的 #{m.reply_to} 是用户对待决事项 #{it['no']}（你的原消息 #{it['relayId']}）的答复。")
     elif it is not None and replied["kind"] == "notice":
-        lines.append(f"你回的 #{m.reply_to} 是事项 #{it['no']}（原消息 #{it['relayId']}）的【答复告知】，只是告知。")
+        lines.append(f"你回的 #{m.reply_to} 是待决事项 #{it['no']}（原消息 #{it['relayId']}）的【答复告知】，只是告知。")
     lines.append("还有疑问，请抛一项【等待用户】，写清要用户确认什么。")
     return "\n".join(lines) + "\n"
 
@@ -155,7 +155,7 @@ def _question_return(g: store.Group, m) -> str | None:
 def returned_today(g: store.Group, now: str) -> list[str]:
     """Anomaly rows for questions returned today: someone is stuck enough to ask the hub."""
     day = today(now)
-    return [f"- {_short(g, rec['sender'])}：问了收件枢纽（#{relay_id}），已自动退回。"
+    return [f"- {_short(g, rec['sender'])}：问了决策收件箱（#{relay_id}），已自动退回。"
             f"建议：说「{relay_id} 原文」看它问了什么"
             for relay_id, rec in store.read_state(g, DOMAIN).get("unknown", {}).items()
             if rec.get("returned") and today(rec["at"]) == day]
@@ -362,10 +362,10 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
-_LOOK_RE = re.compile(r"^看\s*#?(\d+)$")
+_LOOK_RE = re.compile(r"^看\s*([#WwＷ]?)\s*(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
-_CLOSE_RE = re.compile(r"^关掉\s*((?:#\s*\d+[\s、，,]*)+)(.*)$", re.S)
+_CLOSE_RE = re.compile(r"^关掉\s*((?:[#WwＷ]?\s*\d+[\s、，,]*)+)(.*)$", re.S)
 
 
 def today(now: str) -> str:
@@ -380,16 +380,16 @@ def _original(g: store.Group, relay_id: str) -> str:
 
 
 def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps, crews=None) -> Reply:
-    """「关掉 #编号」: every number must be an open ticket, else nothing is closed."""
+    """「关掉 W编号」 (or #编号): every number must be an open ticket, else nothing is closed."""
     open_ = store.read_state(g, "tickets").get("tickets", {})
     for no in numbers:
         if items.get(g, no) is not None:
-            return Reply(f"#{no} 是事项，不是等待单；要放弃事项请让提出方发【撤回】")
+            return Reply(f"#{no} 是待决事项，不是等待记录；要放弃待决事项请让提出方发【撤回】")
         if open_.get(str(no), {}).get("status") != "open":
-            return Reply(f"#{no} 不是开着的等待单，请确认编号")
+            return Reply(f"{view.wait_no(no)} 不是开着的等待记录，请确认编号")
     for no in numbers:
         tickets.close_by_user(g, no, reason or None, now)
-    listed = "、".join(f"#{n}" for n in numbers)
+    listed = "、".join(view.wait_no(n) for n in numbers)
     return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps, crews=crews))
 
 
@@ -409,7 +409,12 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if m := _DETAIL_RE.match(said):
         return Reply(view.render_detail(g, int(m.group(1))))
     if m := _LOOK_RE.match(said):
-        return Reply(view.render_look(g, int(m.group(1)), now))
+        no = int(m.group(2))
+        is_wait = str(no) in store.read_state(g, tickets.DOMAIN).get("tickets", {})
+        if m.group(1) in ("W", "w", "Ｗ") or (is_wait and items.get(g, no) is None):
+            from decision_inbox import query
+            return Reply(query.render_item(g, no))
+        return Reply(view.render_look(g, no, now))
     if m := _ORIGINAL_RE.match(said):
         return Reply(_original(g, m.group(1)))
     if said == "看等待":
@@ -448,9 +453,9 @@ def _item_of(g: store.Group, send: dict):
 
 
 CONVENTION = """<!-- BEGIN decision-inbox hub -->
-## decision-inbox 收件枢纽（协作组「{group}」）
+## decision-inbox 决策收件箱（协作组「{group}」）
 
-你是这个协作组的收件枢纽：替用户收件、整理、转达用户的答复、盯异常。你自己不做决定。
+你是这个协作组的决策收件箱：替用户收件、整理、转达用户的答复、盯异常。你自己不做决定。
 判断和记账都由下面的命令做；你只调用 agent-relay 的工具，并把命令的输出照做或原样显示。
 
 ### 被叫醒、或收到 agent-relay 提醒时
@@ -470,7 +475,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
 
 1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json。
-2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给身份 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给邮箱名 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
 3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
 
 只做计划里的动作，不读也不转述别的消息正文。

@@ -190,7 +190,7 @@ class FlowCategoryTest(QueryCase):
     def test_external(self):
         self.wait("fe", "设计组", 40, what="支付页设计稿")
         self.assertEqual(self.verdict(agent("fe", activity_ago=60)),
-                         ["为什么：等别的线交付：等 设计组 的「支付页设计稿」", "你要做：交负责人跟进（谁来做：负责人）"])
+                         ["为什么：等别的线交付：等 设计组 的「支付页设计稿」", "你要做：交审查者跟进（谁来做：审查者）"])
 
     def test_idle_but_waited_on(self):
         self.assertEqual(self.verdict(agent("fe", activity_ago=200)),
@@ -234,7 +234,7 @@ class FlowDetailsTest(QueryCase):
         self.wait("fe", "API", 59)
         self.wait("bg", "设计组", 60, what="设计稿")
         self.wait("api", "用户", 300)
-        self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 负责人跟进：第一版不记录")
+        self.assertEqual(self.details()[5], "- 长期外部阻塞：后台 等 设计组：设计稿 · 已阻塞 1 小时 · 审查者跟进：第一版不记录")
 
 
 def status(no, sender, recipient, sent_at, delivery="accepted", ack=None, replies=(), wake=None, outcome=None):
@@ -286,7 +286,7 @@ class ItemTest(QueryCase):
             f"{hhmm(at(35))} 对方已取走",
             f"{hhmm(at(30))} agent-relay #7001：前端 已确认",
             f"{hhmm(at(30))} 对方已确认",
-            f"{hhmm(at(20))} 前端 已恢复，事项结束",
+            f"{hhmm(at(20))} 前端 已结项，待决事项结束",
         ])
         self.assertNotIn("先接微信支付", text)
 
@@ -301,10 +301,10 @@ class ItemTest(QueryCase):
         t = self.wait("fe", "API", 30, what="订单接口")
         tickets.close_by_user(self.g, t, "不等了", at=at(5))
         text = query.render_item(self.g, t)
-        self.assertEqual(text.split("\n")[0], f"#{t} · 等待单 · 前端 等 API · 当前：已关")
-        self.assertIn(f"{hhmm(at(30))} 前端 开单：等 API 的「订单接口」（agent-relay #", text)
-        self.assertTrue(text.endswith(f"{hhmm(at(5))} 关单：用户关闭，依据：不等了"))
-        self.assertEqual(query.render_item(self.g, 999), "#999 不是事项也不是等待单")
+        self.assertEqual(text.split("\n")[0], f"W{t} · 等待记录 · 前端 等 API · 当前：已关")
+        self.assertIn(f"{hhmm(at(30))} 前端 开始等待：等 API 的「订单接口」（agent-relay #", text)
+        self.assertTrue(text.endswith(f"{hhmm(at(5))} 关掉：用户关闭，依据：不等了"))
+        self.assertEqual(query.render_item(self.g, 999), "999 既不是待决事项（#999）也不是等待记录（W999）")
 
 
 class CommandLineTest(QueryCase):
@@ -364,6 +364,7 @@ class CommandLineTest(QueryCase):
         self.assertIn("检查明细", out)
         code, out, _ = self.run_cli("query", "item-ids", "demo", str(no))
         self.assertEqual((code, out.split()[-1]), (0, "7001"))
+        self.assertEqual(self.run_cli("query", "item-ids", "demo", f"#{no}")[:2], (code, out))  # glossary-rename
         code, out, _ = self.run_cli("query", "item", "demo", str(no), "--status", status_file)
         self.assertEqual(code, 0)
         self.assertIn("agent-relay #7001：投递 accepted", out)

@@ -1,5 +1,5 @@
 ---
-description: 收件枢纽卸载：删约定块和巡视定时任务，状态目录保留
+description: 决策收件箱卸载：删协作规则段和巡视定时任务，状态目录保留
 argument-hint: <协作组>
 allowed-tools: Bash, mcp__scheduled-tasks__list_scheduled_tasks, mcp__scheduled-tasks__delete_scheduled_task
 ---

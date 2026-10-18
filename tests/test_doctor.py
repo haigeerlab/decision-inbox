@@ -52,13 +52,13 @@ class DoctorCase(TempHomeTestCase):
 
 class ConventionTest(DoctorCase):
     def test_current_blocks_are_ok(self):
-        self.assertEqual(self.check("约定块：收件枢纽").state, "ok")
-        self.assertEqual(self.check("约定块：开发").state, "ok")
+        self.assertEqual(self.check("协作规则段：决策收件箱").state, "ok")
+        self.assertEqual(self.check("协作规则段：开发").state, "ok")
 
     def test_old_block_is_bad_with_fix(self):
         rules = self.work / "dev" / "AGENTS.md"
         rules.write_text(rules.read_text(encoding="utf-8").replace("### 开发线", "### 开发线（旧）"), encoding="utf-8")
-        c = self.check("约定块：开发")
+        c = self.check("协作规则段：开发")
         self.assertEqual((c.state, c.source), ("bad", "本插件"))
         self.assertIn("不是当前版本", c.evidence)
         self.assertIn("onboard join g", c.fix)
@@ -67,25 +67,25 @@ class ConventionTest(DoctorCase):
         (self.work / "crew").mkdir()
         onboard.join("g", "dev", "g-crew", "并行", "claude-desktop", ["web"], "local_2", self.work / "crew",
                      None, (), True, NOW, crew_coordinator=True)
-        self.assertEqual(self.check("约定块：并行").state, "ok")
+        self.assertEqual(self.check("协作规则段：并行").state, "ok")
         rules = self.work / "crew" / "CLAUDE.md"
         rules.write_text(rules.read_text(encoding="utf-8").replace("### 开发线", "### 开发线（旧）"), encoding="utf-8")
-        self.assertIn("--crew-coordinator", self.check("约定块：并行").fix)
+        self.assertIn("--crew-coordinator", self.check("协作规则段：并行").fix)
 
     def test_local_rules_block_is_checked(self):
         (self.work / "crew").mkdir()
         onboard.join("g", "dev", "g-crew", "并行", "claude-desktop", ["web"], "local_2", self.work / "crew",
                      None, (), True, NOW, local_rules=True)
-        self.assertEqual(self.check("约定块：并行").state, "ok")
+        self.assertEqual(self.check("协作规则段：并行").state, "ok")
         rules = self.work / "crew" / "CLAUDE.local.md"
         rules.write_text(rules.read_text(encoding="utf-8").replace("### 开发线", "### 开发线（旧）"), encoding="utf-8")
-        self.assertIn("--local-rules", self.check("约定块：并行").fix)
+        self.assertIn("--local-rules", self.check("协作规则段：并行").fix)
 
     def test_missing_block_is_bad(self):
         (self.work / "dev" / "AGENTS.md").write_text("# 只剩项目规则\n", encoding="utf-8")
-        c = self.check("约定块：开发")
+        c = self.check("协作规则段：开发")
         self.assertEqual(c.state, "bad")
-        self.assertIn("没有 decision-inbox 约定块", c.evidence)
+        self.assertIn("没有 decision-inbox 协作规则段", c.evidence)
 
 
 class ShimTest(DoctorCase):
@@ -169,14 +169,14 @@ class OutputTest(DoctorCase):
         self.assertIn("decision-inbox 异常报告", text)
         self.assertIn("转发脚本", text)
         self.assertIn("decision-inbox ", text)
-        self.assertNotIn("约定块：收件枢纽", text)
+        self.assertNotIn("协作规则段：决策收件箱", text)
 
     def test_render_marks_and_sources(self):
         install.write_shim(self.home / "old-plugin")
         text = doctor.render(doctor.run(["g"], NOW))
         self.assertIn("✘ 转发脚本", text)
         self.assertIn("（来源：本插件）", text)
-        self.assertIn("✔ 约定块：收件枢纽", text)
+        self.assertIn("✔ 协作规则段：决策收件箱", text)
 
 
 class CliTest(DoctorCase):
@@ -215,7 +215,7 @@ class ModuleCrewTest(DoctorCase):
         self.join_coordinator()
         c = self.check("依赖：module-crew")
         self.assertEqual((c.state, c.source), ("bad", "module-crew"))
-        self.assertIn("并行开发协调会话", c.fix)
+        self.assertIn("模块协调", c.fix)
         out = self.check("module-crew 出口：并行")
         self.assertEqual(out.state, "bad")
         self.assertIn("没有安装 module-crew", out.evidence)
@@ -256,9 +256,9 @@ class EnrolledEntryTest(DoctorCase):
 
     def test_enrolled_entry_is_ok(self):
         onboard.enroll("g", "g-legacy", "旧格式", "claude-desktop", ["web"], None, True, NOW)
-        c = self.check("约定块：旧格式")
-        self.assertEqual((c.state, c.evidence), ("ok", "只登记，不写约定块（迁移期旧格式会话）"))
-        self.assertEqual(self.check("约定块：开发").state, "ok")
+        c = self.check("协作规则段：旧格式")
+        self.assertEqual((c.state, c.evidence), ("ok", "只登记，不写协作规则段（迁移期旧格式会话）"))
+        self.assertEqual(self.check("协作规则段：开发").state, "ok")
 
 
 class HostVersionsTest(DoctorCase):

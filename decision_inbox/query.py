@@ -204,7 +204,7 @@ def _classify(g: store.Group, now: str, name: str, assessment, relay) -> _Verdic
                 and t.target not in tickets.USER_TARGETS and store.find_session(g, short_name=t.target) is None]
     if external:
         t = external[0]
-        return _Verdict(f"等别的线交付：等 {t.target} 的「{_one_line(t.what)}」", "交负责人跟进", "负责人")
+        return _Verdict(f"等别的线交付：等 {t.target} 的「{_one_line(t.what)}」", "交审查者跟进", "审查者")
     text = state.text if state is not None else "无状态"
     return _Verdict(f"被等着但没在干活（{text}）", f"问 {short} 是否已交付，没交付就让它接着做", "用户")
 
@@ -292,7 +292,7 @@ def _details(g: store.Group, now: str, assessment, relay, wakes: dict) -> list[s
               if relay is not None and n in relay.agents and relay.agents[n].presence_raw == "waiting-input"
               and n not in pending_senders and not any(t.waiter == n for t in open_)]
     long_waits = [f"{_short(g, t.waiter)} 等 {t.target}：{_one_line(t.what)} · 已阻塞 {t.minutes // 60} 小时 · "
-                  "负责人跟进：第一版不记录"
+                  "审查者跟进：第一版不记录"
                   for t in open_ if t.minutes >= tickets.STUCK_MINUTES and t.target not in tickets.USER_TARGETS]
     return [
         "检查明细",
@@ -366,7 +366,7 @@ def _item_timeline(g: store.Group, it: dict, statuses: dict) -> list[str]:
         rows.append((times["acknowledged"], "对方已确认"))
     if "closed" in times:
         actor = events.get("items.closed", {}).get("actor", it["sender"])
-        rows.append((times["closed"], f"{_short(g, actor)} 已恢复，事项结束"))
+        rows.append((times["closed"], f"{_short(g, actor)} 已结项，待决事项结束"))
     source = f"多线：{'＋'.join(it['lines'])}" if it["multi"] else _short(g, it["sender"])
     head = (f"#{no} · {source} · {it['decide'].splitlines()[0]} · "
             f"当前：{_ITEM_STATUS.get(it['status'], it['status'])}")
@@ -376,12 +376,12 @@ def _item_timeline(g: store.Group, it: dict, statuses: dict) -> list[str]:
 def _ticket_timeline(g: store.Group, number: int, t: dict) -> list[str]:
     from decision_inbox.view import CLOSE_REASONS
     waiter = _short(g, t["waiter"])
-    head = f"#{number} · 等待单 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
-    rows = [f"{_clock(t['sentAt'])} {waiter} 开单：等 {t['target']} 的「{_one_line(t['what'])}」"
+    head = f"W{number} · 等待记录 · {waiter} 等 {t['target']} · 当前：{'开着' if t['status'] == 'open' else '已关'}"
+    rows = [f"{_clock(t['sentAt'])} {waiter} 开始等待：等 {t['target']} 的「{_one_line(t['what'])}」"
             f"（agent-relay #{t['relayId']}）"]
     if t.get("close"):
         c = t["close"]
-        rows.append(f"{_clock(c['at'])} 关单：{CLOSE_REASONS.get(c['reason'], c['reason'])}，依据：{c['basis']}")
+        rows.append(f"{_clock(c['at'])} 关掉：{CLOSE_REASONS.get(c['reason'], c['reason'])}，依据：{c['basis']}")
     return [head] + rows
 
 
@@ -393,7 +393,7 @@ def render_item(g: store.Group, number: int, statuses: dict | None = None) -> st
     t = store.read_state(g, tickets.DOMAIN).get("tickets", {}).get(str(number))
     if t is not None:
         return "\n".join(_ticket_timeline(g, number, t))
-    return f"#{number} 不是事项也不是等待单"
+    return f"{number} 既不是待决事项（#{number}）也不是等待记录（W{number}）"
 
 
 # ---- query stats / query events (doctor-and-observer decision 4) ----
@@ -490,15 +490,15 @@ def _span_text(label: str, s: Span) -> str:
 
 def render_stats(s: Stats, group: str, since: str | None) -> str:
     bypassed = f"{len(s.bypassed)} 项" + (f"（{'、'.join(f'#{n}' for n in s.bypassed)}）" if s.bypassed else "")
-    stale = f"（其中 {s.stale_tickets} 单可能已失效）" if s.stale_tickets else ""
+    stale = f"（其中 {s.stale_tickets} 条可能已失效）" if s.stale_tickets else ""
     return "\n".join([
         f"统计（协作组 {group}，{f'自 {since} 起' if since else '全部记录'}）",
-        f"事项：抛出 {s.raised} 项，已答 {s.answered} 项，已结束 {s.closed} 项",
-        f"绕过收件枢纽结束：{bypassed}",
+        f"待决事项：抛出 {s.raised} 项，已答 {s.answered} 项，已结束 {s.closed} 项",
+        f"绕过决策收件箱结束：{bypassed}",
         _span_text("抛出→答复", s.to_answer),
         _span_text("答复→恢复", s.to_resume),
         f"被取代 {s.superseded} 项（其中自动 {s.auto_superseded} 项） · 退回 {s.returned} 次 · 追问被退回 {s.questions_returned} 次 · 拒收转述 {s.relayed_refused} 次",
-        f"现在开着的等待单 {s.open_tickets} 单{stale}",
+        f"现在开着的等待记录 {s.open_tickets} 条{stale}",
         (f"巡视：跑了 {s.patrol_runs} 轮{_by(s)}，相邻两轮最长隔 {s.patrol_max_gap} 分钟，超过 15 分钟 {s.patrol_stale} 次"
          if s.patrol_max_gap is not None else
          f"巡视：跑了 {s.patrol_runs} 轮{_by(s)}" if s.patrol_runs else "巡视：这段时间没跑过"),
@@ -506,7 +506,7 @@ def render_stats(s: Stats, group: str, since: str | None) -> str:
 
 
 def _by(s: Stats) -> str:
-    return f"（定时任务 {s.patrol_by_schedule} 轮，收件枢纽顺带 {s.patrol_by_hub} 轮）" if s.patrol_by_hub else ""
+    return f"（定时任务 {s.patrol_by_schedule} 轮，决策收件箱顺带 {s.patrol_by_hub} 轮）" if s.patrol_by_hub else ""
 
 
 def stats_json(s: Stats) -> dict:

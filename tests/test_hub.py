@@ -106,7 +106,7 @@ class ReceiveDispatchTest(HubCase):
 
     def test_user_reply_from_a_session_is_not_handled(self):
         r = self.receive(message(1010, "fe-codex", "【用户答复】\n事项：#1\n用户原话：1 A\n答复时间：现在\n"))
-        self.assertEqual(r.notes, ["前端 发来一条【用户答复】，收件枢纽不处理"])
+        self.assertEqual(r.notes, ["前端 发来一条【用户答复】（你的答复），决策收件箱不处理"])
         self.assertEqual((r.sends, r.ack), ([], [1010]))
 
     def test_unregistered_reviewer_conclusion_is_returned(self):
@@ -293,10 +293,10 @@ class ReplyTest(HubCase):
     def test_views(self):
         self.assertTrue(self.reply("1 详情").show.startswith("#1 详情 · 前端"))
         self.assertTrue(self.reply("#1 详情").show.startswith("#1 详情"))
-        self.assertTrue(self.reply("看等待").show.startswith("#2 API 等 前端"))
-        self.assertEqual(self.reply("看已关闭").show, "2026-10-16 没有关闭的等待单")
-        self.assertEqual(self.reply("看已关闭 2026-10-15").show, "2026-10-15 没有关闭的等待单")
-        self.assertEqual(self.reply("看失效").show, "没有失效的事项")
+        self.assertTrue(self.reply("看等待").show.startswith("W2 API 等 前端"))
+        self.assertEqual(self.reply("看已关闭").show, "2026-10-16 没有关闭的等待记录")
+        self.assertEqual(self.reply("看已关闭 2026-10-15").show, "2026-10-15 没有关闭的等待记录")
+        self.assertEqual(self.reply("看失效").show, "没有失效的待决事项")
 
     def test_original_of_unknown_message(self):
         self.receive(message(1304, "fe-codex", "随便说一句\n第二行"))
@@ -305,21 +305,36 @@ class ReplyTest(HubCase):
 
     def test_close_ticket(self):
         r = self.reply("关掉 #2 已经不需要")
-        self.assertTrue(r.show.startswith("已关掉 #2（已经不需要）"))
+        self.assertTrue(r.show.startswith("已关掉 W2（已经不需要）"))
         self.assertEqual(self.tickets()["2"]["close"]["basis"], "已经不需要")
         self.assertEqual(r.sends, [])
 
     def test_close_several_without_reason(self):
         self.receive(message(1305, "api-codex", wait_session(target="收件枢纽", what="别的")))   # ticket #3
         r = self.reply("关掉 #2、#3")
-        self.assertTrue(r.show.startswith("已关掉 #2、#3（用户关闭）"))
+        self.assertTrue(r.show.startswith("已关掉 W2、W3（用户关闭）"))
 
     def test_close_item_or_closed_ticket_is_a_question(self):
         r = self.reply("关掉 #1")
-        self.assertEqual(r.show, "#1 是事项，不是等待单；要放弃事项请让提出方发【撤回】")
+        self.assertEqual(r.show, "#1 是待决事项，不是等待记录；要放弃待决事项请让提出方发【撤回】")
         self.reply("关掉 #2")
-        self.assertEqual(self.reply("关掉 #2、#9").show, "#2 不是开着的等待单，请确认编号")
+        self.assertEqual(self.reply("关掉 #2、#9").show, "W2 不是开着的等待记录，请确认编号")
         self.assertEqual(self.tickets()["2"]["status"], "closed")
+
+    def test_wait_records_show_w_numbers(self):  # glossary-rename Task 2
+        self.assertTrue(self.reply("看等待").show.startswith("W2 "))
+        self.assertIn("W2", self.reply("关掉 W2").show.splitlines()[0])
+        self.assertEqual(self.tickets()["2"]["status"], "closed")
+
+    def test_close_accepts_w_hash_and_bare_numbers(self):
+        self.receive(message(1305, "api-codex", wait_session(target="收件枢纽", what="别的")))   # ticket #3
+        r = self.reply("关掉 #2、W3")
+        self.assertTrue(r.show.startswith("已关掉 W2、W3（用户关闭）"))
+
+    def test_look_finds_a_wait_record(self):
+        shown = self.reply("看 W2").show
+        self.assertTrue(shown.startswith("W2 · 等待记录"), shown)
+        self.assertEqual(self.reply("看 2").show, shown)
 
     def test_close_checks_all_before_closing_any(self):
         self.reply("关掉 #2、#1")
@@ -464,9 +479,9 @@ class CommandLineTest(HubCase):
     def test_expanded_views(self):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1404, "fe-codex", WAIT_USER)))
         self.assertTrue(self.run_cli("view", "demo", "detail", "1")[1].startswith("#1 详情"))
-        self.assertEqual(self.run_cli("view", "demo", "waits")[1].strip(), "没有开着的等待单")
-        self.assertEqual(self.run_cli("view", "demo", "closed", "2026-10-15")[1].strip(), "2026-10-15 没有关闭的等待单")
-        self.assertEqual(self.run_cli("view", "demo", "invalidated")[1].strip(), "没有失效的事项")
+        self.assertEqual(self.run_cli("view", "demo", "waits")[1].strip(), "没有开着的等待记录")
+        self.assertEqual(self.run_cli("view", "demo", "closed", "2026-10-15")[1].strip(), "2026-10-15 没有关闭的等待记录")
+        self.assertEqual(self.run_cli("view", "demo", "invalidated")[1].strip(), "没有失效的待决事项")
         self.assertEqual(self.run_cli("view", "demo", "bogus")[0], 2)
 
     def test_convention_creates_io_folder(self):
@@ -563,8 +578,8 @@ class QuestionReturnTest(HubCase):
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
         self.assertEqual(body, "\n".join([
             "回复：#4543",
-            "收件枢纽只转达用户的话，不答疑，也不做决定。",
-            "你回的 #4542 是用户对事项 #1（你的原消息 #4540）的答复。",
+            "决策收件箱只转达用户的话，不答疑，也不做决定。",
+            "你回的 #4542 是用户对待决事项 #1（你的原消息 #4540）的答复。",
             "还有疑问，请抛一项【等待用户】，写清要用户确认什么。"]) + "\n")
         self.assertIn("前端 称：回复：#4542（说「4543 原文」看全文）", r.notes)
 
@@ -572,7 +587,7 @@ class QuestionReturnTest(HubCase):
         r = self.receive(asking(2001, "fe-codex", "收件枢纽，现在几点了？"))
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
         self.assertNotIn("你回的", body)
-        self.assertTrue(body.startswith("回复：#2001\n收件枢纽只转达用户的话"))
+        self.assertTrue(body.startswith("回复：#2001\n决策收件箱只转达用户的话"))
 
     def test_notice_reply_names_the_notice(self):
         self.receive(message(1501, "fe-owner", WAIT_USER))
@@ -580,7 +595,7 @@ class QuestionReturnTest(HubCase):
         hub.sent(self.g, {r.sends[0]["id"]: 1601, r.sends[1]["id"]: 1602}, [], at=NOW)
         r = self.receive(asking(1603, "fe-codex", "回复：#1602\n这条要我做什么？", reply_to=1602))
         body = Path(r.sends[0]["bodyFile"]).read_text(encoding="utf-8")
-        self.assertIn("你回的 #1602 是事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
+        self.assertIn("你回的 #1602 是待决事项 #1（原消息 #1501）的【答复告知】，只是告知。", body)
 
     def test_no_return_for_plain_notes_bridge_or_replies_to_a_return(self):
         r = self.receive(asking(2001, "fe-codex", "问一句"))
@@ -597,7 +612,7 @@ class QuestionReturnTest(HubCase):
         self.receive(asking(2001, "fe-codex", "问一句"))
         main = hub.main_view(self.g, now=NOW)
         self.assertIn("异常 1", main)
-        self.assertIn("- 前端：问了收件枢纽（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
+        self.assertIn("- 前端：问了决策收件箱（#2001），已自动退回。建议：说「2001 原文」看它问了什么", main)
         self.assertIn("异常 0", hub.main_view(self.g, now="2026-10-17T05:30:00Z"))
 
 
@@ -718,8 +733,8 @@ class StaleTicketTest(HubCase):
         views = {t.no: t for t in tickets.open_tickets(self.g, NOW)}
         self.assertEqual(views[no].maybe_stale, 4610)
         waits = view.render_waits(self.g, NOW)
-        self.assertIn(f"（可能已失效：之后又发过 #4610，回『关掉 #{no}』）", waits)
-        self.assertIn("等待中 1 单（其中 1 单可能已失效）", hub.main_view(self.g, now=NOW))
+        self.assertIn(f"（可能已失效：之后又发过 #4610，回『关掉 W{no}』）", waits)
+        self.assertIn("等待中 1 条（其中 1 条可能已失效）", hub.main_view(self.g, now=NOW))
 
     def test_not_counted_as_all_waiting(self):
         self.stale_setup()

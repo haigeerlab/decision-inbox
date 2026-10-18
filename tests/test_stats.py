@@ -70,12 +70,12 @@ class StatsTest(StatsCase):
 
     def test_render(self):
         text = query.render_stats(query.stats(self.g), "g", None)
-        self.assertIn("绕过收件枢纽结束：1 项（#3）", text)
+        self.assertIn("绕过决策收件箱结束：1 项（#3）", text)
         self.assertIn("抛出→答复：中位 20 分钟，最长 30 分钟（2 项）", text)
         self.assertIn("答复→恢复：中位 17.5 分钟，最长 30 分钟（2 项）", text)
         self.assertIn("被取代 2 项（其中自动 1 项） · 退回 1 次 · 追问被退回 1 次 · 拒收转述 1 次", text)
-        self.assertIn("现在开着的等待单 0 单", text)
-        self.assertIn("巡视：跑了 5 轮（定时任务 4 轮，收件枢纽顺带 1 轮），相邻两轮最长隔 1350 分钟，超过 15 分钟 2 次", text)
+        self.assertIn("现在开着的等待记录 0 条", text)
+        self.assertIn("巡视：跑了 5 轮（定时任务 4 轮，决策收件箱顺带 1 轮），相邻两轮最长隔 1350 分钟，超过 15 分钟 2 次", text)
         empty = query.render_stats(query.stats(self.g, since="2030-01-01"), "g", "2030-01-01")
         self.assertIn("抛出→答复：没有数据", empty)
         self.assertIn("巡视：这段时间没跑过", empty)

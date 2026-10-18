@@ -306,11 +306,11 @@ def _decisions(block: str, problems: list[Issue]) -> tuple[Decision, ...]:
     out = tuple(Decision(d["id"], d["question"], tuple(d["options"]), d["lean"], d["reason"]) for d in found)
     for d in out:
         if len(d.options) < 2 or d.lean is None:
-            problems.append(Issue(f"bad-decision-item:{d.id}", f"待用户决定 {d.id} 少于两个选项或没写倾向"))
+            problems.append(Issue(f"bad-decision-item:{d.id}", f"「待用户决定」（待你决定）里的 {d.id} 少于两个选项或没写倾向"))
     seen: set[str] = set()
     for d in out:
         if d.id in seen:
-            problems.append(Issue(f"duplicate-decision:{d.id}", f"待用户决定里 {d.id} 重复"))
+            problems.append(Issue(f"duplicate-decision:{d.id}", f"「待用户决定」（待你决定）里 {d.id} 重复"))
         seen.add(d.id)
     return out
 
@@ -443,7 +443,7 @@ def parse(text: str) -> Message:
         brief = fields.get("要点", "")
         if (len([x for x in brief.splitlines() if x.strip()]) < 2
                 or any(word in brief for word in THIN_BRIEF_WORDS)):
-            hints.append(Issue("brief-thin", "要点太简略，用户可能没法直接决定，见约定块里的要点写法"))
+            hints.append(Issue("brief-thin", "要点太简略，用户可能没法直接决定，见协作规则段里的要点写法"))
         options, recommended = _options(fields.get("选项与我的建议", ""))
         if not options:
             problems.append(Issue("missing-options", "「选项与我的建议」里没有带字母的选项"))
