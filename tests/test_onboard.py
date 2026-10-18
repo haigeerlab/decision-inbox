@@ -1080,3 +1080,12 @@ class OneAskPlaceTest(unittest.TestCase):
                 text = onboard.block(role, "demo", "di-hub")
                 for words in ("只在收件枢纽问", "不放可以点的决定按钮", "去收件枢纽答 #事项号", "收回本会话里还没答的旧提问"):
                     self.assertIn(words, text)
+
+
+class MultiResumeRuleTest(unittest.TestCase):
+    """r20-fixes Task 3 (O-multi-resume): lines a multi-line item applies to do not send 【已恢复】."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                self.assertIn("适用线不用发【已恢复】，结项只认发起方", onboard.block(role, "demo", "di-hub"))

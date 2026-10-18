@@ -904,3 +904,10 @@ class DecoupledTest(HubCase):
         card = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
         self.assertNotIn("要点（摘要）", card)
         self.assertNotIn("待你决定的问题", card)
+
+
+class VerbatimRuleTest(HubCase):
+    def test_hub_block_says_paste_verbatim(self):
+        """r20-fixes Task 2: the hub pastes command output word for word, never retyping a line."""
+        self.assertGreaterEqual(hub.CONVENTION.count("逐字粘贴给用户，不要手抄、不要改写其中任何一行"), 2)
+        self.assertIn("以命令输出为准", hub.CONVENTION)
