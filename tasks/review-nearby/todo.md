@@ -6,7 +6,7 @@
   - 验证：`tests/test_doctor.py`：两边都没装报 problem；现有一边、同版本、不同版本用例不变
 - [x] Task 3：返工轮次显示（Spec 验收 5）
   - 验证：`tests/test_crew.py`、`tests/test_health.py`：rework、reviewing（round 0／>0）、null、缺字段、形状不对；`tests/test_hub.py`：有须修改项的【审查结论】不产生事项
-- [x] Task 4：合批摘要卡片（Spec 验收 6）
+- [x] Task 4：合批摘要卡片（Spec 验收 6）——2026-10-19 用户确认回退显示（R8 由 R12 取代，移到 approval-display），只保留存 `brief`
   - 验证：`tests/test_view.py`：module-crew 新格式样例显示摘要段与「回『N 详情』」；bodies/8.txt 取前 5 行；单项卡片快照不变；详情照旧
 - [x] Checkpoint A（report）：Phase 1 测试全过（708 个）；契约未发布时停在这里等
 - [x] Task 5：改钉契约 v2.0.1（Spec 验收 1）

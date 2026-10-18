@@ -189,36 +189,6 @@ def _review_lines(it: dict) -> list[str]:
     return out
 
 
-SUMMARY_LINES = 5
-_BATCH_REF_RE = re.compile(r"#\d+|(?<![A-Za-z0-9])C\d+(?![A-Za-z0-9])")
-
-
-def is_batch(it: dict) -> bool:
-    """Several submissions in one item, or questions of its own (review-nearby R8)."""
-    return len(set(_BATCH_REF_RE.findall(it["decide"]))) >= 2 or bool(it.get("decisions"))
-
-
-def _summary(it: dict) -> list[str]:
-    """The brief's first paragraph, at most SUMMARY_LINES lines; the rest is behind 「N 详情」."""
-    lines = [line.rstrip() for line in (it.get("brief") or "").split("\n")]
-    filled = [line for line in lines if line.strip()]
-    if not filled:
-        return []
-    paragraph = []
-    for line in lines:
-        if not line.strip():
-            if paragraph:
-                break
-            continue
-        paragraph.append(line)
-    out = ["要点（摘要）：", *paragraph[:SUMMARY_LINES]]
-    if len(paragraph) > SUMMARY_LINES:
-        out.append(f"  …（共 {len(filled)} 行，回「{it['no']} 详情」看全文）")
-    elif len(paragraph) < len(filled):
-        out.append(f"  …（全文回「{it['no']} 详情」看）")
-    return out
-
-
 def _decision_lines(it: dict) -> list[str]:
     """Each 「待用户决定」 as its own question with the reviewer's lean (review-nearby R2)."""
     out = ["待你决定的问题（每条都要答，没答全会被追问）："]
@@ -242,10 +212,7 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
     title = f"━━ {no} · {_source(g, it)} · {topic} · {ago(now, it['receivedAt'])}"
     if it["blocks"]:
         title += f" · 挡住 {it['blocks']} 条线"
-    if is_batch(it):
-        out = [title, f"要你决定：{it['decide'].split(chr(10))[0]}", *_summary(it)]
-    else:
-        out = [title, f"要你决定：{it['decide']}"]
+    out = [title, f"要你决定：{it['decide']}"]
     options = it["options"]
     rec = next((o for o in options if o["letter"] == it["recommended"]), None)
     if rec is not None:
