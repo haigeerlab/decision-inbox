@@ -157,3 +157,36 @@ class RulesTest(GoToSessionCase):
                            lines=["界面"], desktop_session="local_00000000-0000-0000-0000-0000000000a1",
                            project=self.home / "ui", reviewer=None, nodes=[], confirm=False, now=NOW)
         self.assertTrue([w for w in out.warnings if "要你去会话里操作" in w])
+
+
+class ProxiedSessionNoteTest(GoToSessionCase):
+    """proxied-session-note: ask rules hold only in a session the user opened by hand."""
+
+    def test_rule_section_tells_a_proxied_session_to_report_first(self):
+        from decision_inbox import onboard
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("被别的会话开出来的", "不要直接执行", "去会话操作",
+                              "本会话由别的会话代开，先问规则可能不弹确认"):
+                    self.assertIn(words, text)
+
+    def join(self, host, role="dev"):
+        from decision_inbox import onboard
+        lines = [] if role == "coordinator" else ["界面"]
+        return onboard.join("demo", role=role, relay_name=f"x-{host}-{role}", short_name=f"界面{role}"[:12],
+                            host=host, lines=lines,
+                            desktop_session="local_00000000-0000-0000-0000-0000000000a1" if host == "claude-desktop" else None,
+                            project=self.home / f"{host}-{role}", reviewer=None, nodes=[], confirm=False, now=NOW,
+                            session_cwd=str(self.home / f"{host}-{role}"))
+
+    def test_claude_join_preview_has_the_note(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                notes = [w for w in self.join("claude-desktop", role).warnings if "亲手开的会话" in w]
+                self.assertEqual(len(notes), 1)
+                for words in ("代开", "不弹确认"):
+                    self.assertIn(words, notes[0])
+
+    def test_codex_join_preview_has_no_note(self):
+        self.assertFalse([w for w in self.join("codex-desktop").warnings if "亲手开的会话" in w])

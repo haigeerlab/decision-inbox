@@ -216,6 +216,8 @@ class ReadmeTest(unittest.TestCase):
                        # relay-presence-and-doubt
                        "送达存疑", "决策收件箱欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
+                       # proxied-session-note
+                       "被代开的会话碰到不可逆操作",
                        # host-permission-check
                        "宿主权限", ".codex/config.toml", "network_access = true", "没实测",
                        # go-to-session
