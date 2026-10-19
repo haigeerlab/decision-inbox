@@ -87,3 +87,55 @@ class ReceiveAndReplyTest(GoToSessionCase):
         self.assertEqual(items.get(self.g, no)["status"], "pending")
         hub.receive(self.g, inbox(msg(51, "fe", resumed)), minutes(6))
         self.assertEqual(items.get(self.g, no)["status"], "closed")
+
+
+class MainViewTest(GoToSessionCase):
+    def view(self, at=NOW, relay=None):
+        return hub.main_view(self.g, at, relay=relay)
+
+    def test_claude_item_on_top_with_link_and_no_options(self):
+        no = self.receive(CLAUDE)
+        text = self.view()
+        top = text.split("\n\n")[0]
+        for words in (f"#{no} · 前端 · 去会话操作", "claude://claude.ai/epitaxy/local_f9d5b932-946c-407b-a5c2-87845cb29425",
+                      "被拦的操作：Bash: git push origin alpha", "点：允许（Yes）",
+                      "为什么这里批不了：宿主弹窗只能在那个会话里点，决策收件箱代点不了",
+                      "你在 #21 已同意，只差宿主这一下", "点完不用回复，对方会发【已恢复】自动结项"):
+            self.assertIn(words, top)
+        self.assertNotIn("推荐 A", text)
+        self.assertNotIn("我去点", text)
+        self.assertNotIn(f"━━ {no} ·", text)  # not an ordinary card
+
+    def test_full_link_shown_as_is(self):
+        self.receive(CLAUDE.replace("链接：local_f9d5b932-946c-407b-a5c2-87845cb29425",
+                                    "链接：claude://claude.ai/epitaxy/local_abc"))
+        self.assertIn("claude://claude.ai/epitaxy/local_abc", self.view())
+
+    def test_codex_item_says_open_in_codex(self):
+        self.receive(CODEX, sender="be")
+        top = self.view().split("\n\n")[0]
+        self.assertIn("在 Codex 应用里打开 rh2-beta（/Users/me/live-saas/.worktrees/beta） 对应的任务", top)
+        self.assertIn("宿主原文：Allow network access for: npm install", top)
+        self.assertNotIn("claude://", top)
+
+    def test_reminder_after_thirty_minutes(self):
+        self.receive(CLAUDE)
+        self.assertNotIn("再提醒一次", self.view(minutes(29)))
+        self.assertIn("已等 40 分钟，再提醒一次", self.view(minutes(40)))
+
+    def test_closed_item_leaves_the_top(self):
+        no = self.receive(CLAUDE)
+        hub.receive(self.g, inbox(msg(51, "fe", f"【已恢复】\n结束：#{no}\n")), minutes(1))
+        self.assertNotIn("去会话操作", self.view(minutes(2)))
+
+    def test_fallback_card_only_without_an_open_item(self):
+        from test_health import snapshot, agent
+        waiting = snapshot(agent("fe", state="waiting-approval"))
+        self.assertIn("去原会话确认 · 前端", self.view(relay=waiting))
+        self.receive(CLAUDE)
+        self.assertNotIn("去原会话确认", self.view(relay=waiting))
+
+    def test_not_in_the_answer_everything_block(self):
+        self.receive(CLAUDE, relay_id=1)
+        self.receive(CODEX, sender="be", relay_id=2)
+        self.assertNotIn("一次答完", self.view())

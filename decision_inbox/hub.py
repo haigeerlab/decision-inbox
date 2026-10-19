@@ -353,6 +353,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
+    head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
