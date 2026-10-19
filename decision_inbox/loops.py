@@ -92,11 +92,13 @@ def _crew_module_for(it: dict, modules) -> str | None:
     by_code = _by_code(text, modules)
     if by_code:
         return by_code[0] if len(by_code) == 1 else None  # several modules' numbers: a joint item
-    for m in modules:
-        if m.relay_name and _named(m.relay_name, text):
-            return m.module
     named = [m.module for m in modules if _named(m.module, first)]
-    return named[0] if len(named) == 1 else None
+    if len(named) > 1:
+        return None  # several modules in the question: a joint item, never the first one's
+    sessions = [m.module for m in modules if m.relay_name and _named(m.relay_name, text)]
+    if sessions:
+        return sessions[0] if len(sessions) == 1 else None
+    return named[0] if named else None
 
 
 def _by_code(text: str, modules) -> list[str]:
@@ -111,7 +113,8 @@ def _involved(it: dict, modules) -> set[str]:
     known = {m.module for m in modules}
     first = (it.get("decide") or "").split("\n")[0]
     return (set(_by_code(text, modules)) | (set(approval_modules(it)) & known)
-            | {m for m in known if _named(m, first)})
+            | {m for m in known if _named(m, first)}
+            | {m.module for m in modules if m.relay_name and _named(m.relay_name, text)})
 
 
 def approval_modules(it: dict) -> list[str]:

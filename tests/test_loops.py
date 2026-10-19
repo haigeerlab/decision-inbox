@@ -123,6 +123,18 @@ class ReverseLookupTest(LoopsCase):
         self.assertEqual([self.module_of(n) for n in (by_answer, by_ask, by_session, by_word, two, none, inside)],
                          ["zeta", "zeta", "zeta", "zeta", None, None, None])
 
+    def test_two_modules_named_anywhere_is_joint(self):
+        """di-p0 #36: the decide names gamma and summary, the brief names both sessions; not the first one's."""
+        both = self.item(sender="co", decide="权限实测已跑完，delta、zeta 两个 worktree 现在收回还是继续留着")
+        sessions = self.item(sender="co", decide="两个会话的权限实测结果一致吗")
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(both)]["brief"] = "rh-delta、rh-zeta 各自跑了 permissions verify"
+            doc["items"][str(sessions)]["brief"] = "rh-delta、rh-zeta 各自跑了 permissions verify"
+            tx.write_state("items", doc)
+        loops.tag(self.g, {}, self.crews())
+        self.assertEqual((self.module_of(both), self.module_of(sessions)), (None, None))
+
     def test_line_level_and_own_field_are_kept(self):
         line = self.item(sender="co", decide="zeta 收回吗", module="无")
         own = self.item(sender="co", decide="zeta 收回吗", module="delta")

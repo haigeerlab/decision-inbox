@@ -17,8 +17,14 @@
   - 验证：假 launchctl 用例先失败后通过
   - 结果：新命令 `onboard watch <组> [--confirm]`：预览打印 plist 全文，确认后写 `~/Library/LaunchAgents/com.haigeerlab.decision-inbox.patrol-watch.<组>.plist`（每 300 秒、登录即跑，日志在组目录 patrol-watch.log），先 bootout 再 bootstrap；`onboard hub` 后续步骤加这一步；`onboard teardown` 预览列出、确认后卸掉；doctor 新增「巡视提醒」（没装／没加载 bad，附装的命令）。`InstallTest` 4 条、`WatchOnboardCommandTest` 1 条先失败后通过；hub-setup、teardown 命令说明跟上
   - 改写的旧测试：`test_package` 的删除扫描白名单加 `watch.py` 的 `uninstall`（只删本插件自己写的 plist）
-- [ ] Task 6：文档、版本 0.0.31 与实跑（验收 8）
+- [x] Task 6：文档、版本 0.0.31 与实跑（验收 8）
   - 验证：全量测试；副本主视图；临时组真通知；真实状态目录 md5 不变
+  - 文档：README「模块打转」（模块来源与停滞口径）、「消息协议」（v2.4）、「升级」（0.0.31 段）、「卸载」、「排查」（系统通知一行）；`docs/glossary.md` 加「巡视提醒」；命令用法加 `patrol-watch`、`onboard watch`；两个插件清单 0.0.31
+  - 真实数据（2026-10-20，di-p0 复制到 scratchpad，module-crew 事实用 `sessions --json` 现读 crew-rehearsal）：#61、#62、#63、#64 由「模块未知」改归 zeta，#34 归 summary，#55 归 epsilon，#29～#58 的去会话操作归各自模块；#35（gamma、summary 两个 worktree）、#44（delta C121、epsilon C119 合问）仍不归任何模块。「看模块 zeta」列出 #57～#65，#63 显示「答了 63 继续等」
+  - 实跑时发现并修正：#36 的「要你决定」写了 gamma、summary 两个模块，要点里先出现 rh2-gamma，被认成 gamma；改为「要你决定」点名两个以上模块、或出现两个以上模块会话名时算合问，不猜（`test_two_modules_named_anywhere_is_joint` 先失败后通过）；合问扣除也认会话名
+  - 真实 `~/.decision-inbox/di-p0/state` 前后 md5 都是 712959e9b6600a8b1c0ac6bf7c9b03c5
+  - 真通知：scratchpad 临时组 watch-demo（巡视 62 分钟没跑）手动跑 `patrol-watch`，弹出「决策收件箱：巡视停了」，正文含巡视会话链接与修法；紧接着再跑不重弹。没有装 launchd。演示前单独测 osascript 时多弹过一条「测试正文」
+  - 没做到：epsilon 场景只在单测里重放（module-crew 当时的 `sessions --json` 已无法还原，现在读到的是全部合入后的事实）
 
 ## 检查点
 
