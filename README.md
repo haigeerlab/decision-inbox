@@ -195,6 +195,8 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 0.0.26 也没改协作规则段，不用重新接入：巡视在模块协调那条线上按模块判断停滞（需要 module-crew 0.4.0，见上面「巡视」一条）；module-crew 还是 0.3.x 时行为不变。
 
+0.0.27 也没改协作规则段，不用重新接入：卸载过的协作组（决策收件箱已退出），doctor 不再报它的巡视停了，改为一行说明已卸载、状态目录保留。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit` 和 `--test-command` 指定的测试命令直接放行；`git push`、`git reset --hard`、`rm -rf`、`npm install`、`pip install` 设成「先问」。只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
