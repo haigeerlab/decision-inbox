@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 80d72ed37821 -->
 
 # Spec: doctor-skip-teardown
 
