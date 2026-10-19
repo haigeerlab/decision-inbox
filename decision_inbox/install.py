@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
+import tempfile
 from pathlib import Path
 
 from decision_inbox import store
@@ -45,6 +47,55 @@ def write_shim(root, if_installed: bool = False) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     store._atomic_write_bytes(path, text.encode("utf-8"))
     os.chmod(path, 0o755)
+    return True
+
+
+def runtime_dir() -> Path:
+    """patrol-watch-runtime: the copy launchd runs, kept under the home because launchd may not read ~/Documents."""
+    return store.root_dir() / "runtime"
+
+
+def _runtime_files(root: Path) -> dict[str, bytes]:
+    files = {"bin/decision-inbox": (root / "bin" / "decision-inbox").read_bytes()}
+    for p in sorted((root / "decision_inbox").glob("*.py")):
+        files[f"decision_inbox/{p.name}"] = p.read_bytes()
+    return files
+
+
+def write_runtime(root, if_present: bool = False) -> bool:
+    """Copy bin/decision-inbox and the package from root into runtime_dir(); True when it changed.
+
+    Replaced whole (built beside it, then renamed in), so a failure never leaves half of one version.
+    With if_present, only refresh one that is already there (SessionStart does this after a plugin upgrade).
+    """
+    dest = runtime_dir()
+    if if_present and not dest.is_dir():
+        return False
+    files = _runtime_files(Path(root))
+    old = None
+    if dest.is_dir():
+        try:
+            old = _runtime_files(dest)
+        except OSError:
+            pass
+    if old == files and os.access(dest / "bin" / "decision-inbox", os.X_OK):
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=".runtime-", dir=dest.parent))
+    try:
+        for rel, data in files.items():
+            (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / rel).write_bytes(data)
+        os.chmod(tmp / "bin" / "decision-inbox", 0o755)
+        gone = None
+        if dest.exists():
+            gone = dest.parent / f".runtime-old-{os.getpid()}"
+            os.rename(dest, gone)
+        os.rename(tmp, dest)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if gone is not None:
+        shutil.rmtree(gone, ignore_errors=True)
     return True
 
 

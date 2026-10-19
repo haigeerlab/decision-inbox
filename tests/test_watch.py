@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from helpers import REPO, TempHomeTestCase
 
@@ -93,7 +94,8 @@ class InstallTest(TempHomeTestCase):
         fake = self.home / "launchctl"
         # `print` answers 0 only while the last bootstrap/bootout was a bootstrap, like the real one
         fake.write_text(f'#!/bin/sh\necho "$@" >> "{self.log}"\n'
-                        f'if [ "$1" = print ]; then grep -E "^boot(strap|out)" "{self.log}" | tail -1 | grep -q bootstrap; fi\n',
+                        f'if [ "$1" = print ]; then grep -E "^boot(strap|out)" "{self.log}" | tail -1 | grep -q bootstrap || exit 1; '
+                        f'cat "{self.home}/print.out" 2>/dev/null; exit 0; fi\n',
                         encoding="utf-8")
         fake.chmod(0o755)
         self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_LAUNCH_AGENTS", "DECISION_INBOX_LAUNCHCTL")}
@@ -123,13 +125,50 @@ class InstallTest(TempHomeTestCase):
         from decision_inbox import install as inst
         plan = watch.install("demo", confirm=True)
         self.assertTrue(plan.path.is_file())
-        self.assertIn(f"<string>{inst.cli()}</string>", plan.path.read_text(encoding="utf-8"))
+        self.assertIn(f"<string>{inst.runtime_dir()}/bin/decision-inbox</string>", plan.path.read_text(encoding="utf-8"))
         self.assertTrue(any(c.startswith("bootstrap gui/") and c.endswith(str(plan.path)) for c in self.calls()))
         self.assertTrue(watch.loaded("demo"))
         self.assertTrue(watch.uninstall("demo", confirm=True))
         self.assertFalse(plan.path.exists())
         self.assertTrue(any(c.startswith("bootout gui/") for c in self.calls()))
         self.assertFalse(watch.uninstall("demo", confirm=True))
+
+    def test_job_runs_the_runtime_copy_with_this_python(self):
+        """patrol-watch-runtime: not the forwarding script (it may lead into ~/Documents), not launchd's python3."""
+        import plistlib
+        from decision_inbox import install as inst
+        preview = watch.install("demo", confirm=False)
+        self.assertFalse(inst.runtime_dir().exists())
+        plan = watch.install("demo", confirm=True)
+        self.assertIsNone(plan.error)
+        self.assertEqual(plan.content, preview.content)
+        rt = inst.runtime_dir()
+        self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
+                         (REPO / "decision_inbox" / "watch.py").read_bytes())
+        job = plistlib.loads(plan.path.read_bytes())
+        self.assertEqual(job["ProgramArguments"], [str(rt / "bin" / "decision-inbox"), "patrol-watch", "demo"])
+        self.assertEqual(job["EnvironmentVariables"]["PATH"], f"{os.path.dirname(sys.executable)}:/usr/bin:/bin")
+        self.assertEqual(job["EnvironmentVariables"]["DECISION_INBOX_HOME"], str(self.home))
+        self.assertEqual(job["StartInterval"], 300)
+
+    def test_refuses_folders_launchd_may_not_read(self):
+        from unittest import mock
+        protected = Path.home() / "Documents"
+        with mock.patch.object(sys, "executable", str(protected / "py" / "bin" / "python3")):
+            plan = watch.install("demo", confirm=True)
+        self.assertTrue(plan.refused)
+        self.assertIn("Documents", plan.error)
+        self.assertIn("python", plan.error)
+        self.assertFalse(plan.path.exists())
+        self.assertEqual(self.calls(), [])
+        os.environ["DECISION_INBOX_HOME"] = str(Path.home() / "Desktop" / "di-home")
+        try:
+            plan = watch.install("demo", confirm=True)
+        finally:
+            os.environ["DECISION_INBOX_HOME"] = str(self.home)
+        self.assertIn("Desktop", plan.error)
+        self.assertFalse(plan.path.exists())
+        self.assertFalse((Path.home() / "Desktop" / "di-home").exists())
 
     def test_hub_steps_and_teardown(self):
         from decision_inbox import onboard
@@ -153,6 +192,63 @@ class InstallTest(TempHomeTestCase):
         self.assertEqual(doctor._patrol_watch("demo").state, "ok")
 
 
+class DoctorRunsTest(InstallTest):
+    """patrol-watch-runtime: loaded is not enough; the job has to run."""
+
+    def check(self, last=None, log=None):
+        from decision_inbox import doctor
+        if last is not None:
+            (self.home / "print.out").write_text(f"\tstate = not running\n\truns = 1\n\tlast exit code = {last}\n",
+                                                 encoding="utf-8")
+        if log is not None:
+            (self.home / "demo" / "patrol-watch.log").write_text(log, encoding="utf-8")
+        return doctor._patrol_watch("demo")
+
+    def test_ok_when_it_exited_zero_or_has_not_run_yet(self):
+        watch.install("demo", confirm=True)
+        self.assertEqual(self.check().state, "ok")
+        self.assertEqual(self.check("(never exited)").state, "ok")
+        self.assertEqual(self.check("0").state, "ok")
+
+    def test_exit_126_in_a_protected_folder(self):
+        watch.install("demo", confirm=True)
+        c = self.check("126", "/bin/sh: /Users/x/Documents/r/bin/decision-inbox: Operation not permitted\n")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("126", c.evidence)
+        self.assertIn("Operation not permitted", c.evidence)
+        self.assertIn("受保护目录", c.evidence)
+        self.assertIn("onboard watch demo --confirm", c.fix)
+
+    def test_other_exit_shows_the_last_log_line(self):
+        watch.install("demo", confirm=True)
+        c = self.check("1", "Traceback (most recent call last):\nTypeError: unsupported operand\n\n")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("退出 1", c.evidence)
+        self.assertIn("TypeError: unsupported operand", c.evidence)
+        self.assertNotIn("受保护目录", c.evidence)
+
+    def test_job_from_before_the_runtime_copy(self):
+        import plistlib
+        from decision_inbox import install as inst
+        plan = watch.install("demo", confirm=True)
+        job = plistlib.loads(plan.path.read_bytes())
+        job["ProgramArguments"][0] = inst.cli()
+        plan.path.write_bytes(plistlib.dumps(job))
+        c = self.check("0")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("旧版", c.evidence)
+        self.assertIn("onboard watch demo --confirm", c.fix)
+
+    def test_runtime_copy_missing(self):
+        import shutil
+        from decision_inbox import install as inst
+        watch.install("demo", confirm=True)
+        shutil.rmtree(inst.runtime_dir())
+        c = self.check("0")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("运行副本", c.evidence)
+
+
 class WatchOnboardCommandTest(InstallTest):
     def run_cli(self, *args):
         env = {**os.environ, "PYTHONPATH": str(REPO)}
@@ -163,8 +259,65 @@ class WatchOnboardCommandTest(InstallTest):
         r = self.run_cli()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("这是预览", r.stdout)
+        from decision_inbox import install as inst
+        self.assertIn(f"运行副本：{inst.runtime_dir()}", r.stdout)
+        self.assertIn(f"python：{sys.executable}", r.stdout)
         self.assertFalse(watch.plist_path("demo").exists())
         r = self.run_cli("--confirm")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("已加载", r.stdout)
         self.assertTrue(watch.plist_path("demo").exists())
+
+
+class RuntimeTest(TempHomeTestCase):
+    """patrol-watch-runtime: a copy of the plugin under the home, outside folders launchd may not read."""
+
+    def setUp(self):
+        super().setUp()
+        self.src = self.home / "plugin"
+        (self.src / "bin").mkdir(parents=True)
+        (self.src / "decision_inbox" / "__pycache__").mkdir(parents=True)
+        (self.src / "bin" / "decision-inbox").write_text("#!/bin/sh\necho v1\n", encoding="utf-8")
+        (self.src / "bin" / "decision-inbox").chmod(0o755)
+        (self.src / "decision_inbox" / "__init__.py").write_text("", encoding="utf-8")
+        (self.src / "decision_inbox" / "a.py").write_text("X = 1\n", encoding="utf-8")
+        (self.src / "decision_inbox" / "__pycache__" / "a.cpython-310.pyc").write_bytes(b"junk")
+
+    def files(self, root):
+        return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+
+    def test_copy_then_unchanged_then_replaced(self):
+        from decision_inbox import install as inst
+        rt = inst.runtime_dir()
+        self.assertEqual(rt, self.home / "runtime")
+        self.assertTrue(inst.write_runtime(self.src))
+        self.assertEqual(self.files(rt), ["bin/decision-inbox", "decision_inbox/__init__.py", "decision_inbox/a.py"])
+        self.assertTrue(os.access(rt / "bin" / "decision-inbox", os.X_OK))
+        self.assertFalse(inst.write_runtime(self.src))
+        (self.src / "decision_inbox" / "a.py").write_text("X = 2\n", encoding="utf-8")
+        (self.src / "decision_inbox" / "__init__.py").unlink()
+        self.assertTrue(inst.write_runtime(self.src))
+        self.assertEqual(self.files(rt), ["bin/decision-inbox", "decision_inbox/a.py"])
+        self.assertEqual((rt / "decision_inbox" / "a.py").read_text(encoding="utf-8"), "X = 2\n")
+        self.assertEqual([p.name for p in self.home.iterdir() if p.name.startswith("runtime")], ["runtime"])
+
+    def test_if_present_never_creates_it(self):
+        from decision_inbox import install as inst
+        self.assertFalse(inst.write_runtime(self.src, if_present=True))
+        self.assertFalse(inst.runtime_dir().exists())
+
+    def test_shim_command_refreshes_an_existing_runtime(self):
+        from decision_inbox import install as inst
+        env = {**os.environ, "PYTHONPATH": str(REPO)}
+        cmd = [str(REPO / "bin" / "decision-inbox"), "shim", "--if-installed"]
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(inst.runtime_dir().exists())
+        inst.write_runtime(self.src)
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual((r.returncode, r.stdout), (0, ""), r.stderr)
+        rt = inst.runtime_dir()
+        self.assertEqual((rt / "bin" / "decision-inbox").read_bytes(), (REPO / "bin" / "decision-inbox").read_bytes())
+        self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
+                         (REPO / "decision_inbox" / "watch.py").read_bytes())
+        self.assertFalse((rt / "decision_inbox" / "a.py").exists())
