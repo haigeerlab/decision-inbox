@@ -410,3 +410,109 @@ class DoubtTimelineTest(QueryCase):
         text = query.render_item(self.g, no, {7001: st})
         self.assertIn("agent-relay #7001：已接受但没读到（送达存疑，来源：agent-relay）", text)
         self.assertNotIn("投递 accepted", text)
+
+
+class WaitsTest(QueryCase):
+    """my-waits: one session's own view of what it waits on and who waits on it."""
+
+    def set_item(self, no, status, sent_to=None):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            it = doc["items"][str(no)]
+            it["status"] = status
+            if sent_to:
+                it["sent"].append({"to": sent_to, "relayId": 1, "at": at(1), "state": None, "ackAt": None})
+            tx.write_state("items", doc)
+
+    def setUp(self):
+        super().setUp()
+        self.w_api = self.wait("fe", "API", sent_ago=20, what="接口")
+        # a newer pending 【等待用户】 supersedes the sender's pending one, so only the last stays pending
+        self.undelivered = self.ask("fe", ago_minutes=15)
+        self.set_item(self.undelivered, "forwarded")
+        self.delivered = self.ask("fe", ago_minutes=14)
+        self.set_item(self.delivered, "picked", sent_to="fe")
+        self.gone = self.ask("fe", ago_minutes=13)
+        self.set_item(self.gone, "withdrawn")
+        self.pending = self.ask("fe", ago_minutes=12)
+        self.w_stale = self.wait("fe", "后台", sent_ago=8, what=f"#{self.gone} 的结果")
+        self.w_closed = self.wait("fe", "API", sent_ago=7, what="旧的")
+        tickets.close_by_user(self.g, self.w_closed, None, at(6))
+        self.w_for_me = self.wait("api", "前端", sent_ago=3, what="页面")
+        self.w_relay_name = self.wait("bg", "fe", sent_ago=2, what="样式")
+        self.w_other = self.wait("api", "后台", sent_ago=1, what="数据")
+        self.other_item = self.ask("api", ago_minutes=1)
+
+    def test_what_i_wait_on_and_who_waits_on_me(self):
+        out = query.render_waits(self.g, "fe", now=NOW)
+        mine, _, theirs = out.partition("在等你的：")
+        decide = items.get(self.g, self.pending)["decide"].splitlines()[0]
+        self.assertIn("前端在等：", mine)
+        self.assertIn(f"W{self.w_api} 在等 API 的「接口」，已等 20 分钟", mine)
+        self.assertIn(f"W{self.w_stale} 在等 后台 的「#{self.gone} 的结果」", mine)
+        self.assertIn(f"可能已失效：所等的 #{self.gone} 已结项", mine)
+        self.assertIn(f"#{self.pending}「{decide}」等用户决定，已等 12 分钟", mine)
+        self.assertIn(f"#{self.undelivered}「{decide}」用户已答复，答复还没送到", mine)
+        self.assertIn(f"#{self.delivered}「{decide}」答复已送到，执行后发【已恢复】结项", mine)
+        self.assertNotIn(f"#{self.gone}「", mine)
+        self.assertNotIn(f"W{self.w_closed} ", out)
+        self.assertNotIn(f"#{self.other_item}「", out)
+        self.assertIn(f"W{self.w_for_me} API 在等你的「页面」，已等 3 分钟", theirs)
+        self.assertIn(f"W{self.w_relay_name} 后台 在等你的「样式」，已等 2 分钟", theirs)
+        self.assertNotIn(f"W{self.w_other} ", out)
+        self.assertNotIn("对方离线", out)
+
+    def test_offline_only_with_a_relay_snapshot(self):
+        relay = snapshot(agent("api", app="codex", state="stopped"))
+        out = query.render_waits(self.g, "fe", now=NOW, relay=relay)
+        row = next(r for r in out.splitlines() if r.startswith(f"- W{self.w_api} "))
+        self.assertIn("对方离线", row)
+
+    def test_nothing_either_way(self):
+        out = query.render_waits(self.g, "owner", now=NOW)
+        self.assertIn("没有在等的，也没有人在等你", out)
+
+    def test_hub_is_pointed_at_the_main_view(self):
+        out = query.render_waits(self.g, "hub", now=NOW)
+        self.assertIn("决策收件箱看主视图", out)
+        self.assertNotIn("在等你的", out)
+
+    def test_unknown_session(self):
+        with self.assertRaises(query.UnknownSession):
+            query.render_waits(self.g, "nobody", now=NOW)
+
+
+class WaitsCommandTest(WaitsTest):
+    """my-waits: the command line; it only reads."""
+
+    def run_cli(self, *args):
+        import os, subprocess, sys
+        from helpers import REPO
+        env = {**os.environ, "PYTHONPATH": str(REPO)}
+        return subprocess.run([sys.executable, "-m", "decision_inbox", "query", "waits", "demo", *args],
+                              env=env, capture_output=True, text=True, timeout=30)
+
+    def tree(self):
+        return {str(p.relative_to(self.home)): p.read_bytes() for p in sorted(self.home.rglob("*")) if p.is_file()}
+
+    def test_reads_only(self):
+        import json
+        before = self.tree()
+        r = self.run_cli("--me", "fe")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"W{self.w_api} 在等 API", r.stdout)
+        self.assertIn(f"W{self.w_for_me} API 在等你的", r.stdout)
+        self.assertEqual(self.tree(), before)
+        agents = self.home / "agents.json"
+        agents.write_text(json.dumps({"count": 1, "agents": [agent("api", app="codex", state="stopped")]}),
+                          encoding="utf-8")
+        before = self.tree()
+        r = self.run_cli("--me", "fe", "--agents", str(agents))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("对方离线", r.stdout)
+        self.assertEqual(self.tree(), before)
+
+    def test_unknown_session_exits_2(self):
+        r = self.run_cli("--me", "nobody")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("nobody", r.stderr)
