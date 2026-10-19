@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 267e20caa022 -->
 
 # Spec: scope-authority-defaults
 
