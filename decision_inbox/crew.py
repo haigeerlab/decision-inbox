@@ -27,6 +27,12 @@ class Module:
     stage: str
     suspended: str | None
     review: tuple[str, int] | None = None  # (reviewing|rework, round) from 0.3.0's optional field (review-nearby)
+    # module-crew 0.4.0 stall facts (crew-stall-facts); absent on 0.3.x or when the shape is odd
+    started_at: str | None = None
+    last_commit_at: str | None = None
+    commits_error: str | None = None
+    asks: tuple[tuple[str, tuple[str, ...]], ...] = ()   # (node, ats) per node module-crew counted
+    waiting_user: bool = False                            # an open 【等待用户】 from this module
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,26 @@ def _review(value) -> tuple[str, int] | None:
     return value["state"], rounds
 
 
+def _text(value) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _stall_facts(row: dict) -> dict:
+    """The 0.4.0 stall facts of one row; anything not shaped as module-crew documents is left out."""
+    commits = row.get("commits") if isinstance(row.get("commits"), dict) else {}
+    last = commits.get("last") if isinstance(commits.get("last"), dict) else {}
+    asks = []
+    for ask in row.get("asks") if isinstance(row.get("asks"), list) else ():
+        ats = ask.get("ats") if isinstance(ask, dict) else None
+        if isinstance(ask, dict) and isinstance(ask.get("node"), str) and isinstance(ats, list) and ats \
+                and all(isinstance(a, str) for a in ats):
+            asks.append((ask["node"], tuple(ats)))
+    waits = row.get("waitUser") if isinstance(row.get("waitUser"), list) else ()
+    return {"started_at": _text(row.get("startedAt")), "last_commit_at": _text(last.get("at")),
+            "commits_error": _text(commits.get("error")), "asks": tuple(asks),
+            "waiting_user": any(isinstance(w, dict) and w.get("state") == "open" for w in waits)}
+
+
 def _parse(out: str) -> tuple[Module, ...] | str:
     try:
         doc = json.loads(out)
@@ -82,7 +108,7 @@ def _parse(out: str) -> tuple[Module, ...] | str:
         if "suspended" not in row or not isinstance(row["suspended"], (str, type(None))):
             return "输出缺少契约字段 suspended"
         modules.append(Module(row["module"], row["relayName"], row["stage"], row["suspended"],
-                              _review(row.get("review"))))
+                              _review(row.get("review")), **_stall_facts(row)))
     return tuple(modules)
 
 

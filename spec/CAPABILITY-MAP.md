@@ -58,8 +58,9 @@
 | teardown-patrol-session | 卸载命令跟上巡视会话（stall-and-patrol 遗漏）：/decision-inbox:teardown 的说明、步骤和允许的工具按 onboard teardown 输出的后续步骤逐条做，先归档巡视会话、有旧定时任务再删；不再写「巡视定时任务」 | stall-and-patrol, onboarding, plugin-packaging |
 | patrol-stop-fixes | 冻结后实测发现的两处小修：卸载前先让巡视会话用 CronDelete 停掉 /loop 循环任务再归档（巡视会话提示词约定收到「停止巡视」就删任务，卸载输出与 /decision-inbox:teardown 先发停止消息、等回复后再归档）；给人看的文字里单独的「身份」改为「邮箱名」，旧称扫描加上这个词 | teardown-patrol-session, glossary-rename, stall-and-patrol |
 | glossary-v12 | 按术语表 v1.2（对齐 spec-guard 0.75.0）改给人看的叫法：/map 审查列标记照 spec-guard 写（待批准、改过待重审、标记无效、无标记），术语表副本更新到 v1.2（评审节奏→批准节奏、待审核→待批准、新增「审阅」），旧称扫描补上这些词；只改显示文字，不改契约标签、字段名和行为 | glossary-rename, map-view |
+| crew-stall-facts | R14 接上 module-crew 0.4.0 的 sessions --json 停滞事实：模块协调那条线逐个模块看，未合入、未挂起、没在等你的模块，按 now −（commits.last.at，没有则 startedAt）超过停滞时长，或同一节点 asks.ats 在约定时间内报批超过 N 次，就让模块协调就这个模块抛【等待用户】（三个选项同 R14）；字段缺失（0.3.x）照旧，只给事实的字段由本插件定阈值 | stall-and-patrol, crew-line-status |
 
-Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings → transition-compat → crew-line-status → rehearsal-fixes → rehearsal2-fixes → review-nearby → approval-display → r20-fixes → stall-and-patrol → glossary-rename → teardown-patrol-session → patrol-stop-fixes → glossary-v12
+Build order: group-store → relay-reader → message-protocol → review-registry → decision-queue → wait-tickets → spec-guard-reader → line-health → hub-view → query-commands → map-view → stop-hook → patrol → hub-loop → onboarding → plugin-packaging → answer-handoff-gaps → e2e-round1-fixes → relay-checkpoint-authority → wait-honesty-and-briefs → doctor-and-observer → protocol-contract-v1 → relay-presence-and-doubt → protocol-contract-v1-3 → protocol-contract-v1-4 → p0-field-fixes → patrol-cadence → hub-patrol → crew-coordinator-seam → hub-cutover-settings → transition-compat → crew-line-status → rehearsal-fixes → rehearsal2-fixes → review-nearby → approval-display → r20-fixes → stall-and-patrol → glossary-rename → teardown-patrol-session → patrol-stop-fixes → glossary-v12 → crew-stall-facts
 
 <!-- Spec Guard 按严格串行推进。为兼容上游格式，逗号分组会按左到右顺序展开为单模块步骤，不代表并行授权。 -->
 
@@ -78,6 +79,7 @@ Build order: group-store → relay-reader → message-protocol → review-regist
 | patrol | Claude 桌面版 | 定时任务 | 已验证可用；周期 5 分钟实测稳定、延迟约 38 秒；补跑未验证，设计上不依赖（2026-10-16） |
 | protocol-contract-v1 | session-protocol（本地契约仓库 `~/Documents/haigeerlab/session-protocol`） | 契约样例与期望结果，副本在 `tests/fixtures/session-protocol/v2.1/`，由 `tests/test_contract.py` 跑通，跳过本插件不解析的【交审】【公共变更请求】【协调通知】【负责人转交】与 `user-reply/relay-*`；协议改动先改契约再改实现（v1.0→v1.3→v1.4→v1.5→v1.7 见各模块；review-nearby 2026-10-19 升到 v2.0.1，approval-display 升到 v2.1） | 已钉住 v2.1（契约提交 c251e94） |
 | crew-line-status、review-nearby | module-crew | `sessions --json` 每行选填 `review`（`state` 为 reviewing／rework，`round` 为返工通知条数），schemaVersion 仍为 1 | module-crew 0.3.0 提供（2026-10-19 来信定稿）；旧版本没有这个字段，照旧显示 |
+| crew-stall-facts | module-crew | `sessions --json` 每行选填 `startedAt`、`commits`（`ahead`、`last`、`error`）、`asks`（含 `ats`）、`returns`、`waitUser`，schemaVersion 仍为 1；`commits.last` 是开工以来 HEAD 第一父链上、不在集成分支第一父链上的最新提交，合入后仍有值 | module-crew 0.4.0 提供（2026-10-19 冻结知会，定义见其 `spec/crew-stall-signals.md`）；旧版本没有这些字段，不做按模块判断 |
 | stop-hook | Codex、Claude 桌面版 | `Stop` 钩子 | Codex 已验证；Claude 桌面版未验证（第 12 节第 5 项） |
 
 ## 范围对照（需求 11.1 → 模块）

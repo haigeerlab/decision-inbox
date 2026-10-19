@@ -263,7 +263,7 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     _wakes(ctx)
     _offline_mail(ctx)
     _not_loaded(ctx)
-    for ask in stall.asks(g, now, assessment.lines, maps or {}, state):  # R14: the line raises it itself
+    for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews):  # R14: the line raises it itself
         result.actions.append(Action(f"stall:{ask.key}", ask.kind, ask.target, ask.text))
     _alerts(ctx, assessment.signals)
     _cap(ctx)
