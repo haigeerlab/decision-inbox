@@ -17,7 +17,7 @@ from . import deps, store
 PLUGIN = "module-crew"
 INTERFACE_MAJOR = 1
 SCHEMA_VERSION = 1
-DEFAULT_TIMEOUT = 3.0
+DEFAULT_TIMEOUT = 15.0  # decision-cards I-12: three seconds cut off sessions --json in rehearsal
 
 
 @dataclass(frozen=True)

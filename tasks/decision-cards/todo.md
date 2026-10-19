@@ -1,6 +1,6 @@
 # Todo: decision-cards
 
-- [ ] Task 1：超时与报批计数（DI-8 的 I-12、I-13；验收 12、13）
+- [x] Task 1：超时与报批计数（DI-8 的 I-12、I-13；验收 12、13）
   - 验证：`tests/test_crew.py`、`tests/test_stall.py` 新用例先失败后通过
 - [ ] Task 2：答复解析与操作指令（DI-7；验收 9、10）
   - 验证：`tests/test_items.py`、`tests/test_hub.py` 新用例先失败后通过；答法示例扫描通过

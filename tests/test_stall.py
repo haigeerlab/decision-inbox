@@ -68,6 +68,26 @@ class TriggerTest(StallCase):
         self.assertEqual((ask.key, ask.kind, ask.target), ("api|repeat", "owner-alert", "api"))
         self.assertIn("24 小时内报批 3 次", ask.text)
 
+    def _answer(self, no, at):
+        items.answer(self.g, [items.Answer(no, None, f"{no} 好")], answered_at=at)
+
+    def test_repeat_count_resets_once_the_latest_is_answered(self):
+        """decision-cards I-13: a settled matter is not asked about again."""
+        for n, at in enumerate((hours(20), hours(10), hours(2))):
+            items.receive(self.g, WAIT_USER, sender="api", relay_id=100 + n, received_at=at)
+        self._answer(3, hours(1))
+        self.assertEqual(self.asks(), [])
+
+    def test_repeat_counts_only_after_the_last_answer(self):
+        items.receive(self.g, WAIT_USER, sender="api", relay_id=99, received_at=hours(22))
+        self._answer(1, hours(21))
+        for n, at in enumerate((hours(20), hours(10))):
+            items.receive(self.g, WAIT_USER, sender="api", relay_id=100 + n, received_at=at)
+        self.assertEqual(self.asks(), [])
+        items.receive(self.g, WAIT_USER, sender="api", relay_id=102, received_at=hours(1))
+        [ask] = self.asks()
+        self.assertIn("24 小时内报批 3 次", ask.text)
+
     def test_not_asked_again_within_twelve_hours_and_thresholds_configurable(self):
         long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
         self.assertEqual(self.asks(long, state={"stallAsks": {"fe|stalled": hours(11)}}), [])
@@ -159,6 +179,15 @@ class ModuleStallTest(StallCase):
                      (("spec", (hours(10),)), ("plan", (hours(5),)), ("final", (hours(1),)))):
             with self.subTest(asks=asks):
                 self.assertEqual(self.crew_asks(crew_module(started_at=hours(2), asks=asks)), [])
+
+    def test_repeat_asks_counted_after_the_last_answer(self):
+        """decision-cards I-13: module-crew asks before the user's last answer to the module do not count."""
+        three = (("final", (hours(20), hours(10), hours(3))),)
+        answered = (crew.Answer("C1", hours(2), 0, 0),)
+        self.assertEqual(self.crew_asks(crew_module(started_at=hours(2), asks=three, answers=answered)), [])
+        early = (crew.Answer("C1", hours(21), 0, 0),)
+        self.assertEqual([a.key for a in self.crew_asks(crew_module(started_at=hours(2), asks=three, answers=early))],
+                         ["coord|repeat:alpha"])
 
     def test_skipped_modules(self):
         old = {"started_at": hours(30), "last_commit_at": hours(20),
