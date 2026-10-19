@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 6b298d8882fe -->
 
 # Spec: join-deny-label
 
@@ -54,4 +54,4 @@
 ## 外部审查意见
 
 <!-- spec-guard: external-review declined -->
-一行代码的缺陷修复，不做外部审查（交审时说明，用户可改）。
+用户 2026-10-19：不做外部审查（Spec 批准时一并说明）。
