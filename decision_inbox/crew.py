@@ -21,6 +21,24 @@ DEFAULT_TIMEOUT = 3.0
 
 
 @dataclass(frozen=True)
+class Answer:
+    """One user answer to a module (module-crew 0.5.0 `answers`); the two counts are None when unread."""
+    ref: str
+    at: str
+    commits_after: int | None
+    ticks_after: int | None
+
+
+@dataclass(frozen=True)
+class Wait:
+    """One 【等待用户】 the module raised (`waitUser`), open or closed."""
+    ref: str
+    state: str
+    decide: str | None
+    at: str | None
+
+
+@dataclass(frozen=True)
 class Module:
     module: str
     relay_name: str
@@ -33,6 +51,10 @@ class Module:
     commits_error: str | None = None
     asks: tuple[tuple[str, tuple[str, ...]], ...] = ()   # (node, ats) per node module-crew counted
     waiting_user: bool = False                            # an open 【等待用户】 from this module
+    # loop-detection: module-crew 0.5.0 answers (None before 0.5.0) and the waitUser rows themselves
+    ask_refs: tuple[tuple[str, str], ...] = ()            # (ref, at) of every submission asked
+    waits: tuple[Wait, ...] = ()
+    answers: tuple[Answer, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,7 +111,34 @@ def _stall_facts(row: dict) -> dict:
     waits = row.get("waitUser") if isinstance(row.get("waitUser"), list) else ()
     return {"started_at": _text(row.get("startedAt")), "last_commit_at": _text(last.get("at")),
             "commits_error": _text(commits.get("error")), "asks": tuple(asks),
-            "waiting_user": any(isinstance(w, dict) and w.get("state") == "open" for w in waits)}
+            "waiting_user": any(isinstance(w, dict) and w.get("state") == "open" for w in waits),
+            "ask_refs": _ask_refs(row.get("asks")),
+            "waits": tuple(Wait(w["ref"], w["state"], _text(w.get("decide")), _text(w.get("at"))) for w in waits
+                           if isinstance(w, dict) and isinstance(w.get("ref"), str)
+                           and isinstance(w.get("state"), str)),
+            "answers": _answers(row.get("answers"))}
+
+
+def _count(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _ask_refs(asks) -> tuple[tuple[str, str], ...]:
+    out = []
+    for ask in asks if isinstance(asks, list) else ():
+        refs, ats = (ask.get("refs"), ask.get("ats")) if isinstance(ask, dict) else (None, None)
+        if isinstance(refs, list) and isinstance(ats, list) and len(refs) == len(ats):
+            out += [(r, a) for r, a in zip(refs, ats) if isinstance(r, str) and isinstance(a, str)]
+    return tuple(sorted(out, key=lambda ra: ra[1]))
+
+
+def _answers(value) -> tuple[Answer, ...] | None:
+    """0.5.0's answers; not a list means not reported (None), an odd entry is dropped."""
+    if not isinstance(value, list):
+        return None
+    return tuple(Answer(a["ref"], a["at"], _count(a.get("commitsAfter")), _count(a.get("ticksAfter")))
+                 for a in value if isinstance(a, dict) and isinstance(a.get("ref"), str)
+                 and isinstance(a.get("at"), str))
 
 
 def _parse(out: str) -> tuple[Module, ...] | str:

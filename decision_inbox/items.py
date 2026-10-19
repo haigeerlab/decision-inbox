@@ -286,6 +286,7 @@ class Answer:
     letter: str | None
     original: str
     decisions: tuple[tuple[str, str], ...] = ()  # (D-number, letter) for 「待用户决定」 (review-nearby R2)
+    loop_option: str | None = None               # 挂起 | 换方案 | 继续等 under a loop hint (loop-detection)
 
 
 @dataclass(frozen=True)
@@ -374,8 +375,15 @@ def _decision_answers(key: str, it: dict, letter: str | None, segment: str):
 NO_ITEM_QUESTION = "没看出这句是答哪一项的，请在开头写上编号，例如「12 B」。"
 
 
-def interpret_reply(g: store.Group, text: str) -> ReplyParse:
-    """The user's reply as answers, or a question when anything does not match (requirement 6.4)."""
+_LOOP_RE = re.compile(r"^(挂起|继续等|换方案\s*[：:]\s*\S.*)$", re.S)
+_LOOP_WORD_RE = re.compile(r"挂起|继续等|换方案")
+
+
+def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
+    """The user's reply as answers, or a question when anything does not match (requirement 6.4).
+
+    `looping` holds the items that carry a loop hint: only there 「挂起／换方案：…／继续等」 is an option.
+    """
     text = text.strip()
     known = store.read_state(g, DOMAIN).get("items", {})
     waiting = [k for k, it in known.items() if it["status"] == "pending" and not is_go_to_session(it)]
@@ -395,8 +403,16 @@ def interpret_reply(g: store.Group, text: str) -> ReplyParse:
             return ReplyParse(question=f"#{key} 已经转达过，要改答复请先说明以哪次为准。")
         if it["status"] != "pending":
             return ReplyParse(question=f"#{key} 已经不在待答状态（已失效或已结束），请确认。")
+        if int(key) in looping and (loop := _LOOP_RE.match(rest)):
+            answer = Answer(int(key), None, segment, loop_option=loop.group(1).strip())
+            if not [a for a in answers if a.item == answer.item]:
+                answers.append(answer)
+            continue
         letter = None
         lm = _LETTER_RE.match(rest) if m else None
+        if lm and int(key) in looping and _LOOP_WORD_RE.search(rest[1:]):
+            return ReplyParse(question=f"#{key} 这一段里既有选项 {lm.group(1)}，又有打转提示的选项，"
+                                       "请分成两次答，或只留一个。")
         if lm:
             letter = lm.group(1)
             if letter not in {o["letter"] for o in it["options"]}:
@@ -434,6 +450,7 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
                 raise ValueError(f"#{a.item} is not waiting for an answer")
             option = next((o for o in it["options"] if o["letter"] == a.letter), None)
             option_text = f"{option['letter']}：{option['text']}" if option else None
+            # a loop option has no letter: the user's words go as they are, the rules section says what they mean
             batch = [Outgoing(it["sender"], protocol.format_user_reply(
                 item=a.item, original=a.original, answered_at=answered_at, option_text=option_text,
                 source_relay_id=it["relayId"]), a.item)]
@@ -452,7 +469,7 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
                         text = protocol.legacy_head(text, a.item, it["relayId"], multi_sender=it["sender"])
                     batch.append(Outgoing(to, text, a.item))
             it["answers"].append({"letter": a.letter, "original": a.original, "at": answered_at,
-                                  "decisions": [list(d) for d in a.decisions]})
+                                  "decisions": [list(d) for d in a.decisions], "loopOption": a.loop_option})
             it["recipients"] = [o.to for o in batch]
             _set_status(doc, a.item, "forwarded", answered_at)
             tx.append_event("items.answered", ref=a.item, actor="user",

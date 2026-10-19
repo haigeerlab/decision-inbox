@@ -250,7 +250,7 @@ def _cap(ctx: _Context) -> None:
 
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
          relay_error: str | None = None, from_hub: bool = False, crews: dict | None = None,
-         outbox=None) -> Plan:
+         outbox=None, loop_facts=None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"),
@@ -263,7 +263,7 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     _wakes(ctx)
     _offline_mail(ctx)
     _not_loaded(ctx)
-    for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews):  # R14: the line raises it itself
+    for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews, loop_facts):  # R14: the line raises it
         result.actions.append(Action(f"stall:{ask.key}", ask.kind, ask.target, ask.text))
     _alerts(ctx, assessment.signals)
     _cap(ctx)

@@ -44,7 +44,7 @@ class TriggerTest(StallCase):
         long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
         [ask] = self.asks(long, maps)
         self.assertEqual((ask.key, ask.kind, ask.target), ("fe|stalled", "wake", FE_DESKTOP))
-        for words in ("前端", "13 小时", "【等待用户】", "A 挂起", "m2、m3", "B 换做法", "C 继续等"):
+        for words in ("前端", "13 小时", "【等待用户】", "A 挂起", "m2、m3", "B 换方案", "C 继续等"):
             self.assertIn(words, ask.text)
 
     def test_rework_rounds(self):
@@ -84,7 +84,7 @@ class OverdueTest(StallCase):
         asked = (datetime.fromisoformat(NOW) - timedelta(minutes=31)).isoformat()
         rows = stall.overdue_rows(self.g, NOW, {"stallAsks": {"fe|stalled": asked}})
         self.assertEqual(len(rows), 1)
-        for words in ("前端", "A 挂起", "B 换做法", "C 继续等", f"claude://claude.ai/epitaxy/{FE_DESKTOP}"):
+        for words in ("前端", "A 挂起", "B 换方案", "C 继续等", f"claude://claude.ai/epitaxy/{FE_DESKTOP}"):
             self.assertIn(words, rows[0])
         items.receive(self.g, WAIT_USER, sender="fe", relay_id=7, received_at=NOW)
         self.assertEqual(stall.overdue_rows(self.g, NOW, {"stallAsks": {"fe|stalled": asked}}), [])
@@ -137,7 +137,7 @@ class ModuleStallTest(StallCase):
         found = self.crew_asks(crew_module(started_at=hours(30), last_commit_at=hours(13)))
         self.assertEqual([(a.key, a.kind, a.target) for a in found],
                          [("coord|stalled:alpha", "wake", CREW_DESKTOP)])
-        for words in ("模块 alpha", "13 小时没有新提交", "A 挂起", "B 换做法", "C 继续等", "module-crew"):
+        for words in ("模块 alpha", "13 小时没有新提交", "A 挂起", "B 换方案", "C 继续等", "module-crew"):
             self.assertIn(words, found[0].text)
         self.assertNotIn("module-suspend", found[0].text)
         self.assertEqual(self.crew_asks(crew_module(started_at=hours(30), last_commit_at=hours(13)),
@@ -165,9 +165,7 @@ class ModuleStallTest(StallCase):
                "asks": (("final", (hours(3), hours(2), hours(1))),)}
         for name, m in (("merged", crew_module(stage="merged", **old)),
                         ("wait-merge", crew_module(stage="wait-merge", **old)),
-                        ("suspended", crew_module(suspended="等设计稿", **old)),
-                        ("waiting you", crew_module(waiting_user=True, **old)),
-                        ("in review", crew_module(review=("rework", 2), **old))):
+                        ("suspended", crew_module(suspended="等设计稿", **old))):
             with self.subTest(name):
                 self.assertEqual(self.crew_asks(m), [])
 
@@ -186,8 +184,54 @@ class ModuleStallTest(StallCase):
         asked = hours(1)
         rows = stall.overdue_rows(self.g, NOW, {"stallAsks": {"coord|stalled:alpha": asked}})
         self.assertEqual(len(rows), 1)
-        for words in ("⚠ 停滞：排练协调（模块 alpha）", "A 挂起", "B 换做法", "C 继续等",
+        for words in ("⚠ 停滞：排练协调（模块 alpha）", "A 挂起", "B 换方案", "C 继续等",
                       f"claude://claude.ai/epitaxy/{CREW_DESKTOP}"):
             self.assertIn(words, rows[0])
         items.receive(self.g, WAIT_USER, sender="coord", relay_id=9, received_at=NOW)
         self.assertEqual(stall.overdue_rows(self.g, NOW, {"stallAsks": {"coord|stalled:alpha": asked}}), [])
+
+
+class WorkTimeStallTest(ModuleStallTest):
+    """loop-detection 7: waiting for the user or in review no longer skips a module; waiting time is not stall."""
+
+    def loop(self, waits=(), hit=None, module="alpha"):
+        from types import SimpleNamespace as NS
+        return NS(key=f"coord|{module}", line="coord", module=module, waits=tuple(waits), hit=hit)
+
+    def asks_with(self, m, facts):
+        crews = {"coord": crew.CrewRead("ok", (m,))}
+        return stall.asks(self.g, NOW, {}, {}, {}, crews=crews, loop_facts=facts)
+
+    def test_waiting_and_review_are_seen(self):
+        old = {"started_at": hours(30), "last_commit_at": hours(20)}
+        for m in (crew_module(waiting_user=True, **old), crew_module(review=("rework", 2), **old)):
+            with self.subTest(m=m):
+                self.assertEqual([a.key for a in self.crew_asks(m)], ["coord|stalled:alpha"])
+
+    def test_waiting_for_the_user_is_not_stall_time(self):
+        m = crew_module(started_at=hours(30), last_commit_at=hours(20), waiting_user=True)
+        self.assertEqual(self.asks_with(m, [self.loop(waits=[(hours(19), hours(6))])]), [])  # 20 − 13 = 7 hours
+        [ask] = self.asks_with(m, [self.loop(waits=[(hours(19), hours(15))])])               # 20 − 4 = 16 hours
+        self.assertIn("16 小时没有新提交", ask.text)
+        self.assertIn("等你答复的时间不算", ask.text)
+
+    def test_a_looping_module_is_not_woken(self):
+        m = crew_module(started_at=hours(30), last_commit_at=hours(20))
+        self.assertEqual(self.asks_with(m, [self.loop(hit="你答了 2 次进度没动")]), [])
+        self.assertEqual([a.key for a in self.asks_with(m, [self.loop(hit=None)])], ["coord|stalled:alpha"])
+
+    def test_a_looping_plain_line_is_not_woken(self):
+        from types import SimpleNamespace as NS
+        maps = {"fe": line_map([module("m1")])}
+        long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+        hit = [NS(key="fe|m1", line="fe", module="m1", waits=(), hit="你答了 2 次进度没动")]
+        self.assertEqual(stall.asks(self.g, NOW, long, maps, {}, loop_facts=hit), [])
+        self.assertEqual(len(stall.asks(self.g, NOW, long, maps, {})), 1)
+
+    def test_patrol_passes_loop_facts(self):
+        crews = {"coord": crew.CrewRead("ok", (crew_module(started_at=hours(30), last_commit_at=hours(20)),))}
+        quiet = patrol.plan(self.g, now=NOW, relay=snapshot(agent("coord")), crews=crews,
+                            loop_facts=[self.loop(hit="你答了 2 次进度没动")])
+        self.assertFalse([a for a in quiet.actions if a.id.startswith("stall:")])
+        loud = patrol.plan(self.g, now=NOW, relay=snapshot(agent("coord")), crews=crews)
+        self.assertTrue([a for a in loud.actions if a.id == "stall:coord|stalled:alpha"])

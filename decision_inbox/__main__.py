@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import crew, doctor, health, hub, install, items, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import crew, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
@@ -306,8 +306,9 @@ def _patrol(argv: list[str]) -> int:
         patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
-        doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error,
-                          from_hub=args.from_hub, crews=crew.crews(g), outbox=outbox).to_json()
+        crews, now = crew.crews(g), store.now()
+        doc = patrol.plan(g, now=now, relay=agents, maps=maps, relay_error=error, from_hub=args.from_hub,
+                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews)).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
@@ -344,6 +345,12 @@ def _relay_or_none(path: str | None, version: str | None):
         return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version)
     except (OSError, relay.RelayDataError):
         return None
+
+
+def _loop_facts(g, now: str, maps: dict, crews: dict) -> list:
+    """loop-detection: tag new items with their module, then each module in progress with its facts."""
+    loops.tag(g, maps, crews)
+    return loops.facts(g, now, maps, crews)
 
 
 def _dev_maps(g) -> dict:
@@ -396,8 +403,9 @@ def _inbox(argv: list[str]) -> int:
     elif args.command == "reply":
         text = Path(args.text_file).read_text(encoding="utf-8")
         agents = _relay_or_none(args.agents, args.relay_version)
-        r = hub.reply(g, text, now=now, relay=agents, maps=_dev_maps(g), relayed_from=args.relayed_from,
-                      crews=crew.crews(g))
+        maps, crews = _dev_maps(g), crew.crews(g)
+        r = hub.reply(g, text, now=now, relay=agents, maps=maps, relayed_from=args.relayed_from,
+                      crews=crews, loop_facts=None if args.relayed_from else _loop_facts(g, now, maps, crews))
         _consume(args.text_file)
         if agents is not None:
             _consume(args.agents)
@@ -455,8 +463,9 @@ def _view(argv: list[str]) -> int:
                 _consume(args.outbox)
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
-        print(hub.main_view(g, now, agents, _dev_maps(g), relay_status=relay_status, relay_error=relay_error,
-                            crews=crew.crews(g)))
+        maps, crews = _dev_maps(g), crew.crews(g)
+        print(hub.main_view(g, now, agents, maps, relay_status=relay_status, relay_error=relay_error,
+                            crews=crews, loop_facts=_loop_facts(g, now, maps, crews)))
     elif what[0] == "detail":
         print(view.render_detail(g, int(what[1])))
     elif what[0] == "waits":

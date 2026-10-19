@@ -135,6 +135,8 @@ class ModuleFact:
     tick_commits: int | None
     suspended_at: str | None
     external_review: str = "none"   # none | recorded | declined (spec-guard 0.66.0+)
+    gates_total: int | None = None  # gate checkpoints in the todo (spec-guard 0.77.0+, loop-detection)
+    gates_done: int | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,14 @@ class LineMap:
     modules: tuple[ModuleFact, ...]
 
 
+def _gates(value) -> tuple[int | None, int | None]:
+    """0.77.0's `gates`; absent (older), null (no todo) or an odd shape all read as unknown."""
+    if isinstance(value, dict) and all(isinstance(value.get(k), int) and not isinstance(value.get(k), bool)
+                                       for k in ("total", "done")):
+        return value["total"], value["done"]
+    return None, None
+
+
 def _module(m: dict) -> ModuleFact:
     progress = m.get("progress") or {}
     blocks = m.get("blocks") or {}
@@ -173,6 +183,7 @@ def _module(m: dict) -> ModuleFact:
         last_tick_at=m.get("lastTickAt"), first_tick_at=m.get("firstTickAt"),
         tick_commits=m.get("tickCommits"), suspended_at=m.get("suspendedAt"),
         external_review=m.get("externalReview", "none"),
+        **dict(zip(("gates_total", "gates_done"), _gates(m.get("gates")))),
     )
 
 

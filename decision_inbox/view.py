@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from decision_inbox import approval, items, sources, specguard, store, tickets
+from decision_inbox import approval, items, sources, specguard, stall, store, tickets
 
 RECENT_MINUTES = 10
 COPY_LABEL = "推荐回复（点代码块右上角复制，发给我）："  # says what the copy block is even when it is not rendered
@@ -210,13 +210,16 @@ def _unanswered_in_copy(it: dict, line: str) -> str | None:
     return f"  还要答 {'、'.join(missing)}，写在同一条回复里" if missing else None
 
 
-def _item_card(g: store.Group, now: str, it: dict) -> str:
+def _item_card(g: store.Group, now: str, it: dict, loop_facts=None) -> str:
     no = it["no"]
     topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
-    title = f"━━ {no} · {_source(g, it)} · {topic} · {ago(now, it['receivedAt'])}"
+    if loop_facts is None:
+        title = f"━━ {no} · {_source(g, it)} · {topic} · {ago(now, it['receivedAt'])}"
+    else:  # loop-detection: the fixed head of DI-5
+        title = loop_head(g, it, "等待用户", _loop_of(it, loop_facts), now)
     if it["blocks"]:
         title += f" · 挡住 {it['blocks']} 条线"
-    out = [title, f"要你决定：{it['decide']}"]
+    out = [*_hint(g, it, loop_facts), title, f"要你决定：{it['decide']}"]
     options = it["options"]
     rec = next((o for o in options if o["letter"] == it["recommended"]), None)
     if rec is not None:
@@ -232,7 +235,7 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
                 out.append(gap)
         else:
             out.append(f"  回 {no} {o['letter']}")
-    return "\n".join(out + _decision_lines(it) + _review_lines(it))
+    return "\n".join(out + _decision_lines(it) + _review_lines(it) + _folded(it, loop_facts))
 
 
 def _combined(g: store.Group) -> str | None:
@@ -311,12 +314,15 @@ def _submission_text(it: dict) -> str | None:
     return None
 
 
-def render_approval(g: store.Group, it: dict, now: str, read_map=specguard.read_line) -> str:
+def render_approval(g: store.Group, it: dict, now: str, read_map=specguard.read_line, loop_facts=None) -> str:
     """An approval item in full (approval-display): background, originals verbatim, recommendation last."""
     no = it["no"]
     bg = approval.background(g, it, read_map=read_map)
     node = bg.node or "未知节点"
-    out = [f"━━ #{no} · {bg.project} · 模块 {bg.module or '未知'} · 审 {node} · {ago(now, it['receivedAt'])}{ADDED}",
+    head = (f"━━ #{no} · {bg.project} · 模块 {bg.module or '未知'} · 审 {node} · {ago(now, it['receivedAt'])}"
+            if loop_facts is None else loop_head(g, dict(it, project=bg.project), f"审 {node}",
+                                                 _loop_of(it, loop_facts), now))
+    out = [*_hint(g, it, loop_facts), head + ADDED,
            f"项目：{bg.project}（{bg.repo or '仓库未知'}）· 线：{_short(g, it['sender'])}"]
     out += ["能力图：", *(f"  {line}" for line in bg.map_lines)] if bg.map_lines else [f"能力图读不到：{bg.map_error}"]
     round_ = f"本项：{node}，第 {bg.round} 次交审"
@@ -347,7 +353,7 @@ def render_approval(g: store.Group, it: dict, now: str, read_map=specguard.read_
         out.append(f"推荐 {rec['letter']}：{rec['text']}；答复写法示例：{example}")
     else:
         out.append(f"提出方没写推荐；答复写法示例：{example}")
-    return "\n".join(out)
+    return "\n".join(out + _folded(it, loop_facts))
 
 
 def _approval_line(g: store.Group, now: str, it: dict) -> str:
@@ -398,7 +404,7 @@ def go_to_session_rows(g: store.Group, now: str) -> list[str]:
     return ["⚠ 要你去会话里操作：\n" + "\n".join(rows)] if rows else []
 
 
-def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
+def _cards(g: store.Group, now: str, assessment, relay, loop_facts=None) -> list[str]:
     reported = {it["sender"] for it in items.pending(g) if items.is_go_to_session(it)}
     confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment) if name not in reported]
     cards, opened = [], False
@@ -406,23 +412,24 @@ def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
         if items.is_go_to_session(it):
             continue  # shown on top by go_to_session_rows
         if not approval.is_approval(it):
-            cards.append(_item_card(g, now, it))
+            cards.append(_item_card(g, now, it, loop_facts))
         elif not opened:  # only the first approval opens in full (approval-display decision 1)
-            cards.append(render_approval(g, it, now))
+            cards.append(render_approval(g, it, now, loop_facts=loop_facts))
             opened = True
         else:
             cards.append(_approval_line(g, now, it))
     return confirms + cards
 
 
-def render(g: store.Group, now: str, assessment, relay=None, extra=()) -> str:
+def render(g: store.Group, now: str, assessment, relay=None, extra=(), loop_facts=None) -> str:
     """Main view, fixed order (requirement 6.1): push, lines, overview, anomalies, cards, counts.
 
     `extra` holds anomaly rows the caller found outside line-health (hub-loop's returned questions).
     """
     head = [line for line in (_push_line(g, now, assessment), _lines_row(g, assessment)) if line]
     head.append(_overview(g, now, assessment, extra))
-    sections = ["\n".join(head), _anomaly_section(g, assessment, extra), *_cards(g, now, assessment, relay),
+    sections = ["\n".join(head), _modules_section(g, now, loop_facts), _anomaly_section(g, assessment, extra),
+                *_cards(g, now, assessment, relay, loop_facts),
                 _combined(g), _footer(g, now)]
     return "\n\n".join(s for s in sections if s)
 
@@ -496,3 +503,136 @@ def render_invalidated(g: store.Group) -> str:
         topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
         rows.append(f"#{it['no']} {state}· {_source(g, it)} · {topic}")
     return "\n".join(rows) or "没有失效的待决事项"
+
+
+# loop-detection (R21 DI-5): a module's earlier questions, one line each; the module's facts in a few words.
+HISTORY_ROWS = 5
+
+
+def _result(it: dict) -> str:
+    if items.is_go_to_session(it):
+        return "去会话操作已结项" if it["status"] == "closed" else "去会话操作"
+    if it["status"] == "pending":
+        return "等你答"
+    if it["status"] in INVALIDATED:
+        return "已失效"
+    if it.get("answers"):
+        a = it["answers"][-1]
+        return f"答了 {a.get('loopOption') or a.get('letter') or clip(_one_line(a['original']), 12)}"
+    return "已关"
+
+
+def history_rows(own, before: int | None = None) -> list[str]:
+    """「第 i 次 · 要你决定首行 · 结果」 for a module's items (before item `before` when given)."""
+    rows, n = [], 0
+    for it in own:
+        if before is not None and it["no"] == before:
+            break
+        counted = not items.is_go_to_session(it) and it["status"] != "superseded"
+        n += counted
+        head = f"第 {n} 次" if counted else "不计次"
+        rows.append(f"{head} · #{it['no']} {clip(it['decide'].split(chr(10))[0], TOPIC_CHARS)} · {_result(it)}")
+    return rows
+
+
+def _worked_text(hours: float) -> str:
+    return "开工不到 1 小时" if hours < 1 else f"开工 {hours:.0f} 小时"
+
+
+def loop_facts_text(f) -> str:
+    """「第 n 次问你（基准 M，超出第 k 次）· 你答了 j 次进度没动 · 开工 X 小时 · 进度 a/b」."""
+    base = f"基准 {f.baseline}" if f.baseline is not None else "基准未知"
+    if f.over:
+        base += f"，超出第 {f.over} 次"
+    parts = [f"第 {f.asked} 次问你（{base}）"]
+    parts.append(f"你答了 {f.still} 次进度没动" if f.still is not None else (f.unread or "进度读不到"))
+    if f.worked_hours is not None:
+        parts.append(_worked_text(f.worked_hours))
+    if f.progress is not None:
+        parts.append(f"进度 {f.progress[0]}/{f.progress[1]}")
+    return " · ".join(parts)
+
+
+def render_module(g: store.Group, module: str, now: str, loop_facts=None) -> str:
+    """「看模块 <id>」: every question of the module and its facts."""
+    found = [f for f in loop_facts or () if f.module == module]
+    if found:
+        f = found[0]
+        own = list(f.items)
+        head = f"模块 {module}（{_short(g, f.line)}）· {loop_facts_text(f)}"
+        if f.hit:
+            head += f"\n⚠ 可能在打转：{f.hit}"
+    else:
+        own = sorted((it for it in items.by_status(g, *_EVERY) if it.get("module") == module),
+                     key=lambda it: _instant(it["receivedAt"]))
+        head = f"模块 {module}（不在做的模块里，只列问过的待决事项）"
+    if not own:
+        return f"模块 {module} 还没有问过你的待决事项"
+    return "\n".join([head, *history_rows(own)])
+
+
+_EVERY = ("pending", *FORWARDED, *INVALIDATED)
+
+
+def _loop_of(it: dict, loop_facts):
+    return next((f for f in loop_facts or () if f.line == it["sender"] and f.module == it.get("module")), None)
+
+
+def loop_head(g: store.Group, it: dict, kind: str, f, now: str) -> str:
+    """「━━ #N · 项目 · 模块 <id> · <节点或类型> · 第 n 次问你（基准 M）· … · 多久前」 (DI-5)."""
+    module = it.get("module")
+    short = _short(g, it["sender"])
+    project = it.get("project") or (f.project if f is not None else short)
+    parts = [f"━━ #{it['no']}", project if project == short else f"{project}（{short}）",
+             f"模块 {module}" if module else "模块未知", kind]
+    if module and f is not None:
+        parts.append(loop_facts_text(f))
+    return " · ".join(parts + [ago(now, it["receivedAt"])])
+
+
+def _hint(g: store.Group, it: dict, loop_facts) -> list[str]:
+    """On top of an open item of a module that looks like going round in circles (DI-6)."""
+    f = _loop_of(it, loop_facts)
+    if f is None or not f.hit or items.is_go_to_session(it):
+        return []
+    no, ready = it["no"], "、".join(f.ready) or "能力图里暂时没有可开工的模块"
+    hours = stall.settings(g)["loopQuietHours"]
+    return [f"⚠ 模块 {f.module} 可能在打转：{f.hit}",
+            f"  A 挂起它，先开可开工的模块（{ready}）：回「{no} 挂起」",
+            f"  B 换方案：回「{no} 换方案：<怎么换>」",
+            f"  C 继续等，{hours:g} 小时内不再提示：回「{no} 继续等」"]
+
+
+def _folded(it: dict, loop_facts) -> list[str]:
+    """The module's earlier questions, one line each, the latest HISTORY_ROWS of them (DI-5)."""
+    f = _loop_of(it, loop_facts)
+    rows = history_rows(list(f.items), before=it["no"]) if f is not None else []
+    if not rows:
+        return []
+    out = ["同模块之前问过：", *(f"  {r}" for r in rows[-HISTORY_ROWS:])]
+    if len(rows) > HISTORY_ROWS:
+        out.append(f"  还有 {len(rows) - HISTORY_ROWS} 次，回「看模块 {f.module}」看全部")
+    return out
+
+
+def _modules_section(g: store.Group, now: str, loop_facts) -> str | None:
+    """「在做的模块」: one line per module in progress (DI-5)."""
+    rows = []
+    for f in loop_facts or ():
+        base = f.baseline if f.baseline is not None else "未知"
+        row = f"{_short(g, f.line)} · 模块 {f.module} · 问了 {f.asked} 次（基准 {base}）"
+        if f.worked_hours is not None:
+            row += f" · {_worked_text(f.worked_hours)}"
+        row += f" · 最后一次进展 {ago(now, f.last_progress)}" if f.last_progress else " · 还没有进展记录"
+        if f.unread:
+            row += f" · {f.unread}"
+        if f.hit:
+            row += " · ⚠ 可能在打转"
+        rows.append(row)
+    return "\n".join(["在做的模块", *rows]) if rows else None
+
+
+def loop_rows(g: store.Group, loop_facts) -> list[str]:
+    """Main view, right after the go-to-session rows: each module that looks like going round in circles."""
+    return [f"⚠ 模块 {f.module}（{_short(g, f.line)}）可能在打转：{f.hit}；等它下次来问时在那一项上选，或去会话里说"
+            for f in loop_facts or () if f.hit]
