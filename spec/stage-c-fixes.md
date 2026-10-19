@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 3617f614fb32 -->
 
 # Spec: stage-c-fixes
 
