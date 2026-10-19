@@ -139,3 +139,21 @@ class MainViewTest(GoToSessionCase):
         self.receive(CLAUDE, relay_id=1)
         self.receive(CODEX, sender="be", relay_id=2)
         self.assertNotIn("一次答完", self.view())
+
+
+class RulesTest(GoToSessionCase):
+    def test_working_blocks_say_how_to_report_a_host_confirmation(self):
+        from decision_inbox import onboard
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("### 停在宿主确认上", "类型：去会话操作", "会话：", "被拦的操作：", "点哪个按钮：",
+                              "为什么批不了：", "A：我去点", "【已恢复】"):
+                    self.assertIn(words, text)
+
+    def test_join_preview_tells_the_user(self):
+        from decision_inbox import onboard
+        out = onboard.join("demo", role="dev", relay_name="ui", short_name="界面", host="claude-desktop",
+                           lines=["界面"], desktop_session="local_00000000-0000-0000-0000-0000000000a1",
+                           project=self.home / "ui", reviewer=None, nodes=[], confirm=False, now=NOW)
+        self.assertTrue([w for w in out.warnings if "要你去会话里操作" in w])

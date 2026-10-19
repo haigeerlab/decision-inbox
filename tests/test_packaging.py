@@ -216,7 +216,8 @@ class ReadmeTest(unittest.TestCase):
                        # relay-presence-and-doubt
                        "送达存疑", "决策收件箱欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
-                       "session-protocol` v2.1",
+                       # go-to-session
+                       "session-protocol` v2.2", "要你去会话里操作", "去会话操作", "下一版改了协作规则段",
                        # scope-authority-defaults
                        "--no-checkpoint-authority", "默认打开", "npm ci", "pip install -r", "旧版本写的", "下一版改了协作规则段",
                        # stall-and-patrol
