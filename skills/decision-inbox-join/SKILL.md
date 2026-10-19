@@ -16,8 +16,8 @@ description: 用户要把这个 Codex 会话接入或退出 decision-inbox 协�
 ## 接入
 
 1. 向用户问清：协作组名、角色（dev／owner／coordinator）、本会话在 agent-relay 的邮箱名、线名、所属的线；开发线和跨线协调还要问有没有审查者、审哪几类节点（spec、plan、interface、final）。不要自己猜。
-   再问用户要不要打开「检查点答复即授权」（默认不开）：打开后，决策收件箱转来的、带用户原话的检查点答复（Spec 批准、Plan 批准、接口提案、最终验收），就是用户对这个检查点范围内必要操作（安装依赖、联网下载、构建、测试、写入工作区）的授权，也适用于 Codex 的自动批准；密钥外传、工作区外删除、推送合并发布、改全局配置不在其内。用户没明确说要，就不加。
-2. 预览：运行 `~/.decision-inbox/bin/decision-inbox onboard join <协作组> --role <角色> --relay-name <邮箱名> --short-name <线名> --host codex-desktop --project "$PWD"`，每条线加一个 `--line <线名>`，有审查者时加 `--reviewer <审查者邮箱名> --nodes <节点>`，用户要打开授权时加 `--checkpoint-authority`。Codex 会话不填 `--desktop-session`。把输出给用户看；输出开头有 `⚠` 的行要先单独告诉用户，尤其是「Codex 会话要开在写协作规则段的那个仓库里」这一条：会话开在仓库外，协作规则段和授权都不会被 Codex 加载。
+   再告诉用户「检查点答复即授权」默认打开：决策收件箱转来的、带用户原话的检查点答复（Spec 批准、Plan 批准、接口提案、最终验收），就是用户对这个检查点范围内必要操作（按 Spec、Plan 改文件、构建、测试、本地提交，以及安装 Plan 列出的依赖、只走官方源）的授权，也适用于 Codex 的自动批准；Plan 没列的新依赖（问一次）、密钥外传、工作区外删除、推送合并发布、改全局配置不在其内。用户明确不要，就加 `--no-checkpoint-authority`。
+2. 预览：运行 `~/.decision-inbox/bin/decision-inbox onboard join <协作组> --role <角色> --relay-name <邮箱名> --short-name <线名> --host codex-desktop --project "$PWD"`，每条线加一个 `--line <线名>`，有审查者时加 `--reviewer <审查者邮箱名> --nodes <节点>`，用户不要授权时加 `--no-checkpoint-authority`。Codex 会话不填 `--desktop-session`。把输出给用户看；输出开头有 `⚠` 的行要先单独告诉用户，尤其是「Codex 会话要开在写协作规则段的那个仓库里」这一条：会话开在仓库外，协作规则段和授权都不会被 Codex 加载。
 3. 用户确认后，同一条命令加 `--confirm` 再运行。
 4. 用 agent-relay 的 `bridge_register` 登记邮箱名。
 5. 提醒用户在 Codex 里信任一次 decision-inbox 插件自带的停止钩子。

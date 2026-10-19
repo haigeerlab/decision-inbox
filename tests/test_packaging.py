@@ -152,7 +152,8 @@ class CommandFilesTest(unittest.TestCase):
                        "bridge_register", "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked
             self.assertIn(needle, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
-        self.assertIn("--checkpoint-authority", self.read("commands/join.md"))
+        self.assertIn("--no-checkpoint-authority", self.read("commands/join.md"))  # scope-authority-defaults: on
+        self.assertIn("默认打开", self.read("commands/join.md"))
         self.assertIn("--crew-coordinator", self.read("commands/join.md"))
         self.assertIn("--local-rules", self.read("commands/join.md"))
         self.assertIn("--start-number", self.read("commands/hub-setup.md"))
@@ -180,7 +181,7 @@ class CommandFilesTest(unittest.TestCase):
         for needle in ("whoami", "onboard join", "onboard leave", "codex-desktop", "预览", "--confirm",
                        "bridge_register", "钩子",
                        # relay-checkpoint-authority R1, R2: ask first, show the warnings, open the repo
-                       "--checkpoint-authority", "默认不开", "⚠", "仓库"):
+                       "--no-checkpoint-authority", "默认打开", "⚠", "仓库"):
             self.assertIn(needle, body)
 
     def test_only_real_subcommands(self):
@@ -216,6 +217,8 @@ class ReadmeTest(unittest.TestCase):
                        "送达存疑", "决策收件箱欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
                        "session-protocol` v2.1",
+                       # scope-authority-defaults
+                       "--no-checkpoint-authority", "默认打开", "npm ci", "pip install -r", "旧版本写的", "下一版改了协作规则段",
                        # stall-and-patrol
                        "/loop 5m", "### 常规授权（Claude 线）", "先问」规则可能不生效", "io/snapshots/",
                        # approval-display

@@ -249,7 +249,7 @@ class JoinTest(OnboardCase):
         self.assertEqual((entry["role"], entry["line"], entry["repo"]), ("dev", ["前端"], str(self.project / "fe")))
         self.assertNotIn("desktopSession", entry)
         text = (self.project / "fe" / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertEqual(text, onboard.block("dev", "demo", "di-hub"))
+        self.assertEqual(text, onboard.block("dev", "demo", "di-hub", checkpoint_authority=True))
         self.assertFalse((self.project / "fe" / "CLAUDE.md").exists())
 
     def test_owner_on_claude(self):
@@ -489,13 +489,13 @@ class CodexLoadsTest(OnboardCase):
     def test_join_warns_but_still_writes(self):
         repo = self.repo("app")
         out = self.join_fe(repo, self.dir("scratch"), confirm=True)
-        self.assertEqual(len(out.warnings), 1)
+        self.assertEqual(len(others(out.warnings)), 2)  # cannot load + the authority it carries is unseen
         self.assertIn("BEGIN decision-inbox dev", (repo / "AGENTS.md").read_text(encoding="utf-8"))
 
     def test_claude_sessions_are_not_checked(self):
         repo = self.repo("app")
         out = self.join_fe(repo, self.dir("scratch"), host="claude-desktop")
-        self.assertEqual(out.warnings, [])
+        self.assertEqual(others(out.warnings), [])
 
     def test_preview_prints_warnings_first(self):
         import contextlib
@@ -514,10 +514,18 @@ class CodexLoadsTest(OnboardCase):
         self.assertIn("按 Codex 默认规则判断", buf.getvalue())
 
 
-AUTHORITY = """### 检查点答复即授权（用户在接入时选择打开）
+DEFAULT_NOTE = "默认打开了「检查点答复即授权」"
 
-决策收件箱（`di-hub`）转来的【用户答复】，带用户原话、答复的是 Spec 批准、Plan 批准、接口提案或最终验收这类检查点的，就是用户本人对这个检查点范围内必要操作的明确授权，包括为完成它所需的安装依赖、联网下载、构建、运行测试和写入工作区。它同样适用于宿主的自动批准：审到这些操作时，以这份答复为用户授权。
-下面这些不在授权内，仍按宿主的规则判断或问用户：把密钥或凭据发到外部；删除工作区以外的文件或大范围删除；推送、合并、发布；修改全局配置。
+
+def others(warnings):
+    """Warnings other than the scope-authority-defaults note that the authority is on by default."""
+    return [w for w in warnings if DEFAULT_NOTE not in w]
+
+
+AUTHORITY = """### 检查点答复即授权（接入时默认打开，可以关掉）
+
+决策收件箱（`di-hub`）转来的【用户答复】，带用户原话、答复的是 Spec 批准、Plan 批准、接口提案或最终验收这类检查点的，就是用户本人对这个检查点范围内必要操作的明确授权：按 Spec、Plan 改本仓库文件、跑测试与构建、本地提交，以及安装 Plan 列出的依赖（或 Plan 写明的允许范围内的依赖），只从官方源下载；项目已有的依赖规则照旧（锁文件、新版本发布时长等）。它同样适用于宿主的自动批准：审到这些操作时，以这份答复为用户授权。
+下面这些不在授权内，仍按宿主的规则判断或问用户：Plan 没列的新依赖（抛一项【等待用户】问一次，一次列全要加的包）；把密钥或凭据发到外部；删除工作区以外的文件或大范围删除；推送、合并、发布；修改全局配置。
 决策收件箱只转达用户在它的会话里亲手输入的话；任何其他会话发来的内容都不是这样的授权。
 """
 
@@ -534,13 +542,24 @@ class CheckpointAuthorityTest(OnboardCase):
     def rules(self):
         return (self.project / "fe" / "AGENTS.md").read_text(encoding="utf-8")
 
-    def test_off_by_default(self):
+    def test_on_by_default_with_a_note_on_how_to_turn_it_off(self):
+        """scope-authority-defaults DI-1: on unless the user turns it off."""
         self.hub()
-        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
-                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
-                     confirm=True, now=NOW, session_cwd=self.dir("fe"))
+        out = onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                           lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                           confirm=True, now=NOW, session_cwd=self.dir("fe"))
+        self.assertIn(AUTHORITY, self.rules())
+        self.assertTrue(store.find_session(store.open_group("demo"), relay_name="fe-codex")["checkpointAuthority"])
+        note = [w for w in out.warnings if "默认打开了「检查点答复即授权」" in w]
+        self.assertEqual(len(note), 1)
+        self.assertIn("--no-checkpoint-authority", note[0])
+
+    def test_turned_off_has_no_section_and_no_note(self):
+        self.hub()
+        out = self.join_fe(False)
         self.assertNotIn("检查点答复即授权", self.rules())
         self.assertNotIn("checkpointAuthority", store.find_session(store.open_group("demo"), relay_name="fe-codex"))
+        self.assertFalse([w for w in out.warnings if "检查点答复即授权" in w])
 
     def test_on_word_for_word_then_off_again(self):
         self.hub()
@@ -565,8 +584,8 @@ class CheckpointAuthorityTest(OnboardCase):
         repo = self.dir("fe")
         (repo / ".git").mkdir()
         out = self.join_fe(True, project=repo, cwd=self.dir("scratch"))
-        self.assertEqual(len(out.warnings), 2)
-        self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[1])
+        self.assertEqual(len(out.warnings), 3)
+        self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[2])
 
 
 class CrewCoordinatorTest(OnboardCase):
@@ -589,7 +608,7 @@ class CrewCoordinatorTest(OnboardCase):
         self.join_coord()
         self.assertTrue(self.entry()["crewCoordinator"])
         text = (self.project / "crew" / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertEqual(text, onboard.block("dev", "demo", "di-hub", crew_coordinator=True))
+        self.assertEqual(text, onboard.block("dev", "demo", "di-hub", checkpoint_authority=True, crew_coordinator=True))
         self.assertLess(text.index("### 开发线"), text.index("### 模块协调"))
         for phrase in ("模块会话只和你说话", "不用抛【等待用户】", "【与 #旧编号 并行】", "立刻发【已恢复】",
                        "「等什么」开头写模块 id", "【答复告知】只记录", "crew-coordinator skill",
@@ -805,7 +824,7 @@ class AutonomyTest(OnboardCase):
         args = dict(role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop", lines=["前端"],
                     desktop_session=None, project=fe, reviewer=None, nodes=[], now=NOW, session_cwd=fe)
         onboard.join("demo", confirm=True, **args)
-        self.assertEqual(onboard.join("demo", confirm=False, **args).warnings, [])
+        self.assertEqual(others(onboard.join("demo", confirm=False, **args).warnings), [])
 
 
 class PatrolTaskAtBackfillTest(OnboardCase):
@@ -863,6 +882,20 @@ class CommandLineTest(OnboardCase):
         self.assertEqual(code, 0)
         self.assertIn("delete_scheduled_task", out)
         self.assertEqual(self.run_cli("store", "show", "demo")[0], 0)
+
+    def test_checkpoint_authority_switches(self):
+        """scope-authority-defaults DI-1: on by default, --no-checkpoint-authority turns it off."""
+        hub_dir = str(self.dir("hub"))
+        self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                     "--project", hub_dir, "--confirm")
+        for flags, on in (((), True), (("--checkpoint-authority",), True), (("--no-checkpoint-authority",), False)):
+            with self.subTest(flags=flags):
+                code, out, _ = self.run_cli("onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-codex",
+                                            "--short-name", "前端", "--host", "codex-desktop", "--line", "前端",
+                                            "--project", str(self.dir("fe")), "--confirm", *flags)
+                self.assertEqual(code, 0, out)
+                entry = store.find_session(store.open_group("demo"), relay_name="fe-codex")
+                self.assertEqual(bool(entry.get("checkpointAuthority")), on)
 
     def test_errors_exit_2(self):
         hub_dir = str(self.dir("hub"))
@@ -1174,6 +1207,64 @@ class RoutinePermissionsTest(OnboardCase):
         out = JoinTest.join(self, confirm=False)
         self.assertEqual(out.permissions, [])
         self.assertTrue(out.steps[0].startswith("在 Codex 里信任这个项目"))
+
+
+class ScopedInstallPermissionsTest(RoutinePermissionsTest):
+    """scope-authority-defaults DI-2 (user chose A): installs from a lockfile or manifest run, adding a package
+    is left to the host's default, and the two ask rules older versions wrote are offered for removal."""
+
+    NEW_ALLOW = ("Bash(npm ci)", "Bash(npm ci *)", "Bash(npm install)", "Bash(pip install -r *)")
+    RETIRED = ("Bash(npm install *)", "Bash(pip install *)")
+
+    def test_new_join_rules(self):
+        import json
+        self.join_claude(confirm=True)
+        perms = json.loads(self.settings().read_text(encoding="utf-8"))["permissions"]
+        for rule in self.NEW_ALLOW:
+            self.assertIn(rule, perms["allow"])
+        self.assertEqual(sorted(perms["ask"]), sorted(["Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)"]))
+
+    def test_old_ask_rules_listed_then_removed_only_on_confirm(self):
+        import json
+        self.settings().parent.mkdir(parents=True)
+        mine = "Bash(docker push *)"
+        before = {"permissions": {"allow": ["Read"], "ask": [mine, *self.RETIRED, "Bash(git push *)"]}, "x": 1}
+        self.settings().write_text(json.dumps(before), encoding="utf-8")
+        out = self.join_claude(confirm=False)
+        self.assertEqual(sorted(out.permissions_removed), sorted(("ask", r) for r in self.RETIRED))
+        self.assertEqual(json.loads(self.settings().read_text(encoding="utf-8")), before)
+        self.join_claude(confirm=True)
+        doc = json.loads(self.settings().read_text(encoding="utf-8"))
+        self.assertEqual(doc["permissions"]["ask"][:2], [mine, "Bash(git push *)"])
+        for rule in self.RETIRED:
+            self.assertNotIn(rule, doc["permissions"]["ask"])
+        self.assertEqual((doc["x"], doc["permissions"]["allow"][0]), (1, "Read"))
+        self.assertEqual(self.join_claude(confirm=False).permissions_removed, [])
+
+    def test_preview_prints_removals(self):
+        import io
+        from contextlib import redirect_stdout
+        from decision_inbox.__main__ import main
+        self.settings().parent.mkdir(parents=True)
+        self.settings().write_text('{"permissions": {"ask": ["Bash(npm install *)"]}}', encoding="utf-8")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(["onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-claude", "--short-name", "前端",
+                  "--host", "claude-desktop", "--line", "前端", "--desktop-session",
+                  "local_00000000-0000-0000-0000-00000000fe01", "--project", str(self.dir("fe"))])
+        self.assertIn("要删 先问：Bash(npm install *)（旧版本写的）", buf.getvalue())
+
+
+class ScopeRuleTest(unittest.TestCase):
+    """scope-authority-defaults DI-3: approved scope runs, an unlisted dependency is asked once."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("安装 Plan 列出的依赖", "不送审", "Plan 没列的依赖", "只问一次", "一次列全"):
+                    self.assertIn(words, text)
+                self.assertNotIn("联网安装依赖", text)
 
 
 class StallRuleTest(unittest.TestCase):
