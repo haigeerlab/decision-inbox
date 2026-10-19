@@ -531,3 +531,59 @@ def events(g: store.Group, since: str | None = None) -> list[dict]:
     """The event log with fixed field names and order: at, kind, actor, item, data."""
     return [{"at": e["at"], "kind": e["type"], "actor": e.get("actor"), "item": e.get("ref"), "data": e.get("data", {})}
             for e in _since(store.read_events(g), since)]
+
+
+# --- my-waits: one session's own view (requirement 3.3.5, second version) ---
+
+_ITEM_STATE = {
+    "pending": "等用户决定",
+    "undelivered": "用户已答复，答复还没送到",
+    "delivered": "答复已送到，执行后发【已恢复】结项",
+}
+
+
+def _wait_marks(t: tickets.TicketView) -> str:
+    marks = []
+    if "offline" in t.marks:
+        marks.append("对方离线")
+    if "maybe-stuck" in t.marks:
+        marks.append("可能卡住")
+    if t.stale_item is not None:
+        marks.append(f"可能已失效：所等的 #{t.stale_item} 已结项")
+    elif t.maybe_stale is not None:
+        marks.append(f"可能已失效：之后又发过 #{t.maybe_stale}")
+    return f"（{'；'.join(marks)}）" if marks else ""
+
+
+def render_waits(g: store.Group, me: str, now: str, relay=None) -> str:
+    """What `me` (an agent-relay name) waits on, and who waits on it; offline only with a relay snapshot."""
+    entry = store.find_session(g, relay_name=me)
+    if entry is None:
+        raise ValueError(f"{me} 不在 {g.name} 的会话名册里")
+    if entry["role"] == "hub":
+        return "这是决策收件箱：决策收件箱看主视图，这条命令给接入的工作会话查自己用"
+    names = {me, entry.get("shortName")}
+    views = tickets.open_tickets(g, now, relay)
+    mine = []
+    for t in views:
+        if t.waiter == me:
+            mine.append(f"- W{t.no} 在等 {t.target} 的「{t.what}」，已等 {t.minutes} 分钟{_wait_marks(t)}")
+    moment = _instant(now)
+    for key, it in sorted(store.read_state(g, "items").get("items", {}).items(), key=lambda kv: int(kv[0])):
+        if it["sender"] != me or it["status"] in items.FINAL:
+            continue
+        decide = (it.get("decide") or "").splitlines()[0] if it.get("decide") else ""
+        head = f"- #{key}「{decide}」" if decide else f"- #{key} "
+        if it["status"] == "pending":
+            minutes = int((moment - _instant(it["receivedAt"])).total_seconds() // 60)
+            what = "等用户来本会话操作" if items.is_go_to_session(it) else _ITEM_STATE["pending"]
+            mine.append(f"{head}{what}，已等 {minutes} 分钟")
+        else:
+            mine.append(head + _ITEM_STATE["delivered" if items.delivered(it) else "undelivered"])
+    theirs = [f"- W{t.no} {tickets._short(g, t.waiter)} 在等你的「{t.what}」，已等 {t.minutes} 分钟{_wait_marks(t)}"
+              for t in views if t.waiter != me and t.target in names]
+    if not mine and not theirs:
+        return "没有在等的，也没有人在等你"
+    me_name = entry.get("shortName") or me
+    out = [f"{me_name}在等：", *(mine or ["- 没有"]), "在等你的：", *(theirs or ["- 没有"])]
+    return "\n".join(out)

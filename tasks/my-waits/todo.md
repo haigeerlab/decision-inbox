@@ -1,7 +1,8 @@
 # Todo: my-waits
 
-- [ ] Task 1：渲染「我在等什么／谁在等我」（Spec 要做的 1；验收 1～4）
+- [x] Task 1：渲染「我在等什么／谁在等我」（Spec 要做的 1；验收 1～4）
   - 验证：`tests/test_query.py` 新用例在 11384b3 上失败、改后通过
+  - 结果：WaitsTest 5 项改前全部报错（没有 render_waits）、改后通过；名字不在名册时抛 ValueError
 - [ ] Task 2：命令行 `query waits` 与 `/decision-inbox:waits`（要做的 2、3；验收 5）
   - 验证：同上；状态目录前后一致
 - [ ] Task 3：README 与版本 0.0.33（要做的 4）
