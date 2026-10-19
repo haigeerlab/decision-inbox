@@ -6,4 +6,8 @@
 
 ## 检查点
 
-- [ ] Checkpoint（gate）：模块最终验收——全部测试通过；列出实际改动的文件；批准后开 PR
+- [x] Checkpoint（gate）：模块最终验收——全部测试通过；列出实际改动的文件；批准后开 PR（用户 2026-10-20 批准；1073 项测试通过）
+
+## 外部审查意见
+
+<!-- spec-guard: external-review declined -->
