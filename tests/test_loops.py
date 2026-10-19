@@ -50,7 +50,9 @@ class LoopsCase(TempHomeTestCase):
         it = {"sender": sender, "receivedAt": received, "decide": decide, "multi": multi, "project": "",
               "approvalModule": approval, "approvalNode": "spec" if approval else None, "waitKind": kind,
               "answers": [{"letter": "A", "original": "A", "at": answered}] if answered else [],
-              "status": status or ("forwarded" if answered else "pending"), "statusAt": {"pending": received}}
+              "status": status or ("forwarded" if answered else "pending"), "statusAt": {"pending": received},
+              # stage-c-fixes DI-12: a wait ends when the answer is sent, so an answered item has its send
+              "sent": [{"to": sender, "relayId": 1, "at": answered, "state": None, "ackAt": None}] if answered else []}
         if closed:
             it["statusAt"][it["status"]] = closed
         if module is not ...:
@@ -95,6 +97,72 @@ class TagTest(LoopsCase):
         loops.tag(self.g, {"fe": line_map("m1")}, {})
         loops.tag(self.g, {"fe": line_map("m2")}, {})
         self.assertEqual((self.module_of(no), self.module_of(later)), (None, "m1"))
+
+
+class ReverseLookupTest(LoopsCase):
+    """stage-c-fixes DI-10: a coordinator's item without 「模块」 is worked out from what it says."""
+
+    def crews(self):
+        zeta = crew_module("zeta", ask_refs=[("C175", T0)], waits=[crew.Wait("C186", "closed", "是否允许我跑", T0)],
+                           answers=(crew.Answer("C184", T0, 0, 0),))
+        return {"co": crew_read(crew_module("delta"), zeta)}
+
+    def test_review_code_then_session_name_then_one_module_id(self):
+        by_answer = self.item(sender="co", decide="zeta 到 G1，是否允许它再跑一次单测（C184）")
+        by_ask = self.item(sender="co", decide="要不要重交（C175）")
+        by_session = self.item(sender="co", decide="是否放行", )
+        by_word = self.item(sender="co", decide="zeta 仍在 G1，是否允许它对 pilot/zeta.mjs 跑一次 oxlint")
+        two = self.item(sender="co", decide="delta 和 zeta 一起收回 worktree 吗")
+        none = self.item(sender="co", decide="下一步收回两个 worktree 吗")
+        inside = self.item(sender="co", decide="zetas 要不要改名")
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(by_session)]["brief"] = "rh-zeta 说测试已过"
+            tx.write_state("items", doc)
+        loops.tag(self.g, {}, self.crews())
+        self.assertEqual([self.module_of(n) for n in (by_answer, by_ask, by_session, by_word, two, none, inside)],
+                         ["zeta", "zeta", "zeta", "zeta", None, None, None])
+
+    def test_two_modules_named_anywhere_is_joint(self):
+        """di-p0 #36: the decide names gamma and summary, the brief names both sessions; not the first one's."""
+        both = self.item(sender="co", decide="权限实测已跑完，delta、zeta 两个 worktree 现在收回还是继续留着")
+        sessions = self.item(sender="co", decide="两个会话的权限实测结果一致吗")
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(both)]["brief"] = "rh-delta、rh-zeta 各自跑了 permissions verify"
+            doc["items"][str(sessions)]["brief"] = "rh-delta、rh-zeta 各自跑了 permissions verify"
+            tx.write_state("items", doc)
+        loops.tag(self.g, {}, self.crews())
+        self.assertEqual((self.module_of(both), self.module_of(sessions)), (None, None))
+
+    def test_line_level_and_own_field_are_kept(self):
+        line = self.item(sender="co", decide="zeta 收回吗", module="无")
+        own = self.item(sender="co", decide="zeta 收回吗", module="delta")
+        loops.tag(self.g, {}, self.crews())
+        self.assertEqual((self.module_of(line), self.module_of(own)), ("无", "delta"))
+
+    def test_unknown_is_worked_out_again_but_a_known_one_never_changes(self):
+        later = self.item(sender="co", decide="zeta 仍在 G1，要不要跑 oxlint")
+        known = self.item(sender="co", decide="delta 要不要跑 oxlint")
+        loops.tag(self.g, {}, {})  # module-crew unreadable this round
+        self.assertEqual((self.module_of(later), self.module_of(known)), (None, None))
+        loops.tag(self.g, {}, self.crews())
+        self.assertEqual((self.module_of(later), self.module_of(known)), ("zeta", "delta"))
+        crews = {"co": crew_read(crew_module("zeta"))}
+        loops.tag(self.g, {}, crews)
+        self.assertEqual(self.module_of(known), "delta")
+
+    def test_line_level_head(self):
+        from decision_inbox import view
+        it = {"no": 1, "sender": "co", "receivedAt": T0, "project": ""}
+        self.assertIn("线级", view.loop_head(self.g, dict(it, module="无"), "审 spec", None, at(1)))
+        self.assertIn("模块未知", view.loop_head(self.g, dict(it, module=None), "审 spec", None, at(1)))
+
+    def test_plain_line_unknown_is_not_redone_from_the_current_module(self):
+        no = self.item()
+        loops.tag(self.g, {"fe": NS(status="timeout", map=None)}, {})
+        loops.tag(self.g, {"fe": line_map("m1")}, {})
+        self.assertIsNone(self.module_of(no))
 
 
 class SingleLineFactsTest(LoopsCase):
@@ -370,3 +438,135 @@ class ShowTest(LoopReplyTest):
         card = view._item_card(self.g, at(7), dict(items_mod().get(self.g, no), blocks=1), self.found)
         self.assertTrue(card.startswith(f"**#{no} · "), card)
         self.assertNotIn("第 ", card.split("\n")[0])
+
+
+class StageCReplayTest(LoopsCase):
+    """stage-c-fixes acceptance 1: stage C's #61–#63 shape (a coordinator's small permits for zeta, the first
+    with a C number, the other two naming zeta only) are zeta's; the third carries the hint and 「继续等」 works."""
+
+    THIRD = """【等待用户】
+结束：无
+来自：rh2-coord
+项目：crew-rehearsal
+要你决定：zeta 仍在 G1，是否允许它对 zeta 的两个文件跑一次 oxfmt --check
+要点：T-loop 演练的第 3 个小许可，只读
+选项与我的建议：
+推荐 A：同意
+  选了会怎样：zeta 跑一次并回报结果
+B：不同意
+  选了会怎样：zeta 停在 G1
+是否完全停住：是
+"""
+
+    def setUp(self):
+        super().setUp()
+        from decision_inbox import items as it_mod
+        self.item(sender="co", approval="zeta", received=at(0), answered=at(1), decide="批准 zeta 的 Spec（C166）吗")
+        self.first = self.item(sender="co", received=at(3), answered=at(4),
+                               decide="zeta 到 G1，是否允许它再跑一次 zeta 的单测（C184）")
+        self.second = self.item(sender="co", received=at(4.5), answered=at(5),
+                                decide="zeta 仍在 G1，是否允许它对 pilot/zeta.mjs 跑一次 oxlint")
+        self.third = it_mod.receive(self.g, self.THIRD, sender="co", relay_id=8922, received_at=at(6)).item
+        zeta = crew_module("zeta", ask_refs=[("C166", at(0))],
+                           waits=[crew.Wait("C184", "closed", "zeta 到 G1，是否允许我再跑一次 zeta 的单测", at(3)),
+                                  crew.Wait("C186", "closed", "zeta 仍在 G1，是否允许我对 pilot/zeta.mjs 跑一次 oxlint", at(4.5)),
+                                  crew.Wait("C188", "open", "zeta 仍在 G1，是否允许我对 zeta 的两个文件跑一次 oxfmt --check", at(6))],
+                           answers=(crew.Answer("C166", at(1), 0, 0), crew.Answer("C184", at(4), 0, 0),
+                                    crew.Answer("C186", at(5), 0, 0)))
+        self.crews = {"co": crew_read(zeta)}
+        loops.tag(self.g, {}, self.crews)
+        self.found = loops.facts(self.g, at(7), {}, self.crews)
+
+    def test_three_permits_are_zeta(self):
+        self.assertEqual([self.module_of(n) for n in (self.first, self.second, self.third)], ["zeta"] * 3)
+        f = next(f for f in self.found if f.key == "co|zeta")
+        self.assertEqual(f.asked, 4)
+
+    def test_third_carries_the_three_options(self):
+        from decision_inbox import hub
+        text = hub.main_view(self.g, at(7), loop_facts=self.found)
+        no = self.third
+        hint = text.index("⚠ 模块 zeta 可能在打转")
+        self.assertLess(hint, text.index(f"**#{no}"))
+        for words in (f"回「{no} 挂起」", f"回「{no} 换方案：<怎么换>」", f"回「{no} 继续等」"):
+            self.assertIn(words, text)
+
+    def test_keep_waiting_is_option_c_and_stops_hushing_the_stall(self):
+        from decision_inbox import hub, items as it_mod, stall
+        self.assertTrue(stall._hushed("co|stalled:zeta", self.found))
+        hub.reply(self.g, f"{self.third} 继续等", at(7), loop_facts=self.found)
+        self.assertEqual(it_mod.get(self.g, self.third)["answers"][0]["loopOption"], "继续等")
+        self.assertEqual(list(store.read_state(self.g, "loops")["quiet"]), ["co|zeta"])
+        again = loops.facts(self.g, at(8), {}, self.crews)
+        self.assertFalse(stall._hushed("co|stalled:zeta", again))
+
+
+class StallClockTest(LoopsCase):
+    """stage-c-fixes DI-12: work time starts no earlier than the latest delivered answer; waiting for the user
+    (until the answer is sent), joint items and the coordinator's wait records are taken out."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        doc = json.loads((self.g.path / "group.json").read_text(encoding="utf-8"))
+        doc["stall"] = {"stalledHours": 0.5}
+        (self.g.path / "group.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def sent(self, no, when, to="co"):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["sent"] = [{"to": to, "relayId": 1, "at": when, "state": None, "ackAt": None}] \
+                if when else []
+            tx.write_state("items", doc)
+
+    def stalled(self, crews, now):
+        from decision_inbox import stall
+        loops.tag(self.g, {}, crews)
+        found = loops.facts(self.g, now, {}, crews)
+        return {k: v for k, v in stall._module_findings(now, crews, stall.settings(self.g), found).items()
+                if "stalled" in k}
+
+    def test_epsilon_answer_sent_late_is_not_a_stall(self):
+        """#47: answered at 1.4, the send failed until 1.8; #55 came at 1.85 saying no new commits."""
+        no = self.item(sender="co", approval="epsilon", received=at(1), answered=at(1.4),
+                       decide="批准 epsilon 的 Plan（C128）吗")
+        self.sent(no, at(1.8))
+        crews = {"co": crew_read(crew_module("epsilon", started=at(0), last_commit=at(0.5), ask_refs=[("C128", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(1.85)), {})
+
+    def test_answer_never_sent_keeps_waiting(self):
+        no = self.item(sender="co", approval="epsilon", received=at(1), answered=at(1.4),
+                       decide="批准 epsilon 的 Plan（C128）吗")
+        self.sent(no, None)
+        crews = {"co": crew_read(crew_module("epsilon", started=at(0), last_commit=at(0.8), ask_refs=[("C128", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(3)), {})
+
+    def test_joint_item_waits_for_every_module_it_names(self):
+        no = self.item(sender="co", received=at(1), answered=at(2.9),
+                       decide="一起批准 delta（C121）、epsilon（C119）两份 Plan 吗")
+        self.sent(no, at(2.9))
+        crews = {"co": crew_read(crew_module("delta", started=at(0), last_commit=at(0.8), ask_refs=[("C121", at(1))]),
+                                 crew_module("epsilon", started=at(0), last_commit=at(0.8), ask_refs=[("C119", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(3)), {})
+        self.assertIsNone(store.read_state(self.g, "items")["items"][str(no)]["module"])
+
+    def ticket(self, what, sent, closed=None):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("tickets") or {}
+            t = {"waiter": "co", "target": "API", "what": what, "sentAt": sent, "relayId": 9, "status": "open"}
+            if closed:
+                t.update(status="closed", close={"at": closed})
+            doc.setdefault("tickets", {})[str(len(doc.get("tickets", {})) + 1)] = t
+            tx.write_state("tickets", doc)
+
+    def crews_two(self):
+        return {"co": crew_read(crew_module("delta", started=at(0), last_commit=at(0.2)),
+                                crew_module("zeta", started=at(0), last_commit=at(0.2)))}
+
+    def test_wait_record_naming_a_module_counts_for_it_only(self):
+        self.ticket("zeta 要的 fixtures 文件", at(0.3), at(2.9))
+        self.assertEqual(list(self.stalled(self.crews_two(), at(3))), ["co|stalled:delta"])
+
+    def test_wait_record_naming_none_counts_for_all(self):
+        self.ticket("等 API 线给 mock 地址", at(0.3), at(2.9))
+        self.assertEqual(self.stalled(self.crews_two(), at(3)), {})

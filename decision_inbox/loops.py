@@ -8,6 +8,7 @@ user or for another line taken out). Facts only; the hub shows them and never bl
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -74,40 +75,119 @@ def _ok_map(maps: dict, name: str):
     return read.map if getattr(read, "status", None) == "ok" else None
 
 
+_REVIEW_CODE_RE = re.compile(r"(?<![A-Za-z0-9])C\d+(?![0-9])")
+
+
+def _named(word: str, text: str) -> bool:
+    return re.search(rf"(?<![A-Za-z0-9_-]){re.escape(word)}(?![A-Za-z0-9_-])", text) is not None
+
+
+def _crew_module_for(it: dict, modules) -> str | None:
+    """stage-c-fixes DI-10: what a coordinator's item says, in order; None when it does not say one module."""
+    first = (it.get("decide") or "").split("\n")[0].strip()
+    text = f"{it.get('decide') or ''}\n{it.get('brief') or ''}"
+    for m in modules:
+        if first and any((w.decide or "").strip() == first for w in m.waits):
+            return m.module
+    by_code = _by_code(text, modules)
+    if by_code:
+        return by_code[0] if len(by_code) == 1 else None  # several modules' numbers: a joint item
+    named = [m.module for m in modules if _named(m.module, first)]
+    if len(named) > 1:
+        return None  # several modules in the question: a joint item, never the first one's
+    sessions = [m.module for m in modules if m.relay_name and _named(m.relay_name, text)]
+    if sessions:
+        return sessions[0] if len(sessions) == 1 else None
+    return named[0] if named else None
+
+
+def _by_code(text: str, modules) -> list[str]:
+    codes = set(_REVIEW_CODE_RE.findall(text))
+    return [m.module for m in modules
+            if codes & ({r for r, _ in m.ask_refs} | {w.ref for w in m.waits} | {a.ref for a in m.answers or ()})]
+
+
+def _involved(it: dict, modules) -> set[str]:
+    """stage-c-fixes DI-12: every module a coordinator's untagged (joint) item asks about."""
+    text = f"{it.get('decide') or ''}\n{it.get('brief') or ''}"
+    known = {m.module for m in modules}
+    first = (it.get("decide") or "").split("\n")[0]
+    return (set(_by_code(text, modules)) | (set(approval_modules(it)) & known)
+            | {m for m in known if _named(m, first)}
+            | {m.module for m in modules if m.relay_name and _named(m.relay_name, text)})
+
+
+def approval_modules(it: dict) -> list[str]:
+    from decision_inbox import approval
+    return approval.modules_of(it)
+
+
+def _crew_modules(entry: dict | None, crews: dict):
+    if entry is None or not entry.get("crewCoordinator"):
+        return None
+    read = (crews or {}).get(entry["relayName"])
+    return read.modules if getattr(read, "status", None) == "ok" else ()
+
+
 def _module_for(it: dict, entry: dict | None, maps: dict, crews: dict) -> str | None:
     if it.get("approvalModule"):
         return it["approvalModule"]
     if it.get("multi") or entry is None or entry.get("role") != "dev":
         return None
     if entry.get("crewCoordinator"):
-        read = (crews or {}).get(entry["relayName"])
-        first = (it.get("decide") or "").split("\n")[0].strip()
-        for m in getattr(read, "modules", ()) if getattr(read, "status", None) == "ok" else ():
-            if first and any((w.decide or "").strip() == first for w in m.waits):
-                return m.module
-        return None
+        return _crew_module_for(it, _crew_modules(entry, crews))
     line_map = _ok_map(maps, entry["relayName"])
     return line_map.active_module if line_map is not None else None
 
 
 def tag(g: store.Group, maps: dict, crews: dict) -> None:
-    """Give each untagged item its module, once; a tag never changes afterwards."""
+    """Give each untagged item its module, once; a tag never changes afterwards.
+
+    stage-c-fixes DI-10: a coordinator's item tagged null is worked out again from what it says (never from
+    what the coordinator does now), so a round where module-crew could not be read does not stick.
+    """
     with g.transaction() as tx:
         doc = tx.read_state(items.DOMAIN)
         changed = False
         for no, it in (doc.get("items") or {}).items():
-            if "module" in it:
+            entry = store.find_session(g, relay_name=it["sender"])
+            if "module" not in it:
+                it["module"] = _module_for(it, entry, maps, crews)
+            elif it["module"] is None and not it.get("multi") and _crew_modules(entry, crews):
+                found = _crew_module_for(it, _crew_modules(entry, crews))
+                if found is None:
+                    continue
+                it["module"] = found
+            else:
                 continue
-            it["module"] = _module_for(it, store.find_session(g, relay_name=it["sender"]), maps, crews)
             tx.append_event("items.module-tagged", ref=int(no), actor="system", data={"module": it["module"]})
             changed = True
         if changed:
             tx.write_state(items.DOMAIN, doc)
 
 
+def _sent_at(it: dict) -> str | None:
+    """When agent-relay took the answer for the proposer (decision-cards DI-6), the first time."""
+    sent = [s["at"] for s in it.get("sent") or () if s.get("to") == it["sender"] and s.get("at")]
+    return min(sent, key=_instant) if sent else None
+
+
+def last_delivered(f) -> str | None:
+    """stage-c-fixes DI-12: the latest answer of this module that reached it, on the hub's side."""
+    sent = [t for t in (_sent_at(it) for it in getattr(f, "items", ())) if t]
+    return max(sent, key=_instant) if sent else None
+
+
+def _ticket_names(t: dict, module: str, modules) -> bool:
+    """A coordinator's wait record holds up the modules it names, or all of them when it names none."""
+    named = {m.module for m in modules if _named(m.module, t.get("what") or "")}
+    return not named or module in named
+
+
 def _wait_end(it: dict, now: str) -> str:
-    if it.get("answers"):
-        return it["answers"][0]["at"]
+    """stage-c-fixes DI-12: waiting lasts until the answer is sent; an answer never sent keeps it waiting."""
+    if sent := _sent_at(it):
+        return sent
     ended = [it["statusAt"][s] for s in _ENDED if s in it.get("statusAt", {})]
     return min(ended, key=_instant) if ended else now
 
@@ -246,7 +326,12 @@ def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) 
                 if m.stage in ("merged",) or m.suspended:
                     continue
                 own = [it for it in every if it["sender"] == name and it.get("module") == m.module]
-                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own] + _crew_waits(m, now)
+                joint = [it for it in every if it["sender"] == name and it.get("module") is None
+                         and m.module in _involved(it, read.modules)]
+                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own + joint] + _crew_waits(m, now)
+                waits += [(t["sentAt"], t["close"]["at"] if t.get("close") else now) for t in tickets.values()
+                          if t.get("waiter") == name and t.get("sentAt")
+                          and _ticket_names(t, m.module, read.modules)]
                 if m.answers is None:
                     segments, unread = None, "进度读不到（module-crew 早于 0.5.0）"
                 else:

@@ -170,6 +170,12 @@ accc9844fbe7296f5f42d10a587bc281ab7a4518b8c0d2dee2fdd64683d4aa90  ./wait-user/mi
 f27d5250999196eba83209e6d252baed70e3e838b7462be8c9ddb76d727e3569  ./wait-user/missing-field.txt
 8c601b0d452e704dcbe04ce468dbc239cb480112c3b8232b93293ae15a1114f2  ./wait-user/missing-options.json
 4768573be73f1e7d241ae5418f44c822f8b6d5b9f32d6c178e483292fb1094f8  ./wait-user/missing-options.txt
+170858295864fd6053b2482881c2ab4376f2f7b744003a3bb18c04140a7299bf  ./wait-user/module-id.json
+6f917639c2a1e3b52f5a784d1203a3f34af2828263020a7ae1d268e5100773ed  ./wait-user/module-id.txt
+aca968697c913d77916b12a9816ce2d10e5d1b19f4ae556bbae74f8aad375a52  ./wait-user/module-none.json
+4e9fd3eda34e740d34211cca7cacfbe76d7d2ed66a15ecf8bf83cd40365fd9cc  ./wait-user/module-none.txt
+31c2ab501ae048e00a3f7724dba790c8a0466e84c0080e19e5532943c059a7b9  ./wait-user/module-with-kind.json
+0a51385c915d3cb0c74765ada8d8eb97a4e7ddbc2f4f4a216cf067bf840ffe6c  ./wait-user/module-with-kind.txt
 bbcc2b9760b7c44d303e03ee0a07ffdaa0d26e5fead471110f2d2ecf38a17293  ./wait-user/multiline.json
 538b4d49929e7b54b0e938231106ac8a90b752ff3380608f9f365d74d342d107  ./wait-user/multiline.txt
 45221991637443a0f6b11d3ec2e290538fc949087340d9f2268a776bd598a101  ./wait-user/no-recommendation.json

@@ -12,9 +12,10 @@ USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <邮箱名>]\n"
          "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
          "      python3 -m decision_inbox notify <文字>\n"
+         "      python3 -m decision_inbox patrol-watch <协作组>\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
          "      python3 -m decision_inbox view <协作组> [detail <编号>|waits|closed [日期]|invalidated]\n"
-         "      python3 -m decision_inbox onboard <hub|join|allow|task|leave|teardown> <协作组> ...\n"
+         "      python3 -m decision_inbox onboard <hub|join|allow|task|watch|leave|teardown> <协作组> ...\n"
          "      python3 -m decision_inbox shim [--if-installed]\n"
          "      python3 -m decision_inbox whoami [--cwd <目录>]\n"
          "      python3 -m decision_inbox glossary\n"
@@ -79,6 +80,24 @@ def _notify(argv: list[str]) -> int:
     if r.returncode != 0:
         print(f"桌面通知没发出去：{r.stderr.strip() or r.returncode}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _patrol_watch(argv: list[str]) -> int:
+    """stage-c-fixes DI-11: run by launchd every few minutes; always exits 0 so launchd keeps it."""
+    from datetime import datetime, timezone
+    from decision_inbox import watch
+    if len(argv) != 1:
+        print("用法：decision-inbox patrol-watch <组>", file=sys.stderr)
+        return 0
+    try:
+        g = store.open_group(argv[0])
+        text = watch.check(g, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    except Exception as e:  # noqa: BLE001 - a broken run must not stop the next one
+        print(f"巡视提醒没跑成（{argv[0]}）：{e}".replace("\n", " "), file=sys.stderr)
+        return 0
+    if text:
+        print(f"已提醒：{text}")
     return 0
 
 
@@ -605,6 +624,9 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("patrol-session")
     p.add_argument("group")
     p.add_argument("--session", required=True)
+    p = sub.add_parser("watch")  # stage-c-fixes DI-11: the launchd job behind patrol-watch
+    p.add_argument("group")
+    p.add_argument("--confirm", action="store_true")
     for name in ("leave", "teardown"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -650,6 +672,22 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "patrol-session":
             onboard.record_patrol_session(args.group, args.session, now)
             print(f"已记下巡视会话：{args.session}")
+            return 0
+        elif args.command == "watch":
+            from decision_inbox import watch
+            store.open_group(args.group)
+            plan = watch.install(args.group, args.confirm)
+            print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
+                  f"{install.cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+            print(f"{'已写入' if args.confirm else '要写入'}：{plan.path}" + ("" if plan.changed else "（内容没变）"))
+            if not args.confirm:
+                print(plan.content.rstrip())
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次（卸载时 teardown 会一起卸掉）")
+                return 0
+            if plan.error:
+                print(f"已写入但没加载上：{plan.error}", file=sys.stderr)
+                return 1
+            print("已加载")
             return 0
         elif args.command == "leave":
             out = onboard.leave(args.group, args.relay_name, args.project, args.confirm, now)
@@ -723,6 +761,8 @@ def main(argv: list[str]) -> int:
         return _patrol(argv[1:])
     if argv[:1] == ["notify"]:
         return _notify(argv[1:])
+    if argv[:1] == ["patrol-watch"]:
+        return _patrol_watch(argv[1:])
     if argv[:1] == ["hook"]:
         return _hook(argv[1:])
     if argv[:1] == ["query"]:

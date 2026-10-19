@@ -348,6 +348,17 @@ def _groups(names) -> list[str]:
     return sorted(p.name for p in root.iterdir() if (p / "group.json").is_file()) if root.is_dir() else []
 
 
+def _patrol_watch(group: str) -> Check:
+    """stage-c-fixes DI-11: the launchd job that tells the user when the patrol has gone quiet."""
+    from decision_inbox import watch
+    fix = f"运行 {install.cli()} onboard watch {group} 预览，确认后加 --confirm"
+    if not watch.plist_path(group).is_file():
+        return Check("巡视提醒", "bad", "本插件", "没有装：巡视停了只在主视图上提示", fix)
+    if not watch.loaded(group):
+        return Check("巡视提醒", "bad", "macOS launchd", f"{watch.label(group)} 没有加载", fix)
+    return Check("巡视提醒", "ok", "本插件", f"{watch.label(group)} 已加载，每 5 分钟检查一次")
+
+
 def run(groups=None, now: str | None = None) -> list[Check]:
     now = now or store.now()
     out = [_shim()]
@@ -357,6 +368,8 @@ def run(groups=None, now: str | None = None) -> list[Check]:
         g = store.open_group(group)
         out += _conventions(g, group)
         out.append(_patrol(g, now))
+        if any(e["role"] == "hub" for e in store.roster(g)):
+            out.append(_patrol_watch(group))
         coordinators += crew.coordinators(g)
         left = store.read_state(g, onboard.DOMAIN).get("left", {})
         out += [_host_permission(e) for e in store.roster(g)

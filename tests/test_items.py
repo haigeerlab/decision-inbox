@@ -678,3 +678,23 @@ class WritingNotesTest(TempHomeTestCase):
         card = view._item_card(g, "2026-10-18T19:45:00+08:00", it)
         # decision-cards D1 B: writing hints are the proposer's business, not the user's card
         self.assertNotIn("写法提示", card)
+
+
+class ModuleFieldTest(ItemsCase):
+    """stage-c-fixes DI-10: session-protocol v2.4 「模块」 is kept on the item; without it the item has no key."""
+
+    def with_module(self, value):
+        return SINGLE.replace("选项与我的建议：\n",
+                              f"模块：{value}\n选项与我的建议：\n", 1)
+
+    def test_module_id_kept(self):
+        r = self.receive(self.with_module("zeta"))
+        self.assertEqual(self.item(r.item)["module"], "zeta")
+
+    def test_line_level_kept_as_written(self):
+        r = self.receive(self.with_module("无"))
+        self.assertEqual(self.item(r.item)["module"], "无")
+
+    def test_without_field_no_key(self):
+        r = self.receive(SINGLE)
+        self.assertNotIn("module", self.item(r.item))
