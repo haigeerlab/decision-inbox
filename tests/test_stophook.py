@@ -338,3 +338,99 @@ class LeftEntriesTest(HookCase):
         self.assertFalse(d.block)
         self.assertIn("api-codex 已退出协作组", d.note)
         self.assertFalse(self.decide().block)  # by cwd: the only entry for this repo has left
+
+
+class HubTurnCheckTest(unittest.TestCase):
+    """decision-cards Task 6 (DI-4, D1 A): the hub's last reply must carry the cards as the command printed them."""
+
+    VIEW = ("等你决定 2 项 · 异常 0\n\n**#47 · epsilon 的Plan，批不批** · 等了 3 分钟 · 挡住 1 条线\n"
+            "crew-rehearsal · rh2-coord · 模块 epsilon · Plan（第 2 次交审）\n\n**推荐 A**\n\n```\n47 A\n```\n\n"
+            "**#49 · 接下来怎么办** · 等了 5 分钟\n\n**推荐 B**\n\n```\n49 B 换方案：先给我看预览\n```\n\n"
+            "等待中 0 条 · 已失效 0 项 · 今天已关 0 条")
+    EMPTY = "等你决定 0 项 · 异常 0\n\n等待中 0 条 · 已失效 0 项 · 今天已关 0 条"
+    CMD = "/Users/me/.decision-inbox/bin/decision-inbox view di-p0 --agents /x/agents.json"
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="di-transcript-"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def transcript(self, output, final, command=None, extra_turn=False):
+        import json
+        rows = [{"type": "user", "message": {"role": "user", "content": "看一下"}},
+                {"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": command or self.CMD}}]}},
+                {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1",
+                                                          "content": output}]}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": final}]}}]
+        if extra_turn:
+            rows += [{"type": "user", "message": {"role": "user", "content": "谢谢"}},
+                     {"type": "assistant", "message": {"content": [{"type": "text", "text": "不客气"}]}}]
+        path = self.dir / "t.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+        return {"transcript_path": str(path), "stop_hook_active": False, "cwd": "/somewhere"}
+
+    def check(self, payload):
+        return stophook.hub_turn_check(payload)
+
+    def test_verbatim_passes(self):
+        self.assertFalse(self.check(self.transcript(self.VIEW, self.VIEW)).block)
+
+    def test_missing_head_blocks(self):
+        final = self.VIEW.replace("**#49 · 接下来怎么办** · 等了 5 分钟", "#49 也在等你")
+        d = self.check(self.transcript(self.VIEW, final))
+        self.assertTrue(d.block)
+        self.assertIn("**#49 · 接下来怎么办** · 等了 5 分钟", d.reason)
+        self.assertIn("逐字", d.reason)
+
+    def test_missing_or_changed_copy_block_blocks(self):
+        for final in (self.VIEW.replace("```\n47 A\n```", "回 47 A"),
+                      self.VIEW.replace("49 B 换方案：先给我看预览", "49 B 换方案：先给我看预览。")):
+            with self.subTest(final=final[-80:]):
+                d = self.check(self.transcript(self.VIEW, final))
+                self.assertTrue(d.block)
+                self.assertIn("复制块", d.reason)
+
+    def test_summary_instead_of_cards_blocks(self):
+        d = self.check(self.transcript(self.VIEW, "有两项等你：47 批 Plan，49 选做法。"))
+        self.assertTrue(d.block)
+
+    def test_code_block_without_pending_blocks(self):
+        d = self.check(self.transcript(self.EMPTY, self.EMPTY + "\n\n```\n47 A\n```"))
+        self.assertTrue(d.block)
+        self.assertIn("没有待答", d.reason)
+        self.assertFalse(self.check(self.transcript(self.EMPTY, self.EMPTY)).block)
+
+    def test_reply_json_show_is_used(self):
+        import json
+        out = json.dumps({"show": self.VIEW, "sends": [], "patrolDue": False}, ensure_ascii=False)
+        cmd = "decision-inbox inbox reply di-p0 --text-file /x/said.txt --agents /x/agents.json"
+        self.assertFalse(self.check(self.transcript(out, self.VIEW, command=cmd)).block)
+        self.assertTrue(self.check(self.transcript(out, "已转达", command=cmd)).block)
+
+    def test_passes(self):
+        self.assertFalse(self.check(self.transcript(self.VIEW, "随便", command="ls -la")).block)  # no view this turn
+        self.assertFalse(self.check(self.transcript(self.VIEW, "不客气", extra_turn=True)).block)  # earlier turn
+        payload = self.transcript(self.VIEW, "随便")
+        self.assertFalse(self.check(dict(payload, stop_hook_active=True)).block)
+        self.assertFalse(self.check({"transcript_path": str(self.dir / "none.jsonl")}).block)
+        (self.dir / "bad.jsonl").write_text("{oops\n", encoding="utf-8")
+        self.assertFalse(self.check({"transcript_path": str(self.dir / "bad.jsonl")}).block)
+        self.assertFalse(self.check({}).block)
+
+    def test_persisted_output_is_read_from_its_file(self):
+        saved = self.dir / "out.txt"
+        saved.write_text(self.VIEW, encoding="utf-8")
+        output = f"<persisted-output>\nOutput too large. Full output saved to: {saved}\n\nPreview…\n</persisted-output>"
+        self.assertTrue(self.check(self.transcript(output, "摘要")).block)
+        self.assertFalse(self.check(self.transcript(output, self.VIEW)).block)
+
+    def test_hook_entry_blocks_outside_any_group(self):
+        import json, subprocess, sys
+        payload = self.transcript(self.VIEW, "摘要")
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop"], input=json.dumps(payload),
+                              capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent))
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(json.loads(done.stdout)["decision"], "block")

@@ -228,6 +228,10 @@ def _hook(argv: list[str]) -> int:
         payload = json.loads(sys.stdin.read())
         if not isinstance(payload, dict):
             raise ValueError("钩子输入不是 JSON 对象")
+        hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4: the hub's own reply, wherever it runs
+        if hub_turn.block:
+            print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
+            return 0
         session = args.session
         if args.group:
             g = store.open_group(args.group)
