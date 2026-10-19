@@ -13,7 +13,7 @@
 
 ## 检查点
 
-- [ ] Checkpoint（gate）：模块最终验收——全部测试通过；每条验收标准有证据；列出实际改动的文件
+- [x] Checkpoint（gate）：模块最终验收——全部测试通过（957 个）；每条验收标准有证据；列出实际改动的文件（用户 2026-10-19 验收通过；stall-and-patrol、proxied-session-note 两份 Spec 的更正行一并批准）
 
 ## 外部审查意见
 

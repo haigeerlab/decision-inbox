@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 66c1e6295cb0 -->
+<!-- spec-guard: review approved ddf19192cf8e -->
 
 # Spec: stall-and-patrol
 
