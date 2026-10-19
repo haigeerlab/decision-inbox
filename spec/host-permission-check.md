@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved cdd12c7e25ab -->
 
 # Spec: host-permission-check
 
