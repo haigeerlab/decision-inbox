@@ -347,6 +347,10 @@ def _relay_or_none(path: str | None, version: str | None):
         return None
 
 
+# join-deny-label: say the array each rule goes to; an unknown kind is printed as it is, never guessed
+_RULE_KINDS = {"allow": "放行", "ask": "先问", "deny": "禁止"}
+
+
 def _loop_facts(g, now: str, maps: dict, crews: dict) -> list:
     """loop-detection: tag new items with their module, then each module in progress with its facts."""
     loops.tag(g, maps, crews)
@@ -501,9 +505,9 @@ def _print_outcome(out, confirm: bool) -> None:
         verb, drop = ("已加", "已删") if confirm else ("要加", "要删")
         print(f"权限规则（{out.permissions_file}）：")
         for kind, rule in out.permissions:
-            print(f"  {verb} {'放行' if kind == 'allow' else '先问'}：{rule}")
+            print(f"  {verb} {_RULE_KINDS.get(kind, kind)}：{rule}")
         for kind, rule in out.permissions_removed:
-            print(f"  {drop} {'放行' if kind == 'allow' else '先问'}：{rule}（旧版本写的）")
+            print(f"  {drop} {_RULE_KINDS.get(kind, kind)}：{rule}（旧版本写的）")
     for line in out.written:
         print(line)
     if out.changed and not out.drops:
