@@ -79,7 +79,7 @@ def _waiting_for(g: store.Group, name: str, now: str) -> str:
     for t in tickets.open_tickets(g, now):
         if t.waiter != name:
             continue
-        if t.target in tickets.USER_TARGETS:
+        if tickets.waits_on_user(g, t.target):
             if not parts:
                 parts.append("你")
         elif t.target not in parts:
@@ -201,7 +201,7 @@ def _classify(g: store.Group, now: str, name: str, assessment, relay) -> _Verdic
         busy = f"，已忙 {ago(now, since).removesuffix('前')}" if since else ""
         return _Verdict(f"正在忙长任务{busy}", "不打扰，等它做完这一轮", "—")
     external = [t for t in tickets.open_tickets(g, now) if t.waiter == name
-                and t.target not in tickets.USER_TARGETS and store.find_session(g, short_name=t.target) is None]
+                and not tickets.waits_on_user(g, t.target) and store.find_session(g, short_name=t.target) is None]
     if external:
         t = external[0]
         return _Verdict(f"等别的线交付：等 {t.target} 的「{_one_line(t.what)}」", "交审查者跟进", "审查者")
@@ -293,7 +293,7 @@ def _details(g: store.Group, now: str, assessment, relay, wakes: dict) -> list[s
               and n not in pending_senders and not any(t.waiter == n for t in open_)]
     long_waits = [f"{_short(g, t.waiter)} 等 {t.target}：{_one_line(t.what)} · 已阻塞 {t.minutes // 60} 小时 · "
                   "审查者跟进：第一版不记录"
-                  for t in open_ if t.minutes >= tickets.STUCK_MINUTES and t.target not in tickets.USER_TARGETS]
+                  for t in open_ if t.minutes >= tickets.STUCK_MINUTES and not tickets.waits_on_user(g, t.target)]
     return [
         "检查明细",
         f"- 等待链：{chain}",
@@ -467,7 +467,7 @@ def stats(g: store.Group, since: str | None = None) -> Stats:
         questions_returned=sum(1 for rec in store.read_state(g, "hub").get("unknown", {}).values()
                                if rec.get("returned") and (since is None or rec["at"][:10] >= since)),
         relayed_refused=sum(e["type"] == "hub.relayed-input" for e in events),
-        open_tickets=len(open_), stale_tickets=len(tickets.stale_tickets(g)),
+        open_tickets=len(open_), stale_tickets=len(tickets.stale_numbers(g)),
         **_patrol_cadence(events),
     )
 
