@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved b7222361db45 -->
 
 # Spec: go-to-session
 
