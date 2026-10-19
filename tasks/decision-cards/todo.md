@@ -24,7 +24,7 @@
 - [x] Task 7：会话停在弹窗上的兜底提醒（DI-9；验收 14）
   - 验证：`bridge_sessions` 夹具上的新用例先失败后通过（waiting 字段值按 rh2-coord 转述，夹具注明来源）
   - 巡视提示词已加「读 bridge_sessions 写入 sessions.json」与 `--sessions`；收件箱规则段的对应步骤放到 Task 8 一起改
-  - 待核对：第一次遇到真弹窗时读一次 `bridge_sessions`，看 `status`／`waitingFor` 是不是转述的写法
+  - 已核对（2026-10-19，合并后）：开一个探针会话停在真弹窗上，`bridge_sessions` 报 `"status": "waiting"`、`"waitingFor": "permission prompt"`，和转述一致；原样记进 `tests/test_desktop.py` 的 RAW_WAITING
 - [x] Task 9：升到 session-protocol v2.3，卡片改读新字段（Spec 要做的 10；验收 15）
   - 验证：v2.3 样例一致性测试先失败后通过；card-final、card-spec-plan 卡片用例先失败后通过
   - 样例：`tests/fixtures/session-protocol/v2.2` 改名 v2.3，用契约 6b8810e 的 `git archive` 覆盖解出（已有样例零改动，新增 4 份，SHA256SUMS 全部对上）
