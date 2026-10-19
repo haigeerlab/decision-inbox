@@ -45,6 +45,7 @@ class ModuleLoop:
     last_progress: str | None
     unread: str | None      # why the progress could not be read
     ready: tuple = ()       # modules ready to start on that line (option A lists them)
+    waits: tuple = ()       # (start, end) spans spent waiting for the user or another line
     hit: str | None = None  # why it looks like going round in circles
 
 
@@ -139,6 +140,20 @@ def _moved_by_commits(starts: list[str], commits: list[str], now: str) -> list[b
     return [any(_instant(a) <= _instant(c) < _instant(b) for c in commits) for a, b in zip(starts, ends)]
 
 
+def _crew_waits(m, now: str) -> list[tuple[str, str]]:
+    """module-crew's own record of waiting: each ask until its answer, an open 【等待用户】 until now."""
+    answered = {a.ref: a.at for a in m.answers or ()}
+    spans = [(at, answered[ref]) for ref, at in m.ask_refs if ref in answered]
+    spans += [(w.at, answered.get(w.ref) or now) for w in m.waits
+              if w.at and (w.ref in answered or w.state == "open")]
+    return spans
+
+
+def worked_since(f: ModuleLoop, since: str, now: str) -> float:
+    """Hours of work from `since` to now, waiting taken out (stall-and-patrol's stall time, loop-detection 7)."""
+    return _worked(since, now, list(f.waits))
+
+
 def _fact(line_map, module: str):
     return next((m for m in line_map.modules if m.id == module), None) if line_map is not None else None
 
@@ -154,7 +169,8 @@ def _build(key, line, module, project, own, fact, segments, unread, start, now, 
                       max(0, asked - baseline) if baseline is not None else 0, segments, still,
                       _worked(start, now, waits), (fact.progress_done, fact.progress_total) if fact else None,
                       last_progress, unread,
-                      tuple(m.id for m in line_map.modules if m.status == "ready") if line_map is not None else ())
+                      tuple(m.id for m in line_map.modules if m.status == "ready") if line_map is not None else (),
+                      tuple(waits))
 
 
 def _later(*values):
@@ -230,7 +246,7 @@ def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) 
                 if m.stage in ("merged",) or m.suspended:
                     continue
                 own = [it for it in every if it["sender"] == name and it.get("module") == m.module]
-                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own]
+                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own] + _crew_waits(m, now)
                 if m.answers is None:
                     segments, unread = None, "进度读不到（module-crew 早于 0.5.0）"
                 else:

@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import items, protocol, reviews, store
+from decision_inbox import items, loops, protocol, reviews, store
 
 DEFAULTS = {"stalledHours": 12, "reworkRounds": 3, "repeatAsks": 3, "repeatHours": 24,
             "askAgainHours": 12, "answerWaitMinutes": 30,
@@ -52,14 +52,14 @@ def _ready(maps: dict, name: str) -> str:
 
 def ask_text(short: str, where: str, ready: str) -> str:
     return (f"【decision-inbox 巡视】{short}：{where}。请抛一项【等待用户】，写清卡在哪，给用户三个选项："
-            f"A 挂起当前模块，先开可开工的模块（{ready}）；B 换做法（写明怎么换）；C 继续等，12 小时内不再问。"
+            f"A 挂起当前模块，先开可开工的模块（{ready}）；B 换方案（写明怎么换）；C 继续等，12 小时内不再问。"
             "挂起由你自己用 spec-guard 的 module-suspend 做，不要等决策收件箱代做。")
 
 
 def module_ask_text(short: str, module: str, where: str, ready: str) -> str:
     """The wake for a module under a module-crew coordinator (crew-stall-facts): module-crew's own way to suspend."""
     return (f"【decision-inbox 巡视】{short}：模块 {module}{where}。请就这个模块抛一项【等待用户】，写清卡在哪，"
-            f"给用户三个选项：A 挂起模块 {module}，先开可开工的模块（{ready}）；B 换做法（写明怎么换）；"
+            f"给用户三个选项：A 挂起模块 {module}，先开可开工的模块（{ready}）；B 换方案（写明怎么换）；"
             "C 继续等，12 小时内不再问。挂起按 module-crew 的做法做，不要等决策收件箱代做。")
 
 
@@ -67,19 +67,26 @@ _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
 _SKIP_STAGES = ("merged", "wait-merge")   # done, or waiting for the merge: no new commits are expected
 
 
-def _module_findings(now: str, crews: dict, cfg: dict) -> dict[str, str]:
-    """key -> where, from module-crew 0.4.0 facts; modules without them (0.3.x) are never judged."""
+def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[str, str]:
+    """key -> where, from module-crew 0.4.0 facts; modules without them (0.3.x) are never judged.
+
+    loop-detection: a module waiting for the user or in review is judged too; the stall time is work time,
+    the waiting spans of its loop facts taken out (wall-clock when the hub has no facts for it).
+    """
     found = {}
+    facts = {f.key: f for f in loop_facts or ()}
     for coordinator, read in (crews or {}).items():
         if getattr(read, "status", None) != "ok":
             continue
         for m in read.modules:
-            if m.stage in _SKIP_STAGES or m.suspended or m.waiting_user or m.review:
+            if m.stage in _SKIP_STAGES or m.suspended:
                 continue
             since = None if m.commits_error else (m.last_commit_at or m.started_at)
-            if since and _hours(now, since) >= cfg["stalledHours"]:
-                what = (f"已经 {int(_hours(now, since))} 小时没有新提交（最后一次提交 {since[5:16].replace('T', ' ')}）"
-                        if m.last_commit_at else f"开工 {int(_hours(now, since))} 小时还没有提交")
+            f = facts.get(f"{coordinator}|{m.module}")
+            worked = (loops.worked_since(f, since, now) if f is not None else _hours(now, since)) if since else 0
+            if since and worked >= cfg["stalledHours"]:
+                what = (f"已经 {int(worked)} 小时没有新提交（最后一次提交 {since[5:16].replace('T', ' ')}，"
+                        "等你答复的时间不算）" if m.last_commit_at else f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）")
                 found[f"{coordinator}|stalled:{m.module}"] = what
             for node, ats in m.asks:
                 recent = [at for at in ats if _hours(now, at) <= cfg["repeatHours"]]
@@ -113,15 +120,27 @@ def _findings(g: store.Group, now: str, lines: dict, cfg: dict) -> dict[str, str
     return found
 
 
-def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: dict | None = None) -> list[Ask]:
+def _hushed(key: str, loop_facts) -> bool:
+    """loop-detection: a module the hub already shows as going round in circles is not woken (DI-6)."""
+    name, _, reason = key.partition("|")
+    kind, _, module = reason.partition(":")
+    if kind not in ("stalled", "repeat"):
+        return False
+    return any(f.hit and f.line == name and (not module or f.module == module) for f in loop_facts or ())
+
+
+def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: dict | None = None,
+         loop_facts=None) -> list[Ask]:
     """What patrol should ask this round; each key at most once per askAgainHours."""
     cfg = settings(g)
     asked = state.get("stallAsks", {})
     left = store.left_relays(g)
     out = []
-    for key, where in {**_findings(g, now, lines, cfg), **_module_findings(now, crews, cfg)}.items():
+    for key, where in {**_findings(g, now, lines, cfg), **_module_findings(now, crews, cfg, loop_facts)}.items():
         name, _, reason = key.partition("|")
         module = reason.partition(":")[2]
+        if _hushed(key, loop_facts):
+            continue
         entry = store.find_session(g, relay_name=name)
         if entry is None or name in left or entry["role"] == "hub":
             continue
@@ -156,5 +175,5 @@ def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
                  else "去 Codex 打开它的任务")
         who = f"{entry['shortName']}（模块 {module}）" if module else entry["shortName"]
         rows.append(f"⚠ 停滞：{who} 被问了 {int(_hours(now, at) * 60)} 分钟还没抛待决事项。"
-                    f"请去「{entry['shortName']}」处理（{where}）：A 挂起{f'模块 {module}' if module else '当前模块'}，先开可开工的模块；B 换做法；C 继续等")
+                    f"请去「{entry['shortName']}」处理（{where}）：A 挂起{f'模块 {module}' if module else '当前模块'}，先开可开工的模块；B 换方案；C 继续等")
     return rows

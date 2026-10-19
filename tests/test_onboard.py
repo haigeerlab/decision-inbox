@@ -104,6 +104,14 @@ class BlockTextTest(unittest.TestCase):
             for needle in COMMON + ONLY[role]:
                 self.assertIn(needle, text, f"{role} 缺「{needle}」")
 
+    def test_loop_option_words(self):
+        """loop-detection 9: the stall options say 换方案, and the loop words in an answer are explained."""
+        for role in ("dev", "owner", "coordinator"):
+            text = self.block(role)
+            self.assertNotIn("换做法", text)
+            for needle in ("B 换方案（写明怎么换）", "用户原话是「挂起」「换方案：…」「继续等」", "继续等＝照原来的做法做下去"):
+                self.assertIn(needle, text, f"{role} 缺「{needle}」")
+
     def test_rules_not_for_this_role(self):
         self.assertNotIn("各线范围", self.block("dev"))
         self.assertNotIn("【讨论】", self.block("dev"))

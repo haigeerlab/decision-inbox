@@ -306,8 +306,9 @@ def _patrol(argv: list[str]) -> int:
         patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
-        doc = patrol.plan(g, now=store.now(), relay=agents, maps=maps, relay_error=error,
-                          from_hub=args.from_hub, crews=crew.crews(g), outbox=outbox).to_json()
+        crews, now = crew.crews(g), store.now()
+        doc = patrol.plan(g, now=now, relay=agents, maps=maps, relay_error=error, from_hub=args.from_hub,
+                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews)).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
