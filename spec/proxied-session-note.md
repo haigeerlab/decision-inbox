@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved c24532482f19 -->
 
 # Spec: proxied-session-note
 
