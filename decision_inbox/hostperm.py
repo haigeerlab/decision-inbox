@@ -1,4 +1,5 @@
-"""Read-only check of a line's host permissions against what its Plan needs (see spec/host-permission-check.md).
+"""Read-only check of a line's host permissions against what its repository needs (spec/host-permission-check.md,
+spec/permission-closeout.md).
 
 R21 DI-4: Codex (sandbox mode, network, project trust, the project's .codex/config.toml) and Claude
 (this plugin's install rules) are read, never written; the user changes them, or clicks in the session.
@@ -34,6 +35,13 @@ class ClaudeFacts:
     installs_allowed: bool | None
     retired: list = field(default_factory=list)
     reason: str | None = None
+    allow: list = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ProjectNeeds:
+    installs: bool          # the repository root has a dependency manifest
+    dev: str | None         # the dev-server rule to allow when package.json has a `dev` script
 
 
 @dataclass(frozen=True)
@@ -107,7 +115,8 @@ def codex_facts(repo: str, config_path: Path) -> CodexFacts:
     return CodexFacts(True, global_net, trusted, "全局配置" if global_net else "", None)
 
 
-INSTALL_ALLOW = ("Bash(npm ci)", "Bash(npm ci *)", "Bash(npm install)", "Bash(pip install -r *)")
+# permission-closeout: adding a package is allowed now; lockfile-only rules (npm ci …) no longer count as enough
+INSTALL_ALLOW = ("Bash(npm install *)", "Bash(pnpm add *)", "Bash(yarn add *)", "Bash(uv add *)")
 
 
 def claude_facts(repo: str) -> ClaudeFacts:
@@ -123,41 +132,18 @@ def claude_facts(repo: str) -> ClaudeFacts:
             ask += list(perms.get("ask", []))
         except (OSError, ValueError, AttributeError, TypeError) as e:
             return ClaudeFacts(None, [], f"{path} 读不懂（{e.__class__.__name__}）")
-    return ClaudeFacts(any(r in allow for r in INSTALL_ALLOW), [r for r in onboard.RETIRED_ASK if r in ask])
+    return ClaudeFacts(any(r in allow for r in INSTALL_ALLOW), [r for r in onboard.RETIRED_ASK if r in ask],
+                       allow=allow)
 
 
-_FIELD = re.compile(r"^需要的外部条件\s*[：:]\s*(.*)$")
-_HEADING = re.compile(r"^#+\s*需要的外部条件\s*$")
+MANIFESTS = ("package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pyproject.toml", "uv.lock")
 
 
-def plan_needs(repo: str, module: str | None) -> str:
-    """none | needs | unknown, from the Plan's 「需要的外部条件」 (a field line or a section, R21 SG-2)."""
-    if not module:
-        return "unknown"
-    try:
-        lines = (Path(repo) / "tasks" / module / "plan.md").read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return "unknown"
-    for i, line in enumerate(lines):
-        if m := _FIELD.match(line.strip()):
-            body = [m.group(1)]
-            for rest in lines[i + 1:]:
-                if not rest.strip():
-                    break
-                body.append(rest)
-        elif _HEADING.match(line.strip()):
-            body = []
-            for rest in lines[i + 1:]:
-                if rest.lstrip().startswith("#"):
-                    break
-                body.append(rest)
-        else:
-            continue
-        text = "\n".join(body).strip().lstrip("-*• ").strip()
-        if not text:
-            return "unknown"
-        return "none" if text.startswith("无") else "needs"
-    return "unknown"
+def project_needs(repo: str) -> ProjectNeeds:
+    """What building this repository installs, from its root only (permission-closeout; the Plan is not read)."""
+    root = Path(repo)
+    installs = any((root / name).is_file() for name in MANIFESTS) or any(root.glob("requirements*.txt"))
+    return ProjectNeeds(installs, onboard.dev_server_rule(root))
 
 
 _OPTION_B = "B 不改：开发线碰到时按「去会话操作」上报，决策收件箱最上面一栏会提醒你去那个会话点"
@@ -169,29 +155,37 @@ def _codex_text(f: CodexFacts) -> str:
     return f"Codex {write}、{net}、项目{'已信任' if f.trusted else '未信任'}"
 
 
-def compare(host: str, repo: str, codex: CodexFacts | None, claude: ClaudeFacts | None, needs: str) -> Result:
-    """The host facts against what the Plan needs; options A (the user changes it) and B (click when asked)."""
+def _command(rule: str) -> str:
+    return rule[len("Bash("):-1]
+
+
+def compare(host: str, repo: str, codex: CodexFacts | None, claude: ClaudeFacts | None, needs: ProjectNeeds) -> Result:
+    """The host facts against what the repository needs; options A (the user changes it) and B (click when asked)."""
     if host == "codex-desktop":
         if codex is None or codex.reason:
             return Result("unknown", codex.reason if codex else "没读 Codex 配置")
         text = _codex_text(codex)
-        if needs == "unknown":
-            return Result("ok", f"{text}；Plan 没写需要的外部条件，没法对照")
-        if needs == "none" or codex.network:
+        if not needs.installs:
+            return Result("ok", f"{text}；仓库根目录没有依赖清单，不用装依赖")
+        if codex.network:
             return Result("ok", text)
+        browser = "；有开发服务，界面自验要用的 Playwright 之类可能下载不了浏览器" if needs.dev else ""
         first = "" if codex.trusted else "先在 Codex 里信任这个项目，再"
         fix = (f"A 你自己改：{first}在 {repo}/.codex/config.toml 写两行 [sandbox_workspace_write] 和 "
                "network_access = true（依据 openai/codex 源码，Codex 桌面应用没实测，改完在开发会话里试一次；"
                f"不改 ~/.codex/config.toml）；{_OPTION_B}")
-        return Result("bad", f"{text}，但 Plan 需要装依赖或联网", fix)
+        return Result("bad", f"{text}，但仓库有依赖清单，要装依赖{browser}", fix)
     if claude is None or claude.reason:
         return Result("unknown", claude.reason if claude else "没读 Claude 设置")
-    text = "Claude 放行按锁文件或清单装依赖" if claude.installs_allowed else "Claude 没有放行装依赖的规则"
+    text = "Claude 放行装依赖与加新包" if claude.installs_allowed else "Claude 没有放行加新包的规则"
     if claude.retired:
         text += f"，还留着旧版写的先问规则 {'、'.join(claude.retired)}"
-    if needs == "unknown":
-        return Result("ok", f"{text}；Plan 没写需要的外部条件，没法对照")
-    if needs == "none" or (claude.installs_allowed and not claude.retired):
+    missing_dev = needs.dev is not None and needs.dev not in claude.allow
+    if missing_dev:
+        text += f"，开发服务命令 {_command(needs.dev)} 没放行（界面自验每次都要你点）"
+    if not needs.installs:
+        return Result("ok", f"{text}；仓库根目录没有依赖清单，不用装依赖")
+    if claude.installs_allowed and not claude.retired and not missing_dev:
         return Result("ok", text)
     fix = f"A 你自己改：在这条线的会话里重跑接入，确认加上放行规则、删掉旧的先问规则；{_OPTION_B}"
-    return Result("bad", f"{text}，但 Plan 需要装依赖", fix)
+    return Result("bad", f"{text}，而仓库有依赖清单，要装依赖", fix)
