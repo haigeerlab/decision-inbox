@@ -168,3 +168,57 @@ class WatchOnboardCommandTest(InstallTest):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("已加载", r.stdout)
         self.assertTrue(watch.plist_path("demo").exists())
+
+
+class RuntimeTest(TempHomeTestCase):
+    """patrol-watch-runtime: a copy of the plugin under the home, outside folders launchd may not read."""
+
+    def setUp(self):
+        super().setUp()
+        self.src = self.home / "plugin"
+        (self.src / "bin").mkdir(parents=True)
+        (self.src / "decision_inbox" / "__pycache__").mkdir(parents=True)
+        (self.src / "bin" / "decision-inbox").write_text("#!/bin/sh\necho v1\n", encoding="utf-8")
+        (self.src / "bin" / "decision-inbox").chmod(0o755)
+        (self.src / "decision_inbox" / "__init__.py").write_text("", encoding="utf-8")
+        (self.src / "decision_inbox" / "a.py").write_text("X = 1\n", encoding="utf-8")
+        (self.src / "decision_inbox" / "__pycache__" / "a.cpython-310.pyc").write_bytes(b"junk")
+
+    def files(self, root):
+        return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+
+    def test_copy_then_unchanged_then_replaced(self):
+        from decision_inbox import install as inst
+        rt = inst.runtime_dir()
+        self.assertEqual(rt, self.home / "runtime")
+        self.assertTrue(inst.write_runtime(self.src))
+        self.assertEqual(self.files(rt), ["bin/decision-inbox", "decision_inbox/__init__.py", "decision_inbox/a.py"])
+        self.assertTrue(os.access(rt / "bin" / "decision-inbox", os.X_OK))
+        self.assertFalse(inst.write_runtime(self.src))
+        (self.src / "decision_inbox" / "a.py").write_text("X = 2\n", encoding="utf-8")
+        (self.src / "decision_inbox" / "__init__.py").unlink()
+        self.assertTrue(inst.write_runtime(self.src))
+        self.assertEqual(self.files(rt), ["bin/decision-inbox", "decision_inbox/a.py"])
+        self.assertEqual((rt / "decision_inbox" / "a.py").read_text(encoding="utf-8"), "X = 2\n")
+        self.assertEqual([p.name for p in self.home.iterdir() if p.name.startswith("runtime")], ["runtime"])
+
+    def test_if_present_never_creates_it(self):
+        from decision_inbox import install as inst
+        self.assertFalse(inst.write_runtime(self.src, if_present=True))
+        self.assertFalse(inst.runtime_dir().exists())
+
+    def test_shim_command_refreshes_an_existing_runtime(self):
+        from decision_inbox import install as inst
+        env = {**os.environ, "PYTHONPATH": str(REPO)}
+        cmd = [str(REPO / "bin" / "decision-inbox"), "shim", "--if-installed"]
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(inst.runtime_dir().exists())
+        inst.write_runtime(self.src)
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual((r.returncode, r.stdout), (0, ""), r.stderr)
+        rt = inst.runtime_dir()
+        self.assertEqual((rt / "bin" / "decision-inbox").read_bytes(), (REPO / "bin" / "decision-inbox").read_bytes())
+        self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
+                         (REPO / "decision_inbox" / "watch.py").read_bytes())
+        self.assertFalse((rt / "decision_inbox" / "a.py").exists())

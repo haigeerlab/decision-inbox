@@ -750,6 +750,10 @@ def main(argv: list[str]) -> int:
     if argv[:1] == ["shim"] and argv[1:] in ([], ["--if-installed"]):
         # Silent on purpose: SessionStart runs it in every session.
         install.write_shim(install.plugin_root(), if_installed=argv[1:] == ["--if-installed"])
+        try:  # patrol-watch-runtime: follow the plugin; never fail SessionStart over it
+            install.write_runtime(install.plugin_root(), if_present=True)
+        except OSError:
+            pass
         return 0
     if argv[:1] == ["onboard"]:
         return _onboard(argv[1:])
