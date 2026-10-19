@@ -241,6 +241,8 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 0.0.31 没改协作规则段，开发线不用重跑接入；决策收件箱请补装一次巡视提醒：`~/.decision-inbox/bin/decision-inbox onboard watch <协作组>` 预览，确认后加 `--confirm`（launchd 每 5 分钟检查一次巡视，停了弹系统通知，写明去哪个会话做什么）。这一版：契约改钉 session-protocol v2.4，【等待用户】的「模块」字段优先；没写模块的，按交审编号、模块会话名、唯一模块 id 反查，认不出的以后再认，打转的三个选项和「N 继续等」因此能挂到模块协调转来的小许可上；模块停滞从你最近一次答复送达算起，答复没发出去、合问、等别的线的时间都扣掉。
 
+0.0.32 没改协作规则段，开发线不用重跑接入；用 0.0.31 装过巡视提醒的，决策收件箱请重跑一次 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`。0.0.31 装的 launchd 任务跑转发脚本，插件装在 `~/Documents` 下时 launchd 没权限读（退出 126），launchd 自己的 `python3` 又是系统自带的 3.9（本插件要 3.10），所以一次也没跑成。这一版把插件代码复制到 `~/.decision-inbox/runtime/` 再让 launchd 跑这份，并指定装它的那个 python；以后插件升级，开会话时这份副本自动跟着刷新。doctor 的「巡视提醒」也会看上次运行的退出码，跑不起来就报出来。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit`、装依赖和加新包（`npm ci`、`npm install *`、`pnpm add *`、`yarn add *`、`uv add *`、`.venv/bin/pip install *` 等，清单与 module-crew 0.5.1 一致）、`--test-command` 指定的测试命令直接放行；仓库根 `package.json` 有 `dev` 脚本时，按锁文件再放行一条开发服务命令（`pnpm dev`、`yarn dev` 或 `npm run dev`）。全局安装（`-g`、`--global` 放在哪里都算，`yarn global`、`uv --system`）和把内容管道给 shell（`sh`、`bash`、`zsh` 不带参数或带 `-s`，能拦住 `curl … | sh`，不影响 `sh 脚本.sh`）设成「禁止」。`git push`、`git reset --hard`、`rm -rf` 设成「先问」。裸 `pip install <包>` 不写规则，交给宿主默认确认。旧版本写的「先问」`npm install *`、`pip install *` 在重跑接入时会列出来，你确认后只删这两条（预览里标「旧版本写的」）。其余只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
@@ -265,6 +267,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 | 不确定装对没有 | 运行 `~/.decision-inbox/bin/decision-inbox doctor`，按每项的「怎么做」处理 |
 | 停止钩子不拦 | 在那个会话的工作目录运行 `~/.decision-inbox/bin/decision-inbox whoami`：退出码 4 是没接入，5 是同一个目录对上了多个协作组；钩子出任何问题都会放行，不会卡住会话 |
 | 弹出系统通知「决策收件箱：巡视停了」 | 巡视提醒（`onboard watch` 装的 launchd 任务，每 5 分钟检查一次）发现巡视超过 15 分钟没跑：按通知里写的去巡视会话批完权限确认或重新发一次循环提示词；巡视恢复后不再弹，停着时每 30 分钟提醒一次。一直不弹：运行 doctor 看「巡视提醒」一项；系统设置里「通知」要允许「脚本编辑器」 |
+| doctor 的「巡视提醒」报「上次运行退出 N」或「是旧版装的」 | launchd 任务装上了但跑不起来。日志里有 `Operation not permitted`（退出 126）：跑的程序在 `~/Documents`、`~/Desktop`、`~/Downloads` 下，launchd 没权限读；退出 1、日志是 Python 报错：launchd 用的 python 低于 3.10。都是 0.0.31 装法的问题，升级到 0.0.32 后重跑 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`。日志在 `~/.decision-inbox/<协作组>/patrol-watch.log` |
 | 主视图第一行写「巡视还没跑完过一轮」或「巡视 N 分钟没跑」 | 在定时任务列表里打开这个任务：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发，立即运行一次。`query stats` 能看到这段时间巡视实际跑了几轮、最长隔多久 |
 | 决策收件箱跑 `inbox reply --relayed-from` 被自动模式拦下 | 转来的话同样不生效，只是少记一条事件；要留记录，请在决策收件箱会话里批准这一次 |
 | 巡视不跑 | 在定时任务列表里看任务是否启用、最近的运行记录；建好后是否手动「立即运行」过一次（第一次手动运行之前，定时不会触发） |

@@ -9,8 +9,9 @@
 - [x] Task 3：doctor 看旧任务、运行副本、上次退出码和日志（要做的 3、4）
   - 验证：同上
   - 结果：DoctorRunsTest 新增 4 项改前失败、改后通过；「不删除」静态扫描放行 write_runtime 删自己的临时目录和被替换的旧副本；全量 1091 项通过
-- [ ] Task 4：README 排查表与升级说明，版本 0.0.32（要做的 5）
+- [x] Task 4：README 排查表与升级说明，版本 0.0.32（要做的 5）
   - 验证：全量 `PYTHONPATH=tests:. python3 -m unittest discover -s tests` 通过
+  - 结果：README 加 0.0.32 升级说明与排查表一行；两份 plugin.json 升到 0.0.32；全量 1091 项通过
 
 ## 检查点
 
