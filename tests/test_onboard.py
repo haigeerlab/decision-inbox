@@ -516,11 +516,12 @@ class CodexLoadsTest(OnboardCase):
 
 DEFAULT_NOTE = "默认打开了「检查点答复即授权」"
 GO_NOTE = "要你去会话里操作"
+PROXIED_NOTE = "亲手开的会话"
 
 
 def others(warnings):
     """Warnings other than the notes every join now carries (scope-authority-defaults, go-to-session)."""
-    return [w for w in warnings if DEFAULT_NOTE not in w and GO_NOTE not in w]
+    return [w for w in warnings if DEFAULT_NOTE not in w and GO_NOTE not in w and PROXIED_NOTE not in w]
 
 
 AUTHORITY = """### 检查点答复即授权（接入时默认打开，可以关掉）
