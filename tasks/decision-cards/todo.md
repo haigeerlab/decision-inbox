@@ -21,8 +21,10 @@
   - 验证：`tests/test_stophook.py` 新用例先失败后通过；原有用例不变
   - 真实数据回放（只读，复制到 scratchpad 逐轮截断）：di-p0 收件箱主会话记录 81 轮，78 轮出过主视图，按新规则会拦 4 轮——2 轮是 0.0.29 旧格式（原文套 ```text 围栏、审批卡没复制块）对不上；2 轮是收件箱在没有待答事项时自己编了一个复制块「开 rh2-zeta 会话；D1 A」，正是 I-8 那类问题。其余 74 轮放行
   - doctor 新增「收件箱停止检查」：在最近 50 份会话记录里找收件箱出过主视图的那份试读，读得懂 ok，读不懂 bad，找不到 unknown；会话记录目录可用 DECISION_INBOX_TRANSCRIPTS 改
-- [ ] Task 7：会话停在弹窗上的兜底提醒（DI-9；验收 14）
+- [x] Task 7：会话停在弹窗上的兜底提醒（DI-9；验收 14）
   - 验证：`bridge_sessions` 夹具上的新用例先失败后通过（waiting 字段值按 rh2-coord 转述，夹具注明来源）
+  - 巡视提示词已加「读 bridge_sessions 写入 sessions.json」与 `--sessions`；收件箱规则段的对应步骤放到 Task 8 一起改
+  - 待核对：第一次遇到真弹窗时读一次 `bridge_sessions`，看 `status`／`waitingFor` 是不是转述的写法
 - [ ] Task 9：升到 session-protocol v2.3，卡片改读新字段（Spec 要做的 10；验收 15）
   - 验证：v2.3 样例一致性测试先失败后通过；card-final、card-spec-plan 卡片用例先失败后通过
 - [ ] Task 8：规则段、文档与真实数据验收（验收 4、16）

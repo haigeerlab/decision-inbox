@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import crew, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import crew, desktop, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
@@ -268,6 +268,7 @@ def _patrol(argv: list[str]) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--relay-version")
     p.add_argument("--from-hub", action="store_true")
+    p.add_argument("--sessions")  # decision-cards DI-9: agent-relay bridge_sessions output
     p = sub.add_parser("record")
     p.add_argument("group")
     p.add_argument("--plan", required=True)
@@ -307,12 +308,14 @@ def _patrol(argv: list[str]) -> int:
                 _consume(args.outbox)
             except (OSError, relay.RelayDataError):
                 outbox = None
+        sessions, _, _ = _sessions_read(args.sessions)
         patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
         crews, now = crew.crews(g), store.now()
         doc = patrol.plan(g, now=now, relay=agents, maps=maps, relay_error=error, from_hub=args.from_hub,
-                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews)).to_json()
+                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews),
+                          sessions=sessions).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
@@ -339,6 +342,18 @@ def _relay_read(path: str | None, version: str | None):
         return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version), "ok", None
     except (OSError, relay.RelayDataError) as e:
         return None, "unreadable", (str(e).splitlines() or ["原因不明"])[0]
+
+
+def _sessions_read(path: str | None):
+    """(sessions or None, "ok"／"absent"／"unreadable", error); a read file is consumed like agents.json."""
+    if not path:
+        return None, "absent", None
+    try:
+        sessions = desktop.parse_sessions(Path(path).read_text(encoding="utf-8"))
+    except (OSError, desktop.DesktopDataError) as e:
+        return None, "unreadable", str(e)
+    _consume(path)
+    return sessions, "ok", None
 
 
 def _relay_or_none(path: str | None, version: str | None):
@@ -459,6 +474,7 @@ def _view(argv: list[str]) -> int:
     parser.add_argument("what", nargs="*")
     parser.add_argument("--agents")
     parser.add_argument("--outbox")
+    parser.add_argument("--sessions")  # decision-cards DI-9: agent-relay bridge_sessions output
     parser.add_argument("--relay-version")
     try:
         args = parser.parse_args(argv)
@@ -487,8 +503,10 @@ def _view(argv: list[str]) -> int:
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
         maps, crews = _dev_maps(g), crew.crews(g)
+        sessions, sessions_status, _ = _sessions_read(args.sessions)
         print(hub.main_view(g, now, agents, maps, relay_status=relay_status, relay_error=relay_error,
-                            crews=crews, loop_facts=_loop_facts(g, now, maps, crews)))
+                            crews=crews, loop_facts=_loop_facts(g, now, maps, crews), sessions=sessions,
+                            sessions_status=sessions_status))
     elif what[0] == "detail":
         print(view.render_detail(g, int(what[1])))
     elif what[0] == "waits":

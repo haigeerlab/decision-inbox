@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import deps, health, install, items, loops, protocol, reviews, stall, store, tickets, view
+from decision_inbox import deps, desktop, health, install, items, loops, protocol, reviews, stall, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -422,10 +422,12 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None,
-              loop_facts=None) -> str:
+              loop_facts=None, sessions=None, sessions_status: str | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
+    # decision-cards DI-9: prompts nobody reported, from agent-relay's bridge_sessions
+    head += [desktop.card(s, view.waited(m)) for s, m, _ in desktop.stuck(g, now, sessions)]
     head += view.loop_rows(g, loop_facts)    # loop-detection: R21 DI-6
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     head += unsent_rows(g, exclude)
@@ -433,6 +435,8 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
         head.append(deps.sourced(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全", "agent-relay"))
     elif relay is None:
         head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
+    if sessions_status in ("absent", "unreadable"):
+        head.append("本次没带会话状态，看不到停在弹窗上的会话")
     previous = store.read_state(g, "patrol").get("snapshot")
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous, crews=crews)
     return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now),
