@@ -8,6 +8,7 @@ user or for another line taken out). Facts only; the hub shows them and never bl
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -74,31 +75,70 @@ def _ok_map(maps: dict, name: str):
     return read.map if getattr(read, "status", None) == "ok" else None
 
 
+_REVIEW_CODE_RE = re.compile(r"(?<![A-Za-z0-9])C\d+(?![0-9])")
+
+
+def _named(word: str, text: str) -> bool:
+    return re.search(rf"(?<![A-Za-z0-9_-]){re.escape(word)}(?![A-Za-z0-9_-])", text) is not None
+
+
+def _crew_module_for(it: dict, modules) -> str | None:
+    """stage-c-fixes DI-10: what a coordinator's item says, in order; None when it does not say one module."""
+    first = (it.get("decide") or "").split("\n")[0].strip()
+    text = f"{it.get('decide') or ''}\n{it.get('brief') or ''}"
+    for m in modules:
+        if first and any((w.decide or "").strip() == first for w in m.waits):
+            return m.module
+    codes = set(_REVIEW_CODE_RE.findall(text))
+    for m in modules:
+        refs = {r for r, _ in m.ask_refs} | {w.ref for w in m.waits} | {a.ref for a in m.answers or ()}
+        if codes & refs:
+            return m.module
+    for m in modules:
+        if m.relay_name and _named(m.relay_name, text):
+            return m.module
+    named = [m.module for m in modules if _named(m.module, first)]
+    return named[0] if len(named) == 1 else None
+
+
+def _crew_modules(entry: dict | None, crews: dict):
+    if entry is None or not entry.get("crewCoordinator"):
+        return None
+    read = (crews or {}).get(entry["relayName"])
+    return read.modules if getattr(read, "status", None) == "ok" else ()
+
+
 def _module_for(it: dict, entry: dict | None, maps: dict, crews: dict) -> str | None:
     if it.get("approvalModule"):
         return it["approvalModule"]
     if it.get("multi") or entry is None or entry.get("role") != "dev":
         return None
     if entry.get("crewCoordinator"):
-        read = (crews or {}).get(entry["relayName"])
-        first = (it.get("decide") or "").split("\n")[0].strip()
-        for m in getattr(read, "modules", ()) if getattr(read, "status", None) == "ok" else ():
-            if first and any((w.decide or "").strip() == first for w in m.waits):
-                return m.module
-        return None
+        return _crew_module_for(it, _crew_modules(entry, crews))
     line_map = _ok_map(maps, entry["relayName"])
     return line_map.active_module if line_map is not None else None
 
 
 def tag(g: store.Group, maps: dict, crews: dict) -> None:
-    """Give each untagged item its module, once; a tag never changes afterwards."""
+    """Give each untagged item its module, once; a tag never changes afterwards.
+
+    stage-c-fixes DI-10: a coordinator's item tagged null is worked out again from what it says (never from
+    what the coordinator does now), so a round where module-crew could not be read does not stick.
+    """
     with g.transaction() as tx:
         doc = tx.read_state(items.DOMAIN)
         changed = False
         for no, it in (doc.get("items") or {}).items():
-            if "module" in it:
+            entry = store.find_session(g, relay_name=it["sender"])
+            if "module" not in it:
+                it["module"] = _module_for(it, entry, maps, crews)
+            elif it["module"] is None and not it.get("multi") and _crew_modules(entry, crews):
+                found = _crew_module_for(it, _crew_modules(entry, crews))
+                if found is None:
+                    continue
+                it["module"] = found
+            else:
                 continue
-            it["module"] = _module_for(it, store.find_session(g, relay_name=it["sender"]), maps, crews)
             tx.append_event("items.module-tagged", ref=int(no), actor="system", data={"module": it["module"]})
             changed = True
         if changed:

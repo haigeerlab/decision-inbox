@@ -532,7 +532,7 @@ def loop_head(g: store.Group, it: dict, kind: str, f, now: str) -> str:
     short = _short(g, it["sender"])
     project = it.get("project") or (f.project if f is not None else short)
     parts = [f"━━ #{it['no']}", project if project == short else f"{project}（{short}）",
-             f"模块 {module}" if module else "模块未知", kind]
+             "线级" if module == "无" else f"模块 {module}" if module else "模块未知", kind]
     if module and f is not None:
         parts.append(loop_facts_text(f))
     return " · ".join(parts + [ago(now, it["receivedAt"])])
