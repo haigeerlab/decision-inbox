@@ -2,8 +2,7 @@
 
 Reads agent-relay's `bridge_sessions` output, which lists every running Claude session on this Mac,
 module sessions included. A session counts as stuck when `status` is `waiting` and `waitingFor` names a
-permission prompt; those two values are rh2-coord's account from stage 3 and are checked against the
-first raw output seen. Read-only.
+permission prompt (rh2-coord's account from stage 3, confirmed on raw output 2026-10-19). Read-only.
 """
 
 from __future__ import annotations

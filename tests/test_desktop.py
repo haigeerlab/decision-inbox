@@ -2,7 +2,8 @@
 
 The bridge_sessions shape (pid, sessionId, cwd, name, status, statusUpdatedAt, hostSessionId) is what
 agent-relay printed on 2026-10-19 (idle, busy). The waiting values (`status: waiting`, `waitingFor:
-permission prompt`) are rh2-coord's account from stage 3, relayed by di-p0-tester; no raw output yet.
+permission prompt`) were rh2-coord's account from stage 3; the same day a probe session stopped on a
+real permission prompt and bridge_sessions printed exactly them (RAW_WAITING below).
 """
 
 import json
@@ -17,6 +18,15 @@ ROOT = "/tmp/di-desktop"
 GO_TO = ("【等待用户】\n结束：无\n来自：协调\n要你决定：去 zeta 会话点弹窗\n要点：在合并 main\n类型：去会话操作\n"
          "会话：rh2-zeta\n链接：local_zeta\n被拦的操作：git merge main\n点哪个按钮：允许\n为什么批不了：宿主弹窗\n"
          "选项与我的建议：\n推荐 A：我去点\n  选了会怎样：继续\n是否完全停住：否\n")
+
+
+# bridge_sessions for a session on a real permission prompt, 2026-10-19 (paths shortened, ids kept as printed)
+RAW_WAITING = {"pid": 41591, "sessionId": "107c1390-f951-47a0-b432-1978b379bf70", "cwd": "/tmp/probe",
+               "name": "弹窗探针：故意停在权限确认上", "messagingSocketPath": "/tmp/cc-socks/41591.sock",
+               "procStart": "Mon Oct 19 15:26:21 2026", "version": "2.1.299", "peerProtocol": 1,
+               "status": "waiting", "statusUpdatedAt": 1792423587257, "waitingFor": "permission prompt",
+               "entrypoint": "claude-desktop", "kind": "interactive",
+               "hostSessionId": "local_4e769a40-dc2f-49e5-9750-4022799241af"}
 
 
 def ms(minutes_ago):
@@ -96,6 +106,14 @@ class PromptReminderTest(DesktopCase):
     def test_without_sessions_says_so(self):
         self.assertIn("本次没带会话状态，看不到停在弹窗上的会话", self.view(status="absent"))
         self.assertNotIn("本次没带会话状态", hub.main_view(self.g, NOW))  # callers that never read it
+
+    def test_raw_output_of_a_real_prompt(self):
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "probe", "shortName": "探针", "role": "dev", "line": ["probe"],
+                            "host": "claude-desktop", "repo": "/tmp/probe"})
+        later = "2026-10-19T23:40:00+08:00"  # 13 minutes after statusUpdatedAt
+        [(s, minutes, owner)] = desktop.stuck(self.g, later, desktop.parse_sessions(bridge(RAW_WAITING)))
+        self.assertEqual((s.host, minutes, owner["relayName"]), ("local_4e769a40-dc2f-49e5-9750-4022799241af", 13, "probe"))
 
     def test_unreadable(self):
         with self.assertRaises(desktop.DesktopDataError):
