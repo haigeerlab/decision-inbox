@@ -1338,3 +1338,38 @@ class CloseoutPermissionsTest(RoutinePermissionsTest):
         self.assertEqual(len(notes), 1)
         self.assertIn("加新包", notes[0])
         self.assertNotIn("Plan 列出的依赖", notes[0])
+
+
+class PermissionLabelTest(RoutinePermissionsTest):
+    """join-deny-label: each printed rule says the array it is written to (放行／先问／禁止)."""
+
+    LABELS = {"放行": "allow", "先问": "ask", "禁止": "deny"}
+
+    def run_join(self, confirm):
+        import io
+        import re
+        from contextlib import redirect_stdout
+        from decision_inbox.__main__ import main
+        args = ["onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-claude", "--short-name", "前端",
+                "--host", "claude-desktop", "--line", "前端", "--desktop-session",
+                "local_00000000-0000-0000-0000-00000000fe01", "--project", str(self.dir("fe"))]
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(args + (["--confirm"] if confirm else []))
+        verb = "已加" if confirm else "要加"
+        return re.findall(rf"^  {verb} (\S+?)：(.+)$", buf.getvalue(), re.M)
+
+    def test_labels_match_the_written_arrays(self):
+        import json
+        preview = self.run_join(confirm=False)
+        written = self.run_join(confirm=True)
+        self.assertEqual(preview, written)
+        perms = json.loads(self.settings().read_text(encoding="utf-8"))["permissions"]
+        self.assertTrue(written)
+        for label, rule in written:
+            with self.subTest(rule=rule):
+                self.assertIn(label, self.LABELS)
+                self.assertIn(rule, perms[self.LABELS[label]])
+        self.assertIn(("禁止", "Bash(npm * -g)"), written)
+        self.assertIn(("禁止", "Bash(sh)"), written)
+        self.assertIn(("先问", "Bash(git push *)"), written)
