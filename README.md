@@ -237,6 +237,8 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 0.0.29 没改协作规则段，不用重新接入：只修了接入预览和写入回执的标签。0.0.28 把禁止规则（全局安装、管道到 shell）标成了「先问」，实际写进的一直是禁止；0.0.29 按种类写「放行／先问／禁止」。用 0.0.28 接入过的线，设置文件里的规则是对的，不用重跑。
 
+0.0.30 改了协作规则段，决策收件箱要重跑一次 `/decision-inbox:hub-setup`（巡视会话随之换成新的巡视提示词），开发线的规则段没变，不用重跑。这一版：待决事项按决策卡片模板的 7 类显示，每张要回答的卡片一个复制块，原文回「看 N 全文」才展开（见「卡片怎么读」）；收件箱每轮结束时停止钩子对照命令输出检查卡片；答复发成功才算「已转达」，失败写明哪一项、什么原因；巡视读 agent-relay 的 `bridge_sessions`，会话停在权限弹窗上没人报时提醒你；「在等谁」写「决策收件箱（邮箱名）」的等待记录在答复发出后自动关，所等的待决事项已结项的标「可能已失效」。契约改钉 session-protocol v2.3：module-crew 要等决策收件箱升到 0.0.30 以后，才能发带新「类型」的卡片（v2.2 会整条退回）。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit`、装依赖和加新包（`npm ci`、`npm install *`、`pnpm add *`、`yarn add *`、`uv add *`、`.venv/bin/pip install *` 等，清单与 module-crew 0.5.1 一致）、`--test-command` 指定的测试命令直接放行；仓库根 `package.json` 有 `dev` 脚本时，按锁文件再放行一条开发服务命令（`pnpm dev`、`yarn dev` 或 `npm run dev`）。全局安装（`-g`、`--global` 放在哪里都算，`yarn global`、`uv --system`）和把内容管道给 shell（`sh`、`bash`、`zsh` 不带参数或带 `-s`，能拦住 `curl … | sh`，不影响 `sh 脚本.sh`）设成「禁止」。`git push`、`git reset --hard`、`rm -rf` 设成「先问」。裸 `pip install <包>` 不写规则，交给宿主默认确认。旧版本写的「先问」`npm install *`、`pip install *` 在重跑接入时会列出来，你确认后只删这两条（预览里标「旧版本写的」）。其余只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
