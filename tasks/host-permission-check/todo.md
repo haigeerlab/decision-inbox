@@ -1,6 +1,6 @@
 # Todo: host-permission-check
 
-- [ ] Task 1：读宿主事实与 Plan 需要（Spec 验收 1–6 的判断部分）
+- [x] Task 1：读宿主事实与 Plan 需要（Spec 验收 1–6 的判断部分）
   - 验证：`tests/test_hostperm.py` 先失败后通过；配置文件读前读后逐字相同
 - [ ] Task 2：doctor 的「宿主权限」一项（Spec 验收 1–6 的展示部分）
   - 验证：doctor 新用例先失败后通过；原有测试不变
