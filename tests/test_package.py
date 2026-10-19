@@ -46,8 +46,9 @@ class StaticScanTest(unittest.TestCase):
         patrol command just read, only under the temp dirs or a group's io/ (p0-field-fixes F-P0-5)."""
         banned = {"unlink", "rmtree", "truncate", "remove", "rmdir"}
         # stall-and-patrol R19: save_snapshot rotates its own copies under the group's io/snapshots, keeping 24
+        # stage-c-fixes DI-11: uninstall removes the launchd plist the hub's own `onboard watch` wrote
         allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink"),
-                   ("patrol.py", "save_snapshot", "unlink")}
+                   ("patrol.py", "save_snapshot", "unlink"), ("watch.py", "uninstall", "unlink")}
         seen = set()
         for path in _sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))

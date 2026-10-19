@@ -13,8 +13,10 @@
 - [x] Task 4：patrol-watch 命令（DI-11；验收 4）
   - 验证：通知节奏四种情况用例先失败后通过
   - 结果：新 `watch.py` 与 `decision-inbox patrol-watch <组>`；判据直接用 `hub.patrol_alarm`；通知标题「决策收件箱：巡视停了」，正文去掉「⚠ 」和来源尾巴，含巡视会话链接与修法；30 分钟内不重发，发送失败下一轮再试，恢复后清掉记录；命令总是退出 0（组不存在只写 stderr），避免 launchd 停掉任务。`tests/test_watch.py` 4 条（在 1c2d3c9 上没有这个模块，全失败），改后通过；状态放在 `state/patrol-watch.json`
-- [ ] Task 5：装、卸与体检（DI-11；验收 5）
+- [x] Task 5：装、卸与体检（DI-11；验收 5）
   - 验证：假 launchctl 用例先失败后通过
+  - 结果：新命令 `onboard watch <组> [--confirm]`：预览打印 plist 全文，确认后写 `~/Library/LaunchAgents/com.haigeerlab.decision-inbox.patrol-watch.<组>.plist`（每 300 秒、登录即跑，日志在组目录 patrol-watch.log），先 bootout 再 bootstrap；`onboard hub` 后续步骤加这一步；`onboard teardown` 预览列出、确认后卸掉；doctor 新增「巡视提醒」（没装／没加载 bad，附装的命令）。`InstallTest` 4 条、`WatchOnboardCommandTest` 1 条先失败后通过；hub-setup、teardown 命令说明跟上
+  - 改写的旧测试：`test_package` 的删除扫描白名单加 `watch.py` 的 `uninstall`（只删本插件自己写的 plist）
 - [ ] Task 6：文档、版本 0.0.31 与实跑（验收 8）
   - 验证：全量测试；副本主视图；临时组真通知；真实状态目录 md5 不变
 

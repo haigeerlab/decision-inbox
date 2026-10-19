@@ -80,3 +80,91 @@ class WatchCommandTest(TempHomeTestCase):
                            capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0)
         self.assertIn("nope", r.stderr)
+
+
+class InstallTest(TempHomeTestCase):
+    """stage-c-fixes acceptance 5: the launchd job is previewed, written on confirm, removed by teardown."""
+
+    def setUp(self):
+        super().setUp()
+        self.g, _ = store.init_group("demo")
+        self.agents = self.home / "LaunchAgents"
+        self.log = self.home / "launchctl.log"
+        fake = self.home / "launchctl"
+        # `print` answers 0 only while the last bootstrap/bootout was a bootstrap, like the real one
+        fake.write_text(f'#!/bin/sh\necho "$@" >> "{self.log}"\n'
+                        f'if [ "$1" = print ]; then grep -E "^boot(strap|out)" "{self.log}" | tail -1 | grep -q bootstrap; fi\n',
+                        encoding="utf-8")
+        fake.chmod(0o755)
+        self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_LAUNCH_AGENTS", "DECISION_INBOX_LAUNCHCTL")}
+        os.environ["DECISION_INBOX_LAUNCH_AGENTS"] = str(self.agents)
+        os.environ["DECISION_INBOX_LAUNCHCTL"] = str(fake)
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        super().tearDown()
+
+    def calls(self):
+        return self.log.read_text(encoding="utf-8").splitlines() if self.log.is_file() else []
+
+    def test_preview_writes_nothing(self):
+        plan = watch.install("demo", confirm=False)
+        self.assertEqual(plan.path, self.agents / "com.haigeerlab.decision-inbox.patrol-watch.demo.plist")
+        self.assertIn("<string>patrol-watch</string>", plan.content)
+        self.assertIn("<integer>300</integer>", plan.content)
+        self.assertFalse(plan.path.exists())
+        self.assertEqual(self.calls(), [])
+
+    def test_confirm_writes_and_loads_then_remove_unloads(self):
+        from decision_inbox import install as inst
+        plan = watch.install("demo", confirm=True)
+        self.assertTrue(plan.path.is_file())
+        self.assertIn(f"<string>{inst.cli()}</string>", plan.path.read_text(encoding="utf-8"))
+        self.assertTrue(any(c.startswith("bootstrap gui/") and c.endswith(str(plan.path)) for c in self.calls()))
+        self.assertTrue(watch.loaded("demo"))
+        self.assertTrue(watch.uninstall("demo", confirm=True))
+        self.assertFalse(plan.path.exists())
+        self.assertTrue(any(c.startswith("bootout gui/") for c in self.calls()))
+        self.assertFalse(watch.uninstall("demo", confirm=True))
+
+    def test_hub_steps_and_teardown(self):
+        from decision_inbox import onboard
+        project = self.home / "hub"
+        project.mkdir()
+        out = onboard.hub("demo", "demo-hub", "local_hub", project, confirm=True, now="2026-10-20T00:00:00Z")
+        self.assertTrue(any("onboard watch demo" in s and "--confirm" in s for s in out.steps))
+        watch.install("demo", confirm=True)
+        out = onboard.teardown("demo", project, confirm=False, now="2026-10-20T01:00:00Z")
+        self.assertTrue(any("巡视提醒" in s for s in out.steps))
+        self.assertTrue(watch.plist_path("demo").exists())
+        out = onboard.teardown("demo", project, confirm=True, now="2026-10-20T01:00:00Z")
+        self.assertFalse(watch.plist_path("demo").exists())
+        self.assertTrue(any("巡视提醒" in w for w in out.written))
+
+    def test_doctor(self):
+        from decision_inbox import doctor
+        self.assertEqual(doctor._patrol_watch("demo").state, "bad")
+        self.assertIn("onboard watch demo", doctor._patrol_watch("demo").fix)
+        watch.install("demo", confirm=True)
+        self.assertEqual(doctor._patrol_watch("demo").state, "ok")
+
+
+class WatchOnboardCommandTest(InstallTest):
+    def run_cli(self, *args):
+        env = {**os.environ, "PYTHONPATH": str(REPO)}
+        return subprocess.run([sys.executable, "-m", "decision_inbox", "onboard", "watch", "demo", *args], env=env,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_preview_then_confirm(self):
+        r = self.run_cli()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("这是预览", r.stdout)
+        self.assertFalse(watch.plist_path("demo").exists())
+        r = self.run_cli("--confirm")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("已加载", r.stdout)
+        self.assertTrue(watch.plist_path("demo").exists())

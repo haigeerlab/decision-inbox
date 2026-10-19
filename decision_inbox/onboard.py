@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from decision_inbox import hub as hub_loop
-from decision_inbox import install, items, patrol, reviews, store
+from decision_inbox import install, items, patrol, reviews, store, watch
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
 
@@ -448,6 +448,9 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
         f"运行 {cli} onboard allow {group} --project <决策收件箱目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
         "之后巡视和决策收件箱不再为这些工具停下来问",
+        # stage-c-fixes DI-11: tells the user when the patrol goes quiet, even with the hub idle
+        f"运行 {cli} onboard watch {group} 预览巡视提醒（本机 launchd 每 5 分钟检查一次巡视，停了就弹系统通知，"
+        "写明去哪个会话做什么），用户确认后加 --confirm 装上",
         HOOK_STEP,
         f"其他会话各自接入：审查者先接入，再接开发线和跨线协调，例如 {cli} onboard join {group} --role dev "
         f"--relay-name <邮箱名> --short-name <线名> --host codex-desktop --line <线名> --project <项目目录>；"
@@ -892,6 +895,12 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     elif not state.get("patrolSession"):
         out.steps.append(f"没有记下巡视任务编号：先用 list_scheduled_tasks 核对，通常是 decision-inbox-patrol-{group}，"
                          "再用 delete_scheduled_task 删除")
+    if watch.plist_path(group).is_file():  # stage-c-fixes DI-11
+        if confirm:
+            watch.uninstall(group, confirm=True)
+            out.written.append(f"已卸掉巡视提醒（launchd 任务 {watch.label(group)}）")
+        else:
+            out.steps.insert(0, f"卸掉巡视提醒：launchd 任务 {watch.label(group)}（确认后由本命令卸）")
     out.steps.append("协作组的状态目录保留，不删")
     return out
 

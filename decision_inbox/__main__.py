@@ -623,6 +623,9 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("patrol-session")
     p.add_argument("group")
     p.add_argument("--session", required=True)
+    p = sub.add_parser("watch")  # stage-c-fixes DI-11: the launchd job behind patrol-watch
+    p.add_argument("group")
+    p.add_argument("--confirm", action="store_true")
     for name in ("leave", "teardown"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -668,6 +671,22 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "patrol-session":
             onboard.record_patrol_session(args.group, args.session, now)
             print(f"已记下巡视会话：{args.session}")
+            return 0
+        elif args.command == "watch":
+            from decision_inbox import watch
+            store.open_group(args.group)
+            plan = watch.install(args.group, args.confirm)
+            print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
+                  f"{install.cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+            print(f"{'已写入' if args.confirm else '要写入'}：{plan.path}" + ("" if plan.changed else "（内容没变）"))
+            if not args.confirm:
+                print(plan.content.rstrip())
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次（卸载时 teardown 会一起卸掉）")
+                return 0
+            if plan.error:
+                print(f"已写入但没加载上：{plan.error}", file=sys.stderr)
+                return 1
+            print("已加载")
             return 0
         elif args.command == "leave":
             out = onboard.leave(args.group, args.relay_name, args.project, args.confirm, now)
