@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 13716b73ac9f -->
 
 # Spec: permission-closeout
 
@@ -112,3 +112,8 @@ README 接入一节（常规授权、检查点授权）、doctor 一节（宿主
 - README：接入一节、doctor 一节、使用注意事项、升级一节（见第 5 节）。
 - `docs/host-differences.md`：H12 补 E3 证据。
 - 其余无。
+
+## 外部审查意见
+
+<!-- spec-guard: external-review declined -->
+用户 2026-10-19：不做外部审查。
