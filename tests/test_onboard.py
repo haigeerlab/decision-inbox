@@ -1255,6 +1255,18 @@ class ScopedInstallPermissionsTest(RoutinePermissionsTest):
         self.assertIn("要删 先问：Bash(npm install *)（旧版本写的）", buf.getvalue())
 
 
+class ScopeRuleTest(unittest.TestCase):
+    """scope-authority-defaults DI-3: approved scope runs, an unlisted dependency is asked once."""
+
+    def test_working_blocks(self):
+        for role in ("dev", "owner", "coordinator"):
+            with self.subTest(role=role):
+                text = onboard.block(role, "demo", "di-hub")
+                for words in ("安装 Plan 列出的依赖", "不送审", "Plan 没列的依赖", "只问一次", "一次列全"):
+                    self.assertIn(words, text)
+                self.assertNotIn("联网安装依赖", text)
+
+
 class StallRuleTest(unittest.TestCase):
     """stall-and-patrol Task 5: every working role answers a stall ask by raising the question itself."""
 
