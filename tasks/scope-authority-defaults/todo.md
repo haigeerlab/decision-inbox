@@ -1,6 +1,6 @@
 # Todo: scope-authority-defaults
 
-- [ ] Task 1：授权默认打开（Spec 验收 1、2）
+- [x] Task 1：授权默认打开（Spec 验收 1、2）
   - 验证：`tests/test_onboard.py` 新断言先失败后通过；CLI 两个开关各跑一次
 - [ ] Task 2：Claude 权限与旧规则清理（Spec 验收 3、4）
   - 验证：新接入的权限规则、旧规则预览与确认删除的测试先失败后通过；用户自己的规则保留

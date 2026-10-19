@@ -529,7 +529,8 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--reviewer")
     p.add_argument("--nodes", default="")
     p.add_argument("--session-cwd")
-    p.add_argument("--checkpoint-authority", action="store_true")
+    p.add_argument("--checkpoint-authority", action="store_true", default=True)  # the default since scope-authority-defaults
+    p.add_argument("--no-checkpoint-authority", dest="checkpoint_authority", action="store_false")
     p.add_argument("--crew-coordinator", action="store_true")
     p.add_argument("--local-rules", action="store_true")
     p.add_argument("--test-command")
