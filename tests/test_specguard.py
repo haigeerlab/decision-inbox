@@ -260,3 +260,25 @@ class InterfaceTest(LocateCase):
         r = specguard.read_line(project=str(self.project))
         self.assertEqual(r.status, "incompatible")
         self.assertIn("schemaVersion 2", r.reason)
+
+
+class GatesTest(unittest.TestCase):
+    """loop-detection: spec-guard 0.77.0 `gates` per module; absent before it, null without a todo."""
+
+    def map_with(self, **gates):
+        doc = json.loads(fixture("map-0.63.json"))
+        for m in doc["modules"]:
+            if m["id"] in gates:
+                m["gates"] = gates[m["id"]]
+        return specguard.parse_map(json.dumps(doc))
+
+    def test_read(self):
+        m = self.map_with(**{"group-store": {"total": 3, "done": 3}, "spec-guard-reader": None})
+        done, reader, health = m.modules
+        self.assertEqual((done.gates_total, done.gates_done), (3, 3))
+        self.assertEqual((reader.gates_total, reader.gates_done), (None, None))
+        self.assertEqual((health.gates_total, health.gates_done), (None, None))  # key absent (before 0.77.0)
+
+    def test_odd_shape_reads_as_absent(self):
+        m = self.map_with(**{"group-store": {"total": "3"}, "spec-guard-reader": [1]})
+        self.assertEqual([(x.gates_total, x.gates_done) for x in m.modules], [(None, None)] * 3)

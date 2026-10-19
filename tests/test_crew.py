@@ -255,3 +255,34 @@ class WiringTest(TempHomeTestCase):
         self.cli("patrol", "plan", "demo", "--agents", self.agents(busy=False), "--out", str(out))
         self.assertNotIn("all-waiting", json.dumps(json.loads(out.read_text(encoding="utf-8"))))
         self.assertIn("模块状态未知：状态库还没建", self.cli("view", "demo", "--agents", self.agents(busy=False)))
+
+
+class AnswersParseTest(unittest.TestCase):
+    """loop-detection: module-crew 0.5.0 `answers` and the waitUser rows themselves."""
+
+    ROW = {**ROW_040,
+           "answers": [{"ref": "C6", "at": "2026-10-18T21:40:00+08:00", "commitsAfter": 2, "ticksAfter": 1},
+                       {"ref": "C31", "at": "2026-10-18T23:50:00+08:00", "commitsAfter": None, "ticksAfter": None}],
+           "waitUser": [{"ref": "C30", "state": "closed", "decide": "要不要装 zod", "at": "2026-10-18T22:00:00+08:00"},
+                        {"ref": "C31", "state": "open", "decide": "要不要再试一次", "at": "2026-10-18T23:00:00+08:00"}]}
+
+    def test_reads_answers_and_waits(self):
+        m = parse_one(self.ROW)
+        self.assertEqual(m.answers, (crew.Answer("C6", "2026-10-18T21:40:00+08:00", 2, 1),
+                                     crew.Answer("C31", "2026-10-18T23:50:00+08:00", None, None)))
+        self.assertEqual(m.waits, (crew.Wait("C30", "closed", "要不要装 zod", "2026-10-18T22:00:00+08:00"),
+                                   crew.Wait("C31", "open", "要不要再试一次", "2026-10-18T23:00:00+08:00")))
+        self.assertEqual([r for r, _ in m.ask_refs], ["C6", "C15", "C24"])
+        self.assertTrue(m.waiting_user)
+
+    def test_before_050_has_none(self):
+        m = parse_one(ROW_040)
+        self.assertIsNone(m.answers)  # not reported: differs from an empty list (no answer yet)
+        self.assertEqual([w.ref for w in m.waits], ["C30", "C31"])
+
+    def test_odd_entries_dropped(self):
+        m = parse_one({**self.ROW, "answers": [{"ref": "C6", "at": 3}, "x",
+                                               {"ref": "C7", "at": "2026-10-18T21:40:00+08:00",
+                                                "commitsAfter": "2", "ticksAfter": 0}]})
+        self.assertEqual(m.answers, (crew.Answer("C7", "2026-10-18T21:40:00+08:00", None, 0),))
+        self.assertIsNone(parse_one({**self.ROW, "answers": "x"}).answers)

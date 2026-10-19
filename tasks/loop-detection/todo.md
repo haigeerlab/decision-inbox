@@ -1,6 +1,6 @@
 # Todo: loop-detection
 
-- [ ] Task 1：读新事实（gates、answers、waitUser 明细）
+- [x] Task 1：读新事实（gates、answers、waitUser 明细）
   - 验证：`tests/test_specguard.py`、`tests/test_crew.py` 新用例先失败后通过；原有用例不变
 - [ ] Task 2：打标与每个模块的事实（Spec 第 1、2 节）
   - 验证：`tests/test_loops.py` 先失败后通过
