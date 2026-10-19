@@ -29,3 +29,8 @@
 ## 检查点
 
 - [ ] Checkpoint（gate）：模块最终验收——全部测试通过；每条验收标准有证据；列出实际改动的文件；批准后开 PR
+
+## 交审期间收到的知会（2026-10-20）
+
+- spec-guard SG-4（PR #392，未合并未发版）：中文检查点也计入 `gates.total`，interface 升 1.6。本插件 `deps.read_interface` 只查主版本（1.x 都接受），`specguard._gates` 只读数字，不用改；新版装上后基准自然变准（crew-rehearsal 五个模块应为 3、3、3、3、4）。
+- I-15（O-patrol-left-tracked，低）：`patrol.json` 的 `snapshot.sessions` 仍存着已退出的 rh-coord；叫醒和计数早已排除已退出的会话，只是快照多存一份。来源：spec-guard 负责人转出，记在接入方 DECISION-INBOX-ISSUES 的 I-15。不在本模块范围，修不修、放哪个版本待用户定。
