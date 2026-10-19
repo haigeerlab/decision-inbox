@@ -440,10 +440,14 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews)}")
     if parsed.question:
         return Reply(parsed.question)
-    sends = _queue_answers(g, items.answer(g, parsed.answers, answered_at=now), now)
-    told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in parsed.answers)
+    # go-to-session: nothing to forward, its sender closes it with 【已恢复】 (session-protocol v2.2 section 8)
+    skipped = [a.item for a in parsed.answers if items.is_go_to_session(items.get(g, a.item))]
+    answers = [a for a in parsed.answers if a.item not in skipped]
+    notes = "".join(f"#{n} 是去会话操作，不需要回复；点完对方会发【已恢复】自动结项。\n" for n in skipped)
+    sends = _queue_answers(g, items.answer(g, answers, answered_at=now), now) if answers else []
+    told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews)
-    return Reply(f"已转达：{told}\n\n{body}", sends)
+    return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
 
 
 def _told(g: store.Group, item: int, sends: list[dict]) -> str:

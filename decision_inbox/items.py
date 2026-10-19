@@ -155,6 +155,9 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         "originals": {kind: [{"module": r.module, "path": r.path, "fingerprint": r.fingerprint} for r in refs]
                       for kind, refs in msg.originals.items()},
         **dict(zip(("approvalModule", "approvalNode"), _approval_key(msg))),
+        # go-to-session (session-protocol v2.2): a host confirmation the user must click in that session
+        "waitKind": msg.wait_kind,
+        "goToSession": msg.go_to_session,
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
@@ -199,7 +202,8 @@ def _receive_wait_user(g, msg, text, sender, relay_id, received_at) -> ReceiveRe
             # No 【取代】 or 【并行】: this session's unanswered item of the same kind is
             # replaced by default (wait-honesty-and-briefs A7).
             auto = sorted(int(k) for k, it in doc["items"].items()
-                          if it["sender"] == sender and it["status"] == "pending" and it["multi"] == multi)
+                          if it["sender"] == sender and it["status"] == "pending" and it["multi"] == multi
+                          and it.get("waitKind") == msg.wait_kind)  # go-to-session never replaces a question
             for old in auto:
                 it = doc["items"][str(old)]
                 ref = f"#{it['relayId']}" if legacy and it.get("relayId") is not None else f"#{old}"
@@ -374,7 +378,7 @@ def interpret_reply(g: store.Group, text: str) -> ReplyParse:
     """The user's reply as answers, or a question when anything does not match (requirement 6.4)."""
     text = text.strip()
     known = store.read_state(g, DOMAIN).get("items", {})
-    waiting = [k for k, it in known.items() if it["status"] == "pending"]
+    waiting = [k for k, it in known.items() if it["status"] == "pending" and not is_go_to_session(it)]
     answers: list[Answer] = []
     for segment in _segments(text, known):
         m = _SEGMENT_RE.match(segment)
@@ -460,6 +464,12 @@ def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
 
 
 PROGRESS = ("forwarded", "picked", "acknowledged")
+GO_TO_SESSION = "go-to-session"
+
+
+def is_go_to_session(it: dict | None) -> bool:
+    """A 去会话操作 item: never answered, closed by its sender's 【已恢复】 (go-to-session)."""
+    return bool(it) and it.get("waitKind") == GO_TO_SESSION
 
 
 def record_sent(g: store.Group, item: int, to: str, relay_id, at: str) -> None:
@@ -508,7 +518,8 @@ def on_resumed(g: store.Group, message, sender: str, at: str) -> tuple[int, ...]
                 no = next((int(k) for k, it in doc["items"].items()
                            if it["relayId"] == written and it["sender"] == sender), written)
             it = doc["items"].get(str(no))
-            if it is not None and it["sender"] == sender and it["status"] in PROGRESS:
+            unanswered_go = it is not None and it.get("waitKind") == GO_TO_SESSION and it["status"] == "pending"
+            if it is not None and it["sender"] == sender and (it["status"] in PROGRESS or unanswered_go):
                 _set_status(doc, no, "closed", at)
                 tx.append_event("items.closed", ref=no, actor=sender, data={})
                 closed.append(no)
