@@ -488,11 +488,13 @@ def _print_outcome(out, confirm: bool) -> None:
     else:
         print(f"规则文件：{out.file}（{state}）")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
-    if out.permissions:
-        verb = "已加" if confirm else "要加"
+    if out.permissions or out.permissions_removed:
+        verb, drop = ("已加", "已删") if confirm else ("要加", "要删")
         print(f"权限规则（{out.permissions_file}）：")
         for kind, rule in out.permissions:
             print(f"  {verb} {'放行' if kind == 'allow' else '先问'}：{rule}")
+        for kind, rule in out.permissions_removed:
+            print(f"  {drop} {'放行' if kind == 'allow' else '先问'}：{rule}（旧版本写的）")
     for line in out.written:
         print(line)
     if out.changed and not out.drops:

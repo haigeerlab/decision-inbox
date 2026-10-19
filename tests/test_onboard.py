@@ -1209,6 +1209,52 @@ class RoutinePermissionsTest(OnboardCase):
         self.assertTrue(out.steps[0].startswith("在 Codex 里信任这个项目"))
 
 
+class ScopedInstallPermissionsTest(RoutinePermissionsTest):
+    """scope-authority-defaults DI-2 (user chose A): installs from a lockfile or manifest run, adding a package
+    is left to the host's default, and the two ask rules older versions wrote are offered for removal."""
+
+    NEW_ALLOW = ("Bash(npm ci)", "Bash(npm ci *)", "Bash(npm install)", "Bash(pip install -r *)")
+    RETIRED = ("Bash(npm install *)", "Bash(pip install *)")
+
+    def test_new_join_rules(self):
+        import json
+        self.join_claude(confirm=True)
+        perms = json.loads(self.settings().read_text(encoding="utf-8"))["permissions"]
+        for rule in self.NEW_ALLOW:
+            self.assertIn(rule, perms["allow"])
+        self.assertEqual(sorted(perms["ask"]), sorted(["Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)"]))
+
+    def test_old_ask_rules_listed_then_removed_only_on_confirm(self):
+        import json
+        self.settings().parent.mkdir(parents=True)
+        mine = "Bash(docker push *)"
+        before = {"permissions": {"allow": ["Read"], "ask": [mine, *self.RETIRED, "Bash(git push *)"]}, "x": 1}
+        self.settings().write_text(json.dumps(before), encoding="utf-8")
+        out = self.join_claude(confirm=False)
+        self.assertEqual(sorted(out.permissions_removed), sorted(("ask", r) for r in self.RETIRED))
+        self.assertEqual(json.loads(self.settings().read_text(encoding="utf-8")), before)
+        self.join_claude(confirm=True)
+        doc = json.loads(self.settings().read_text(encoding="utf-8"))
+        self.assertEqual(doc["permissions"]["ask"][:2], [mine, "Bash(git push *)"])
+        for rule in self.RETIRED:
+            self.assertNotIn(rule, doc["permissions"]["ask"])
+        self.assertEqual((doc["x"], doc["permissions"]["allow"][0]), (1, "Read"))
+        self.assertEqual(self.join_claude(confirm=False).permissions_removed, [])
+
+    def test_preview_prints_removals(self):
+        import io
+        from contextlib import redirect_stdout
+        from decision_inbox.__main__ import main
+        self.settings().parent.mkdir(parents=True)
+        self.settings().write_text('{"permissions": {"ask": ["Bash(npm install *)"]}}', encoding="utf-8")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(["onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-claude", "--short-name", "前端",
+                  "--host", "claude-desktop", "--line", "前端", "--desktop-session",
+                  "local_00000000-0000-0000-0000-00000000fe01", "--project", str(self.dir("fe"))])
+        self.assertIn("要删 先问：Bash(npm install *)（旧版本写的）", buf.getvalue())
+
+
 class StallRuleTest(unittest.TestCase):
     """stall-and-patrol Task 5: every working role answers a stall ask by raising the question itself."""
 

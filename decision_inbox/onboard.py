@@ -345,6 +345,7 @@ class Outcome:
     written: list = field(default_factory=list)  # what --confirm wrote besides the file (review-nearby R11)
     permissions: list = field(default_factory=list)  # (allow|ask, rule) to merge into settings (stall-and-patrol R16)
     permissions_file: Path | None = None
+    permissions_removed: list = field(default_factory=list)  # retired (ask, rule) to drop (scope-authority-defaults)
 
 
 def _read(path: Path) -> str:
@@ -523,9 +524,13 @@ def codex_loads(rules_file, session_cwd, rules_text: str | None = None) -> list[
 # stall-and-patrol R16 (user decision 44): routine work in a Claude line runs without a prompt, while
 # irreversible steps stay with the user in that session. Only settings rules do this (E0, E3);
 # text in CLAUDE.md does not.
-ROUTINE_ALLOW = ("Bash(git add *)", "Bash(git commit *)")
-ALWAYS_ASK = ("Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)", "Bash(npm install *)",
-              "Bash(pip install *)")
+# scope-authority-defaults DI-2 (user chose A): installing from a lockfile or manifest runs; adding a package
+# matches no rule here and is left to the host's default. Ask is checked before allow and `npm install *` also
+# matches a bare `npm install`, so the old ask rules for installs are retired, not kept beside the allow rules.
+ROUTINE_ALLOW = ("Bash(git add *)", "Bash(git commit *)", "Bash(npm ci)", "Bash(npm ci *)", "Bash(npm install)",
+                 "Bash(pip install -r *)")
+ALWAYS_ASK = ("Bash(git push *)", "Bash(git reset --hard *)", "Bash(rm -rf *)")
+RETIRED_ASK = ("Bash(npm install *)", "Bash(pip install *)")  # written by 0.0.22–0.0.27; removed only on confirm
 CODEX_TRUST_STEP = "在 Codex 里信任这个项目（不信任时 Codex 不读协作规则段，第一步就会停下等批准）"
 
 
@@ -545,8 +550,15 @@ def _missing_rules(doc: dict, wanted) -> list[tuple[str, str]]:
     return [(kind, rule) for kind, rule in wanted if rule not in perms.get(kind, [])]
 
 
-def _merge_rules(path: Path, doc: dict, missing) -> None:
-    """Append only what is missing; nothing someone else wrote is removed or reordered."""
+def _retired_rules(doc: dict) -> list[tuple[str, str]]:
+    """Ask rules an older version of this plugin wrote and this one no longer wants."""
+    return [("ask", rule) for rule in RETIRED_ASK if rule in doc.get("permissions", {}).get("ask", [])]
+
+
+def _merge_rules(path: Path, doc: dict, missing, retired=()) -> None:
+    """Append only what is missing and drop only the retired rules; nothing else is removed or reordered."""
+    for kind, rule in retired:
+        doc["permissions"][kind] = [r for r in doc["permissions"][kind] if r != rule]
     for kind, rule in missing:
         doc.setdefault("permissions", {}).setdefault(kind, []).append(rule)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -609,6 +621,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         if test_command:
             wanted.append(("allow", f"Bash({test_command.strip()} *)"))
         out.permissions = _missing_rules(settings_doc, wanted + [("ask", r) for r in ALWAYS_ASK])
+        out.permissions_removed = _retired_rules(settings_doc)
     if local_rules:
         if exclude is not None:
             out.warnings.append(f"{LOCAL_RULES} 还没被 git 忽略：确认时在 {exclude} 加一行 {LOCAL_RULES}"
@@ -630,9 +643,10 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         _commit(g, entry, rules, after, now)
         install.write_shim(install.plugin_root())
         out.written.append(f"已写入：名册（{short_name}，{role}）")
-        if out.permissions:
-            _merge_rules(out.permissions_file, settings_doc, out.permissions)
-            out.written.append(f"已写入：{out.permissions_file} 加了 {len(out.permissions)} 条权限规则")
+        if out.permissions or out.permissions_removed:
+            _merge_rules(out.permissions_file, settings_doc, out.permissions, out.permissions_removed)
+            out.written.append(f"已写入：{out.permissions_file} 加了 {len(out.permissions)} 条、"
+                               f"删了 {len(out.permissions_removed)} 条权限规则")
         if reviewer is not None:
             reviews.register(g, relay_name, reviewer, nodes, None, f"接入时用户指定（{now[:10]}）", at=now)
             out.written.append(f"审查者：{reviewer}（节点 {'、'.join(nodes)}）已重新登记")
