@@ -108,3 +108,76 @@ class PatrolWiringTest(StallCase):
         from datetime import datetime, timedelta
         later = (datetime.fromisoformat(NOW) + timedelta(minutes=40)).isoformat()
         self.assertIn("⚠ 停滞：API", hub.main_view(self.g, now=later))
+
+
+from decision_inbox import crew  # noqa: E402
+
+CREW_DESKTOP = "local_00000000-0000-0000-0000-00000000c0de"
+
+
+def crew_module(name="alpha", stage="build", **facts):
+    return crew.Module(name, f"rh-{name}", stage, facts.pop("suspended", None), facts.pop("review", None), **facts)
+
+
+class ModuleStallTest(StallCase):
+    """crew-stall-facts: a module under a module-crew coordinator, judged on module-crew 0.4.0 facts."""
+
+    def setUp(self):
+        super().setUp()
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "coord", "shortName": "排练协调", "role": "dev",
+                            "line": ["crew-rehearsal"], "host": "claude-desktop", "repo": "/tmp/crew",
+                            "desktopSession": CREW_DESKTOP, "crewCoordinator": True})
+
+    def crew_asks(self, *modules, state=None, now=NOW, status="ok"):
+        crews = {"coord": crew.CrewRead(status, tuple(modules))}
+        return stall.asks(self.g, now, {}, {}, state or {}, crews=crews)
+
+    def test_no_commit_for_thirteen_hours_asks_the_coordinator_once(self):
+        found = self.crew_asks(crew_module(started_at=hours(30), last_commit_at=hours(13)))
+        self.assertEqual([(a.key, a.kind, a.target) for a in found],
+                         [("coord|stalled:alpha", "wake", CREW_DESKTOP)])
+        for words in ("模块 alpha", "13 小时没有新提交", "A 挂起", "B 换做法", "C 继续等", "module-crew"):
+            self.assertIn(words, found[0].text)
+        self.assertNotIn("module-suspend", found[0].text)
+        self.assertEqual(self.crew_asks(crew_module(started_at=hours(30), last_commit_at=hours(13)),
+                                        state={"stallAsks": {"coord|stalled:alpha": hours(1)}}), [])
+        self.assertEqual(self.crew_asks(crew_module(started_at=hours(30), last_commit_at=hours(11))), [])
+
+    def test_started_at_when_no_commit_and_error_or_nothing_skips(self):
+        self.assertEqual([a.key for a in self.crew_asks(crew_module(started_at=hours(13)))],
+                         ["coord|stalled:alpha"])
+        self.assertEqual(self.crew_asks(crew_module(started_at=hours(30), commits_error="worktree 不存在")), [])
+        self.assertEqual(self.crew_asks(crew_module()), [])
+
+    def test_repeat_asks_within_window(self):
+        three = (("final", (hours(20), hours(10), hours(1))),)
+        self.assertEqual([a.key for a in self.crew_asks(crew_module(started_at=hours(2), asks=three))],
+                         ["coord|repeat:alpha"])
+        self.assertIn("24 小时内报批 3 次", self.crew_asks(crew_module(started_at=hours(2), asks=three))[0].text)
+        for asks in ((("final", (hours(10), hours(1))),), (("final", (hours(30), hours(10), hours(1))),),
+                     (("spec", (hours(10),)), ("plan", (hours(5),)), ("final", (hours(1),)))):
+            with self.subTest(asks=asks):
+                self.assertEqual(self.crew_asks(crew_module(started_at=hours(2), asks=asks)), [])
+
+    def test_skipped_modules(self):
+        old = {"started_at": hours(30), "last_commit_at": hours(20),
+               "asks": (("final", (hours(3), hours(2), hours(1))),)}
+        for name, m in (("merged", crew_module(stage="merged", **old)),
+                        ("wait-merge", crew_module(stage="wait-merge", **old)),
+                        ("suspended", crew_module(suspended="等设计稿", **old)),
+                        ("waiting you", crew_module(waiting_user=True, **old)),
+                        ("in review", crew_module(review=("rework", 2), **old))):
+            with self.subTest(name):
+                self.assertEqual(self.crew_asks(m), [])
+
+    def test_030_shape_or_unknown_read_adds_nothing(self):
+        self.assertEqual(self.crew_asks(crew_module()), [])
+        self.assertEqual(self.crew_asks(crew_module(started_at=hours(30)), status="unknown"), [])
+        self.assertEqual(stall.asks(self.g, NOW, {}, {}, {}), [])
+
+    def test_patrol_passes_crews(self):
+        crews = {"coord": crew.CrewRead("ok", (crew_module(started_at=hours(30), last_commit_at=hours(13)),))}
+        p = patrol.plan(self.g, now=NOW, relay=snapshot(agent("coord")), crews=crews)
+        ask = next(a for a in p.actions if a.id == "stall:coord|stalled:alpha")
+        self.assertIn("模块 alpha", ask.text)

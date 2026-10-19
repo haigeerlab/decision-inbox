@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import items, reviews, store
+from decision_inbox import items, protocol, reviews, store
 
 DEFAULTS = {"stalledHours": 12, "reworkRounds": 3, "repeatAsks": 3, "repeatHours": 24,
             "askAgainHours": 12, "answerWaitMinutes": 30}
@@ -55,6 +55,39 @@ def ask_text(short: str, where: str, ready: str) -> str:
             "挂起由你自己用 spec-guard 的 module-suspend 做，不要等决策收件箱代做。")
 
 
+def module_ask_text(short: str, module: str, where: str, ready: str) -> str:
+    """The wake for a module under a module-crew coordinator (crew-stall-facts): module-crew's own way to suspend."""
+    return (f"【decision-inbox 巡视】{short}：模块 {module}{where}。请就这个模块抛一项【等待用户】，写清卡在哪，"
+            f"给用户三个选项：A 挂起模块 {module}，先开可开工的模块（{ready}）；B 换做法（写明怎么换）；"
+            "C 继续等，12 小时内不再问。挂起按 module-crew 的做法做，不要等决策收件箱代做。")
+
+
+_NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
+_SKIP_STAGES = ("merged", "wait-merge")   # done, or waiting for the merge: no new commits are expected
+
+
+def _module_findings(now: str, crews: dict, cfg: dict) -> dict[str, str]:
+    """key -> where, from module-crew 0.4.0 facts; modules without them (0.3.x) are never judged."""
+    found = {}
+    for coordinator, read in (crews or {}).items():
+        if getattr(read, "status", None) != "ok":
+            continue
+        for m in read.modules:
+            if m.stage in _SKIP_STAGES or m.suspended or m.waiting_user or m.review:
+                continue
+            since = None if m.commits_error else (m.last_commit_at or m.started_at)
+            if since and _hours(now, since) >= cfg["stalledHours"]:
+                what = (f"已经 {int(_hours(now, since))} 小时没有新提交（最后一次提交 {since[5:16].replace('T', ' ')}）"
+                        if m.last_commit_at else f"开工 {int(_hours(now, since))} 小时还没有提交")
+                found[f"{coordinator}|stalled:{m.module}"] = what
+            for node, ats in m.asks:
+                recent = [at for at in ats if _hours(now, at) <= cfg["repeatHours"]]
+                if len(recent) >= cfg["repeatAsks"]:
+                    found.setdefault(f"{coordinator}|repeat:{m.module}",
+                                     f"的{_NODE_NAMES.get(node, node)} {cfg['repeatHours']} 小时内报批 {len(recent)} 次")
+    return found
+
+
 def _findings(g: store.Group, now: str, lines: dict, cfg: dict) -> dict[str, str]:
     """key -> where it is stuck."""
     found = {}
@@ -79,20 +112,22 @@ def _findings(g: store.Group, now: str, lines: dict, cfg: dict) -> dict[str, str
     return found
 
 
-def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict) -> list[Ask]:
+def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: dict | None = None) -> list[Ask]:
     """What patrol should ask this round; each key at most once per askAgainHours."""
     cfg = settings(g)
     asked = state.get("stallAsks", {})
     left = store.left_relays(g)
     out = []
-    for key, where in _findings(g, now, lines, cfg).items():
-        name = key.partition("|")[0]
+    for key, where in {**_findings(g, now, lines, cfg), **_module_findings(now, crews, cfg)}.items():
+        name, _, reason = key.partition("|")
+        module = reason.partition(":")[2]
         entry = store.find_session(g, relay_name=name)
         if entry is None or name in left or entry["role"] == "hub":
             continue
         if key in asked and _hours(now, asked[key]) < cfg["askAgainHours"]:
             continue
-        text = ask_text(entry["shortName"], where, _ready(maps, name))
+        text = (module_ask_text(entry["shortName"], module, where, _ready(maps, name)) if module
+                else ask_text(entry["shortName"], where, _ready(maps, name)))
         if entry["host"] == "claude-desktop" and entry.get("desktopSession"):
             out.append(Ask(key, "wake", entry["desktopSession"], text))
         else:
