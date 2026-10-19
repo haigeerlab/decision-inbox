@@ -165,6 +165,11 @@ def _query(argv: list[str]) -> int:
         p.add_argument("group")
         p.add_argument("--since")
         p.add_argument("--json", action="store_true", required=name == "events")
+    p = sub.add_parser("waits")  # my-waits
+    p.add_argument("group")
+    p.add_argument("--me", required=True)
+    p.add_argument("--agents")
+    p.add_argument("--relay-version")
     for name in ("item-ids", "item"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -186,6 +191,11 @@ def _query(argv: list[str]) -> int:
             if alarm := hub.patrol_alarm(g, now):
                 print(alarm)
             print(query.render_flow(g, now=now, assessment=a, relay=agents, wakes=wakes))
+        elif args.command == "waits":
+            agents = None
+            if args.agents:
+                agents = _parse(lambda t: relay.parse_agents(t, relay_version=args.relay_version), _read(args.agents))
+            print(query.render_waits(g, args.me, now=store.now(), relay=agents))
         elif args.command == "stats":
             s = query.stats(g, args.since)
             if args.json:
@@ -203,7 +213,7 @@ def _query(argv: list[str]) -> int:
                 st = _parse(relay.parse_message_status, _read(path))
                 statuses[st.id] = st
             print(query.render_item(g, args.number, statuses))
-    except (store.InvalidName, store.GroupNotFound) as e:
+    except (store.InvalidName, store.GroupNotFound, query.UnknownSession) as e:
         print(str(e), file=sys.stderr)
         return 2
     except _RelayUnreadable as e:

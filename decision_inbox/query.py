@@ -535,6 +535,10 @@ def events(g: store.Group, since: str | None = None) -> list[dict]:
 
 # --- my-waits: one session's own view (requirement 3.3.5, second version) ---
 
+class UnknownSession(ValueError):
+    """The name given to /waits is not on the group's roster."""
+
+
 _ITEM_STATE = {
     "pending": "等用户决定",
     "undelivered": "用户已答复，答复还没送到",
@@ -559,7 +563,7 @@ def render_waits(g: store.Group, me: str, now: str, relay=None) -> str:
     """What `me` (an agent-relay name) waits on, and who waits on it; offline only with a relay snapshot."""
     entry = store.find_session(g, relay_name=me)
     if entry is None:
-        raise ValueError(f"{me} 不在 {g.name} 的会话名册里")
+        raise UnknownSession(f"{me} 不在 {g.name} 的会话名册里")
     if entry["role"] == "hub":
         return "这是决策收件箱：决策收件箱看主视图，这条命令给接入的工作会话查自己用"
     names = {me, entry.get("shortName")}

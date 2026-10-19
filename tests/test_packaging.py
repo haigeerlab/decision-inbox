@@ -120,8 +120,8 @@ class HookCommandTest(TempHomeTestCase):
         self.assertEqual((done.returncode, done.stdout), (0, ""))
 
 
-COMMANDS = ("lines", "flow", "item", "map", "hub-setup", "join", "leave", "teardown", "glossary")
-QUERIES = ("lines", "flow", "item", "map")
+COMMANDS = ("lines", "flow", "item", "map", "waits", "hub-setup", "join", "leave", "teardown", "glossary")
+QUERIES = ("lines", "flow", "item", "map", "waits")
 CHANGES = ("hub-setup", "join", "leave", "teardown")
 SUBCOMMANDS = {"store", "query", "map", "hook", "patrol", "inbox", "view", "onboard", "shim", "whoami", "doctor", "notify", "glossary", "patrol-watch"}
 
@@ -160,6 +160,7 @@ class CommandFilesTest(unittest.TestCase):
 
     def test_tool_steps(self):
         self.assertIn("bridge_agents", self.read("commands/lines.md"))
+        self.assertIn("query waits <group> --me <relayName>", self.read("commands/waits.md"))  # my-waits
         self.assertIn("bridge_wake_status", self.read("commands/flow.md"))
         self.assertIn("item-ids", self.read("commands/item.md"))
         self.assertIn("bridge_wake_status", self.read("commands/item.md"))

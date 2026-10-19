@@ -478,5 +478,41 @@ class WaitsTest(QueryCase):
         self.assertNotIn("在等你的", out)
 
     def test_unknown_session(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(query.UnknownSession):
             query.render_waits(self.g, "nobody", now=NOW)
+
+
+class WaitsCommandTest(WaitsTest):
+    """my-waits: the command line; it only reads."""
+
+    def run_cli(self, *args):
+        import os, subprocess, sys
+        from helpers import REPO
+        env = {**os.environ, "PYTHONPATH": str(REPO)}
+        return subprocess.run([sys.executable, "-m", "decision_inbox", "query", "waits", "demo", *args],
+                              env=env, capture_output=True, text=True, timeout=30)
+
+    def tree(self):
+        return {str(p.relative_to(self.home)): p.read_bytes() for p in sorted(self.home.rglob("*")) if p.is_file()}
+
+    def test_reads_only(self):
+        import json
+        before = self.tree()
+        r = self.run_cli("--me", "fe")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"W{self.w_api} 在等 API", r.stdout)
+        self.assertIn(f"W{self.w_for_me} API 在等你的", r.stdout)
+        self.assertEqual(self.tree(), before)
+        agents = self.home / "agents.json"
+        agents.write_text(json.dumps({"count": 1, "agents": [agent("api", app="codex", state="stopped")]}),
+                          encoding="utf-8")
+        before = self.tree()
+        r = self.run_cli("--me", "fe", "--agents", str(agents))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("对方离线", r.stdout)
+        self.assertEqual(self.tree(), before)
+
+    def test_unknown_session_exits_2(self):
+        r = self.run_cli("--me", "nobody")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("nobody", r.stderr)
