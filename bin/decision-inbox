@@ -4,4 +4,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 DECISION_INBOX_PLUGIN_ROOT="$ROOT"
 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export DECISION_INBOX_PLUGIN_ROOT PYTHONPATH
-exec python3 -m decision_inbox "$@"
+# Not `python3 -m`: it puts the caller's directory first on sys.path, so a decision_inbox (or runpy)
+# there would run instead of ours. Swap that entry for ROOT before importing anything (-P needs 3.11).
+exec python3 -c 'import sys; sys.path[0] = sys.argv.pop(1); import runpy; runpy.run_module("decision_inbox", run_name="__main__", alter_sys=True)' "$ROOT" "$@"

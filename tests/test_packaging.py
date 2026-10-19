@@ -2,7 +2,9 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 
 from helpers import REPO, TempHomeTestCase
 
@@ -42,6 +44,21 @@ class ManifestTest(unittest.TestCase):
 
     def test_entry_script_is_executable(self):
         self.assertTrue(os.access(REPO / "bin" / "decision-inbox", os.X_OK))
+
+    def test_entry_script_ignores_package_in_cwd(self):
+        # launcher-own-code: a decision_inbox (or runpy) in the caller's directory must not be loaded
+        cwd = Path(tempfile.mkdtemp(prefix="di-cwd-"))
+        self.addCleanup(shutil.rmtree, cwd, ignore_errors=True)
+        (cwd / "decision_inbox").mkdir()
+        (cwd / "decision_inbox" / "__init__.py").write_text("print('FAKE-PACKAGE')\n", encoding="utf-8")
+        (cwd / "decision_inbox" / "__main__.py").write_text("print('FAKE-MAIN')\n", encoding="utf-8")
+        (cwd / "runpy.py").write_text("print('FAKE-RUNPY')\n", encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}  # the test run's "." would point at cwd
+        result = subprocess.run([str(REPO / "bin" / "decision-inbox"), "glossary"], cwd=cwd, env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertNotIn("FAKE-", result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("术语表", result.stdout)
 
 
 class HookCommandTest(TempHomeTestCase):
