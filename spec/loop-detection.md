@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 750375c12688 -->
 
 # Spec: loop-detection
 
@@ -144,3 +144,8 @@
 
 - README：主视图一节加抬头字段、折叠、「在做的模块」一段和打转提示；答复写法加「N 挂起／N 换方案：…／N 继续等」和「看模块 <id>」；停滞一节写明改用出手时长、不再跳过等待用户与正在审查的模块。
 - 术语表：建议加「打转」「出手时长」「基准」三个词。本仓库 `docs/glossary.md` 只是副本，原件是 `livesaas-integration/GLOSSARY.md`（四个插件共用），要改先由接入协调人改原件、升 v1.3，本插件再同步；这次先不改，是否提给协调人请你定。
+
+## 外部审查意见
+
+<!-- spec-guard: external-review declined -->
+用户 2026-10-19：不做外部审查。

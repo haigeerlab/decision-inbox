@@ -14,3 +14,8 @@
 ## Checkpoint（gate）：模块最终验收
 
 - [ ] 全部测试通过；每条验收标准有证据；列出实际改动的文件
+
+## 外部审查意见
+
+<!-- spec-guard: external-review declined -->
+用户 2026-10-19：不做外部审查。
