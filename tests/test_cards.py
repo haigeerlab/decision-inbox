@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 
 from test_approval import T1, T2, ApprovalCase
 
-from decision_inbox import cards, health, items, store, view
+from decision_inbox import cards, health, items, protocol, store, view
 
 NOW = "2026-10-19T12:00:00+08:00"
 
@@ -239,7 +239,7 @@ class FullTextTest(CardCase):
                                      capture_output=True, text=True).stdout.strip()
 
 
-V23 = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "session-protocol" / "v2.3" / "wait-user"
+V23 = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "session-protocol" / f"v{protocol.CONTRACT_VERSION}" / "wait-user"
 
 
 class V23CardTest(CardCase):

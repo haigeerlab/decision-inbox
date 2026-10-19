@@ -4,11 +4,11 @@ from pathlib import Path
 
 from helpers import TempHomeTestCase
 
-from decision_inbox import hub, items, store
+from decision_inbox import hub, items, protocol, store
 from test_hub import inbox, message as msg
 
 NOW = "2026-10-19T12:00:00+08:00"
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "session-protocol" / "v2.3" / "wait-user"
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "session-protocol" / f"v{protocol.CONTRACT_VERSION}" / "wait-user"
 CLAUDE = (FIXTURES / "go-to-session.txt").read_text(encoding="utf-8")
 CODEX = (FIXTURES / "go-to-session-codex.txt").read_text(encoding="utf-8")
 ORDINARY = """【等待用户】

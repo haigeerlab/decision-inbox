@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-CONTRACT_VERSION = "2.3"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+CONTRACT_VERSION = "2.4"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
 
 KIND_TAGS = {
     "等待用户": "wait-user",
@@ -23,7 +23,7 @@ KIND_TAGS = {
 
 # Field names each kind knows, in the order they are usually written.
 FIELDS = {
-    "wait-user": ("来自", "项目", "要你决定", "要点", "类型", "会话", "链接", "被拦的操作", "点哪个按钮", "为什么批不了",
+    "wait-user": ("来自", "项目", "要你决定", "要点", "模块", "类型", "会话", "链接", "被拦的操作", "点哪个按钮", "为什么批不了",
                   "宿主原文", "关联事项", "注意", "推荐理由", "批了会怎样", "产物", "交审原文", "审查原文", "待用户决定", "架构审查", "选项与我的建议", "你该回",
                   "是否完全停住", "适用会话", "各线范围"),
     "user-reply": ("事项", "用户原话", "选项原文", "适用于你的范围", "答复时间", "原事项全文"),
@@ -200,6 +200,7 @@ class Message:
     wait_kind: str | None = None  # v2.2: "go-to-session" when 类型 is 去会话操作; v2.3 adds the approval classes
     points: tuple[tuple[str, str], ...] = ()  # v2.3: (point name, text) of the class, in writing order
     go_to_session: dict | None = None  # v2.2: the 去会话操作 fields under the contract's keys (go-to-session)
+    module: str | None = None  # v2.4: 「模块」 as written (stripped), "无" for a line-level item
 
     @property
     def ok(self) -> bool:
@@ -606,7 +607,7 @@ def parse(text: str) -> Message:
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
                    conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item,
                    artifacts=artifacts, originals=originals, wait_kind=wait_kind, go_to_session=go_to_session,
-                   points=points)
+                   points=points, module=(fields.get("模块") or "").strip() or None if kind == "wait-user" else None)
 
 
 def _source(relay_id) -> str:
