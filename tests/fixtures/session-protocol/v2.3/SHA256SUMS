@@ -146,6 +146,14 @@ e74fd405cab0738b18a15875664857415750c1c2c84091c0f8011c1661045631  ./wait-user/br
 6f056859cb77130daa643d4ee657f7343031ebbfadb5faa9d9bf84327fe9d5ad  ./wait-user/brief-thin-see-detail.txt
 00c153b62c33b263e03dbbae4c2d74cb40d03ba46a29107d577d70788c8ccbff  ./wait-user/brief-thin.json
 c279fe07d910160cb84e73cbc816518c7a799eab3141339b6f82d00892f17102  ./wait-user/brief-thin.txt
+70285aed055f2b188f4cec261bc8bbf5d510035b8701c302239342ef7a95fe6c  ./wait-user/card-final.json
+a7a200c201dfb557eeedfc05058e7dadb01522894d999c9011cbacc6e3ab606e  ./wait-user/card-final.txt
+3777a4c24b1d0ac95aef742e6b58b3f8821893bdd6b4021cd1ca7962230e1088  ./wait-user/card-kind-unknown.json
+81d6a2a64f61006fc881bdb0a1a615b9d119244c3878744b1697444a15793e55  ./wait-user/card-kind-unknown.txt
+84759fc930388679cc432c1fbc7eef5f1c1dc84147c4a2519423796eade6a2d8  ./wait-user/card-spec-plan.json
+4d19a81cda9ae288e82db90884a780f07a48bdc8a9ab71490dfa946461846c7a  ./wait-user/card-spec-plan.txt
+b04cec2ef3201207a3a383740abd88ad28f216f10d5eb17d4a59f04be231b36f  ./wait-user/card-spec.json
+f8aaafc5c0371e1cf6cdbe621123a57f2f613d2bd94d1e3ff0a79b4557212dc9  ./wait-user/card-spec.txt
 cd44d9198ef77d2b6579d5923689de1bd22ac9c8d07639907db86ddd5ccb575d  ./wait-user/decision-duplicate.json
 b8c341b0e61dd1144dc9479e96b83e1b514f0f197d7e2abf842c190a3969d421  ./wait-user/decision-duplicate.txt
 05439ac99f823dcd5717ccf2691389446e2a3d4b24c0e8d2515785ffd2dd094f  ./wait-user/decisions.json

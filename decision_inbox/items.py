@@ -158,6 +158,11 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         # go-to-session (session-protocol v2.2): a host confirmation the user must click in that session
         "waitKind": msg.wait_kind,
         "goToSession": msg.go_to_session,
+        # decision-cards (session-protocol v2.3): the card's content points and the three optional fields
+        "points": [[name, text] for name, text in msg.points],
+        "note": msg.fields.get("注意", "").strip() or None,
+        "reason": msg.fields.get("推荐理由", "").strip() or None,
+        "approveEffect": msg.fields.get("批了会怎样", "").strip() or None,
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],

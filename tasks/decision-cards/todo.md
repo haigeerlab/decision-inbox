@@ -25,8 +25,11 @@
   - 验证：`bridge_sessions` 夹具上的新用例先失败后通过（waiting 字段值按 rh2-coord 转述，夹具注明来源）
   - 巡视提示词已加「读 bridge_sessions 写入 sessions.json」与 `--sessions`；收件箱规则段的对应步骤放到 Task 8 一起改
   - 待核对：第一次遇到真弹窗时读一次 `bridge_sessions`，看 `status`／`waitingFor` 是不是转述的写法
-- [ ] Task 9：升到 session-protocol v2.3，卡片改读新字段（Spec 要做的 10；验收 15）
+- [x] Task 9：升到 session-protocol v2.3，卡片改读新字段（Spec 要做的 10；验收 15）
   - 验证：v2.3 样例一致性测试先失败后通过；card-final、card-spec-plan 卡片用例先失败后通过
+  - 样例：`tests/fixtures/session-protocol/v2.2` 改名 v2.3，用契约 6b8810e 的 `git archive` 覆盖解出（已有样例零改动，新增 4 份，SHA256SUMS 全部对上）
+  - 偏差（最终验收时交用户看）：「Spec 与 Plan」九项、「接口提案」七项放不进 18 行，行数上限按小项数放宽（超过 5 项的每项加 1 行：spec-plan 22、interface 20），不砍模板要求的小项
+  - 顺带：停止检查也把 DI-9 的弹窗提醒抬头算作必须原样出现的行
 - [ ] Task 8：规则段、文档与真实数据验收（验收 4、16）
   - 验证：di-p0 副本实跑结果记在这里；真实状态目录 md5 不变；全量测试通过
 

@@ -147,7 +147,7 @@ def _instant(value: str) -> datetime:
 _HUB_COMMAND_RE = re.compile(r"decision[-_]inbox\S*\s+(?:view|inbox\s+reply)\b")
 _PERSISTED_RE = re.compile(r"Full output saved to: (\S+)")
 _BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)\n```", re.S)
-_HEAD_RE = re.compile(r"^\*\*#\d+ · .*$", re.M)
+_HEAD_RE = re.compile(r"^\*\*(?:#\d+ · |去 ).*$", re.M)  # item cards, and DI-9 prompt reminders
 
 
 class _Unreadable(ValueError):

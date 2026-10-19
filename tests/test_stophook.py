@@ -393,6 +393,11 @@ class HubTurnCheckTest(unittest.TestCase):
                 self.assertTrue(d.block)
                 self.assertIn("复制块", d.reason)
 
+    def test_prompt_reminder_must_stay(self):
+        out = self.EMPTY + "\n\n**去 rh2-zeta 点一下弹窗**（收件箱发现的，提出方没报）· 等了 9 分钟"
+        self.assertTrue(self.check(self.transcript(out, self.EMPTY)).block)
+        self.assertFalse(self.check(self.transcript(out, out)).block)
+
     def test_summary_instead_of_cards_blocks(self):
         d = self.check(self.transcript(self.VIEW, "有两项等你：47 批 Plan，49 选做法。"))
         self.assertTrue(d.block)

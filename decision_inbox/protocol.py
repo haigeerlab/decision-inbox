@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-CONTRACT_VERSION = "2.2"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+CONTRACT_VERSION = "2.3"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
 
 KIND_TAGS = {
     "等待用户": "wait-user",
@@ -24,7 +24,7 @@ KIND_TAGS = {
 # Field names each kind knows, in the order they are usually written.
 FIELDS = {
     "wait-user": ("来自", "项目", "要你决定", "要点", "类型", "会话", "链接", "被拦的操作", "点哪个按钮", "为什么批不了",
-                  "宿主原文", "关联事项", "产物", "交审原文", "审查原文", "待用户决定", "架构审查", "选项与我的建议", "你该回",
+                  "宿主原文", "关联事项", "注意", "推荐理由", "批了会怎样", "产物", "交审原文", "审查原文", "待用户决定", "架构审查", "选项与我的建议", "你该回",
                   "是否完全停住", "适用会话", "各线范围"),
     "user-reply": ("事项", "用户原话", "选项原文", "适用于你的范围", "答复时间", "原事项全文"),
     "wait-session": ("在等谁", "等什么"),
@@ -197,7 +197,8 @@ class Message:
     local_item: str | None = None  # v2.0: a coordinator's own C-number in 【用户答复】「事项」
     artifacts: tuple[Artifact, ...] = ()
     originals: dict[str, tuple[OriginalRef, ...]] = field(default_factory=dict)  # submission / conclusion
-    wait_kind: str | None = None  # v2.2: "go-to-session" when 类型 is 去会话操作
+    wait_kind: str | None = None  # v2.2: "go-to-session" when 类型 is 去会话操作; v2.3 adds the approval classes
+    points: tuple[tuple[str, str], ...] = ()  # v2.3: (point name, text) of the class, in writing order
     go_to_session: dict | None = None  # v2.2: the 去会话操作 fields under the contract's keys (go-to-session)
 
     @property
@@ -405,7 +406,36 @@ def _scopes(block: str) -> dict[str, str]:
     return {k: "\n".join(v) for k, v in scopes.items()}
 
 
-WAIT_KINDS = {"去会话操作": "go-to-session"}
+WAIT_KINDS = {"去会话操作": "go-to-session",
+              # v2.3: the approval classes of the decision-card template
+              "能力图审阅": "capability-map", "Spec": "spec", "Plan": "plan", "Spec 与 Plan": "spec-plan",
+              "中途检查点": "checkpoint", "最终验收": "final", "接口提案": "interface", "卡住选做法": "stuck"}
+_SPEC_POINTS = ("目标", "做／不做", "要你确认的假设", "验收标准", "附带的小决定")
+_PLAN_POINTS = ("分几步", "会改哪些文件", "风险", "中途会停下来问你的地方")
+# v2.3: the fixed content points of each class, in writing order, written as 「小项名：内容」 lines in 要点
+POINTS = {"capability-map": ("拆成哪些模块", "先后顺序", "文档建议"), "spec": _SPEC_POINTS, "plan": _PLAN_POINTS,
+          "spec-plan": _SPEC_POINTS + _PLAN_POINTS, "checkpoint": ("做到哪了", "为什么停在这", "接下来要做的那一步"),
+          "final": ("做了什么", "验收结果", "改了哪些文件", "Spec 中途改过吗"),
+          "interface": _SPEC_POINTS + ("改了哪个接口", "哪些模块要跟着改"), "stuck": ("出了什么事",)}
+
+
+def _points(kind: str | None, brief: str) -> tuple[tuple[str, str], ...]:
+    """v2.3: this class's content points in 要点, each running on to the next point name or the end."""
+    names = POINTS.get(kind or "")
+    if not names:
+        return ()
+    pattern = re.compile("^(" + "|".join(re.escape(n).replace("／", "[／/]") for n in names) + rf")\s*{_COLON}\s*(.*)$")
+    out: list[list[str]] = []
+    for line in brief.split("\n"):
+        m = pattern.match(line.strip())
+        if m:
+            name = next(n for n in names if re.fullmatch(re.escape(n).replace("／", "[／/]"), m.group(1)))
+            out.append([name, m.group(2)])
+        elif out:
+            out[-1][1] += "\n" + line
+    return tuple((name, text.strip()) for name, text in out)
+
+
 # v2.2 go-to-session: contract key -> field, required ones first and in the order their problems are reported.
 _GO_TO_SESSION = (("session", "会话", True), ("blockedAction", "被拦的操作", True), ("button", "点哪个按钮", True),
                   ("reason", "为什么批不了", True), ("hostText", "宿主原文", False), ("link", "链接", False),
@@ -413,14 +443,16 @@ _GO_TO_SESSION = (("session", "会话", True), ("blockedAction", "被拦的操�
 
 
 def _go_to_session(fields: dict, problems: list[Issue]) -> tuple[str | None, dict | None]:
-    """「类型」and its fields (session-protocol v2.2); an unknown 类型 is bad-wait-kind and reads as ordinary."""
+    """「类型」(v2.2 去会话操作, v2.3 approval classes) and the 去会话操作 fields; an unknown 类型 is bad-wait-kind."""
     written = fields.get("类型", "").strip()
     if not written:
         return None, None
     kind = WAIT_KINDS.get(written)
     if kind is None:
-        problems.append(Issue("bad-wait-kind", f"「类型」只能写「去会话操作」，现在是「{written}」"))
+        problems.append(Issue("bad-wait-kind", f"「类型」只能写{'、'.join(f'「{k}」' for k in WAIT_KINDS)}，现在是「{written}」"))
         return None, None
+    if kind != "go-to-session":
+        return kind, None
     out = {}
     for key, name, required in _GO_TO_SESSION:
         value = fields.get(name, "").strip()
@@ -461,7 +493,7 @@ def parse(text: str) -> Message:
     local_item = None
     artifacts: tuple[Artifact, ...] = ()
     originals: dict[str, tuple[OriginalRef, ...]] = {}
-    wait_kind, go_to_session = None, None
+    wait_kind, go_to_session, points = None, None, ()
 
     if kind == "unknown":
         problems.append(Issue("unknown-kind", "认不出消息类型"))
@@ -504,6 +536,7 @@ def parse(text: str) -> Message:
         originals = {"submission": _original_refs("交审原文", fields.get("交审原文", ""), problems),
                      "conclusion": _original_refs("审查原文", fields.get("审查原文", ""), problems)}
         wait_kind, go_to_session = _go_to_session(fields, problems)
+        points = _points(wait_kind, fields.get("要点", ""))
         if "待用户决定" in fields:
             decisions = _decisions(fields["待用户决定"], problems)
     elif kind == "wait-session":
@@ -572,7 +605,8 @@ def parse(text: str) -> Message:
                    lines_in_scope=in_scope, scopes=scopes,
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
                    conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item,
-                   artifacts=artifacts, originals=originals, wait_kind=wait_kind, go_to_session=go_to_session)
+                   artifacts=artifacts, originals=originals, wait_kind=wait_kind, go_to_session=go_to_session,
+                   points=points)
 
 
 def _source(relay_id) -> str:

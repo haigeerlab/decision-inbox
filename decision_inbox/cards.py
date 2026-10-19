@@ -18,16 +18,19 @@ EXAMPLE_CHARS = 60
 OPTION_CHARS = 40
 
 # Phase 1 (session-protocol v2.2): the class comes from 类型 and 节点; v2.3 「类型」 joins here later.
-KIND_NAMES = {"capability-map": "能力图审阅", "spec": "Spec", "plan": "Plan", "checkpoint": "中途检查点",
+KIND_NAMES = {"capability-map": "能力图审阅", "spec": "Spec", "plan": "Plan", "spec-plan": "Spec 与 Plan",
+              "checkpoint": "中途检查点",
               "final": "最终验收", "interface": "接口提案", "stuck": "卡住选做法", "go-to-session": "去会话操作"}
 _BY_NODE = {"Spec": "spec", "接口提案": "interface", "Plan": "plan", "最终验收": "final"}
-APPROVALS = ("capability-map", "spec", "plan", "checkpoint", "final", "interface")
+APPROVALS = ("capability-map", "spec", "plan", "spec-plan", "checkpoint", "final", "interface")
 
 
 def kind(it: dict) -> str:
     """One of the template's seven classes (go-to-session, the four nodes, else stuck)."""
     if items.is_go_to_session(it):
         return "go-to-session"
+    if it.get("waitKind") in KIND_NAMES:  # session-protocol v2.3 「类型」
+        return it["waitKind"]
     return _BY_NODE.get(it.get("approvalNode") or "", "stuck")
 
 
@@ -84,6 +87,28 @@ def points(it: dict) -> tuple[list[str], bool]:
     return out, cut
 
 
+_LIST_NAMES = ("验收标准", "验收结果")
+
+
+def _point_line(name: str, text: str, no: int) -> str:
+    """One v2.3 content point: its first line; what runs on is counted and left to 「看 N 全文」."""
+    lines = text.split("\n")
+    first, rest = _clip(lines[0].strip(), POINT_CHARS), [x.strip() for x in lines[1:] if x.strip()]
+    if not rest:
+        return f"**{name}**：{first}"
+    if name in _LIST_NAMES:
+        line = f"**{name}**：{first}" + ("" if f"共 {len(rest)} 条" in first else f"；共 {len(rest)} 条")
+        return line + f"；例：{_clip(rest[0], EXAMPLE_CHARS)}" + (f"（其余见「看 {no} 全文」）" if len(rest) > 1 else "")
+    return f"**{name}**：{first}（共 {len(lines)} 行，见「看 {no} 全文」）"
+
+
+def point_lines(it: dict) -> list[str]:
+    """v2.3 points in the template's order (section 4); a point written twice keeps both."""
+    order = protocol.POINTS.get(kind(it), ())
+    ranked = sorted(it.get("points") or (), key=lambda p: order.index(p[0]) if p[0] in order else len(order))
+    return [_point_line(name, text, it["no"]) for name, text in ranked]
+
+
 # ── conclusion and notes ──────────────────────────────────────────────────────
 
 _SENTENCE_RE = re.compile(r"^(.+?[。；!！?？])")
@@ -114,7 +139,9 @@ def conclusion(it: dict) -> str:
 
 
 def notes(it: dict) -> list[str]:
-    """「注意」 only from a source (assumption 3): what the review label found in the text, and writing hints."""
+    """「注意」 as the proposer wrote it (v2.3, 「无」 included), else only from a source (assumption 3)."""
+    if it.get("note"):
+        return [it["note"]]
     review = it.get("review") or {}
     found = [f"正文提到：{m}" for m in review.get("mentions") or ()] if review.get("warn") else []
     return found + [f"写法提示：{n}" for n in it.get("writingNotes") or ()]
@@ -183,7 +210,7 @@ def _recommend_line(it: dict) -> str | None:
     if rec is None:
         return None
     leans = "".join(f"；{d['id']} 选 {d['lean']}" for d in it.get("decisions") or () if d.get("lean"))
-    return f"**推荐 {rec['letter']}{leans}**"
+    return f"**推荐 {rec['letter']}{leans}**" + (f"：{it['reason']}" if it.get("reason") else "")
 
 
 def _topic(it: dict, k: str) -> str:
@@ -199,13 +226,18 @@ def head(it: dict, k: str, waited: str, extra: str = "") -> str:
     return line + extra
 
 
-def _fit(top: list[str], content: list[str], cut: bool, rest: list[str], no: int) -> list[str]:
-    """Drop content lines until the card fits MAX_LINES; anything left out points to 「看 N 全文」."""
+def max_lines(k: str) -> int:
+    """MAX_LINES, plus one line per template point beyond five (Spec 与 Plan has nine, 接口提案 seven)."""
+    return MAX_LINES + max(0, len(protocol.POINTS.get(k, ())) - 5)
+
+
+def _fit(top: list[str], content: list[str], cut: bool, rest: list[str], no: int, limit: int = MAX_LINES) -> list[str]:
+    """Drop content lines until the card fits `limit`; anything left out points to 「看 N 全文」."""
     more = f"其余见：回「看 {no} 全文」"
     while True:
         tail = [more] if cut else []
         card = top + content + tail + rest
-        if len([x for x in card if x.strip()]) <= MAX_LINES or not content:
+        if len([x for x in card if x.strip()]) <= limit or not content:
             return card
         content, cut = content[:-1], True
 
@@ -220,8 +252,12 @@ def render(g, it: dict, waited: str, line_name: str) -> str:
         where.append(f"模块 {it.get('approvalModule') or '未知'}")
         label = f"{KIND_NAMES[k]}（第 {rounds} 次交审" + (f"；上次你答：{last}" if last else "") + "）"
         top = [head(it, k, waited), " · ".join(where + [label]), ""]
-        content = (["**内容要点**："] if content else []) + content
-        rest = ["", f"**结论**：{conclusion(it)}"]
+        if it.get("points"):  # session-protocol v2.3: the template's own items replace the picked lines
+            content, cut = point_lines(it), False
+        else:
+            content = (["**内容要点**："] if content else []) + content
+        effect = [f"**批了会怎样**：{it['approveEffect']}"] if it.get("approveEffect") else []
+        rest = [*effect, "", f"**结论**：{conclusion(it)}"]
     else:
         where = " · ".join(x for x in (it.get("project"), line_name) if x)
         top = [head(it, k, waited), *([where] if where else []), ""]
@@ -235,7 +271,7 @@ def render(g, it: dict, waited: str, line_name: str) -> str:
     if rec := _recommend_line(it):
         rest += ["", rec]
     rest += ["", *_copy_block(it)]
-    return "\n".join(_fit(top, content, cut, rest, it["no"]))
+    return "\n".join(_fit(top, content, cut, rest, it["no"], max_lines(k)))
 
 
 def go_to_session(it: dict, waited: str, where: str, remind: bool) -> str:

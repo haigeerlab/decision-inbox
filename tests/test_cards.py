@@ -123,7 +123,8 @@ class ApprovalCardTest(CardCase):
         self.assertEqual(text.count("**验收结果**"), 1)
         self.assertIn("**验收结果**：验收标准 3 条，标了通过的 3 条；完整检查：sh scripts/slow-check.sh", text)
         self.assertIn(f"其余见：回「看 {no} 全文」", text)
-        self.assertLessEqual(len([x for x in text.split("\n") if x.strip()]), cards.MAX_LINES)
+        self.assertLessEqual(len([x for x in text.split("\n") if x.strip()]), cards.max_lines("spec-plan"))
+        self.assertEqual(cards.max_lines("spec-plan"), cards.MAX_LINES + 4)
         self.assertNotIn("锁文件只多了", text.split("**结论**")[1])
 
     def test_final_card_has_no_loop_head(self):
@@ -236,3 +237,61 @@ class FullTextTest(CardCase):
         subprocess.run(["git", "-C", str(self.repo), "commit", "-qam", "y"], check=True)
         self.commit = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "--short=7", "HEAD"], check=True,
                                      capture_output=True, text=True).stdout.strip()
+
+
+V23 = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "session-protocol" / "v2.3" / "wait-user"
+
+
+class V23CardTest(CardCase):
+    """decision-cards Task 9: cards from session-protocol v2.3 「类型」 and content points."""
+
+    def receive(self, name, sender="coord"):
+        r = items.receive(self.g, (V23 / name).read_text(encoding="utf-8"), sender=sender,
+                          relay_id=next(self.relay_ids), received_at=T1)
+        self.assertTrue(r.accepted, r.problems)
+        return r.item
+
+    def labels(self, text):
+        return [line.split("**")[1] for line in text.split("\n") if line.startswith("**") and "**：" in line]
+
+    def test_final_card_follows_the_template(self):
+        no = self.receive("card-final.txt")
+        text = self.card(no)
+        lines = [x for x in text.split("\n") if x.strip()]
+        self.assertTrue(lines[0].startswith(f"**#{no} · delta 的最终验收，批不批** · 等了"), lines[0])
+        self.assertEqual(lines[1], "crew-rehearsal · 门店 · 模块 未知 · 最终验收（第 1 次交审）")
+        self.assertEqual(self.labels(text)[:7], ["做了什么", "验收结果", "改了哪些文件", "Spec 中途改过吗", "批了会怎样",
+                                                "结论", "注意"])
+        self.assertIn(f"**改了哪些文件**：5 个文件，+85 −2（共 6 行，见「看 {no} 全文」）", text)
+        self.assertIn("**批了会怎样**：合并进本地 main，模块完成；合了撤不回，推送仍要你另外同意", text)
+        self.assertIn("**注意**：无", text)
+        self.assertIn("**推荐 A**：审查通过，没超出你批的范围", text)
+        self.assertEqual(code_blocks(text), [f"{no} A"])
+        self.assertNotIn("内容要点**：\n- ", text)  # points replace the picked brief lines
+
+    def test_spec_plan_is_one_card_with_nine_points(self):
+        no = self.receive("card-spec-plan.txt")
+        text = self.card(no)
+        self.assertIn("Spec 与 Plan（第 1 次交审）", text)
+        self.assertEqual(self.labels(text)[:10], ["目标", "做／不做", "要你确认的假设", "验收标准", "附带的小决定",
+                                                 "分几步", "会改哪些文件", "风险", "中途会停下来问你的地方", "批了会怎样"])
+        self.assertIn(f"**验收标准**：共 2 条；例：AC1 过期令牌自动刷新一次（其余见「看 {no} 全文」）", text)
+        self.assertLessEqual(len([x for x in text.split("\n") if x.strip()]), cards.max_lines("spec-plan"))
+        self.assertEqual(cards.max_lines("spec-plan"), cards.MAX_LINES + 4)
+
+    def test_spec_card_and_kind_from_type(self):
+        no = self.receive("card-spec.txt")
+        self.assertEqual(cards.kind(items.get(self.g, no)), "spec")
+        self.assertIn("**目标**：", self.card(no))
+
+    def test_unknown_type_is_returned(self):
+        r = items.receive(self.g, (V23 / "card-kind-unknown.txt").read_text(encoding="utf-8"), sender="coord",
+                          relay_id=990, received_at=T1)
+        self.assertFalse(r.accepted)
+
+    def test_full_text_lists_every_point(self):
+        no = self.receive("card-final.txt")
+        from decision_inbox import hub
+        full = hub.reply(self.g, f"看 {no} 全文", now=NOW).show
+        self.assertIn("| package.json | 加 is-plain-obj 4.1.0（你在 #44 批过） |", full)
+        self.assertNotIn("```", full)
