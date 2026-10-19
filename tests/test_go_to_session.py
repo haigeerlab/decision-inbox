@@ -160,16 +160,17 @@ class RulesTest(GoToSessionCase):
 
 
 class ProxiedSessionNoteTest(GoToSessionCase):
-    """proxied-session-note: ask rules hold only in a session the user opened by hand."""
+    """permission-closeout (decision 67): ask rules do prompt in a proxied session (E3 re-checked), so the note and
+    the proxied-session rule proxied-session-note added are gone; a host confirmation is reported as before."""
 
-    def test_rule_section_tells_a_proxied_session_to_report_first(self):
+    def test_rule_section_has_no_proxied_item(self):
         from decision_inbox import onboard
         for role in ("dev", "owner", "coordinator"):
             with self.subTest(role=role):
                 text = onboard.block(role, "demo", "di-hub")
-                for words in ("被别的会话开出来的", "不要直接执行", "去会话操作",
-                              "本会话由别的会话代开，先问规则可能不弹确认"):
-                    self.assertIn(words, text)
+                for words in ("被别的会话开出来的", "先问规则可能不弹确认"):
+                    self.assertNotIn(words, text)
+                self.assertIn("### 停在宿主确认上", text)
 
     def join(self, host, role="dev"):
         from decision_inbox import onboard
@@ -180,16 +181,10 @@ class ProxiedSessionNoteTest(GoToSessionCase):
                             project=self.home / f"{host}-{role}", reviewer=None, nodes=[], confirm=False, now=NOW,
                             session_cwd=str(self.home / f"{host}-{role}"))
 
-    def test_claude_join_preview_has_the_note(self):
-        for role in ("dev", "owner", "coordinator"):
-            with self.subTest(role=role):
-                notes = [w for w in self.join("claude-desktop", role).warnings if "亲手开的会话" in w]
-                self.assertEqual(len(notes), 1)
-                for words in ("代开", "不弹确认"):
-                    self.assertIn(words, notes[0])
-
-    def test_codex_join_preview_has_no_note(self):
-        self.assertFalse([w for w in self.join("codex-desktop").warnings if "亲手开的会话" in w])
+    def test_no_join_preview_note(self):
+        for host in ("claude-desktop", "codex-desktop"):
+            with self.subTest(host=host):
+                self.assertFalse([w for w in self.join(host).warnings if "亲手开的会话" in w or "代开" in w])
 
 
 class LineStateWordingTest(GoToSessionCase):

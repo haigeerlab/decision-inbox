@@ -158,6 +158,7 @@ Codex 默认的 workspace-write 沙箱不允许写 `.git`，会话每次提交�
 
 - 任何会话都看不到别的会话里弹出的宿主确认。
 - **证据（实测）**：2026-10-16 定时任务运行会话自述「全程没有弹出要人确认的提示」，实际调用 agent-relay 工具时弹了确认、由用户手动点了允许，停顿约 3 分钟。
+- **证据（会话记录）**：2026-10-18 stall-and-patrol 的 E3，别的会话代开的 Claude 会话里两次 `git push` 都弹了确认、被点了允许（`permissionDecision.source` 为 `user_temporary`，权限模式 `default`），事后被记成「没弹」。判断某个会话弹没弹确认，看 `~/.claude/projects/<目录>/<会话>.jsonl` 里那次工具结果的 `permissionDecision.source`：`config` 是规则放行或拒绝，`user_temporary`／`user_permanent` 是有人点了。（2026-10-19 查证，用户决定 67）
 - **设计约束**：巡视与收件枢纽不能依赖会话对权限情况的自述；「要用户去原会话确认」必须作为显式事项上报。
 
 ### 3.6 可观测性与运行环境

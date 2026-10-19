@@ -203,7 +203,6 @@ _COMMON = """## decision-inbox 协作约定（协作组「{group}」，你的角
 ```
 
 - 用户点完、你继续之后，发【已恢复】「结束：#待决事项号」结项。用户在决策收件箱回的「A」不会转来；旧版决策收件箱转来的「A」当作无操作。
-- 如果你是被别的会话开出来的（开工说明由别的会话发来，不是用户在本会话里亲手输入的），碰到不可逆操作（推送、`reset --hard`、`rm -rf`、往项目里加新包）不要直接执行：按上面的格式抛「去会话操作」，「为什么批不了」写「本会话由别的会话代开，先问规则可能不弹确认」，等用户来本会话亲手确认。
 """
 
 _DEV = """### 开发线
@@ -688,9 +687,6 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
             out.warnings.append(agents_warning)
     out.warnings.append("以后这个会话停在宿主确认（弹窗、提权）上时，会出现在决策收件箱主视图最上面的"
                         "「要你去会话里操作」一栏，告诉你去哪里点什么（go-to-session）")
-    if host == "claude-desktop":  # proxied-session-note: stall-and-patrol E3
-        out.warnings.append("「先问」规则只对你亲手开的会话可靠：别的会话代开的会话里，推送等操作可能不弹确认就执行"
-                            "（2026-10-19 实测）。由别的会话代开的线，协作规则段要求它碰到不可逆操作时先到决策收件箱请你去点")
     if checkpoint_authority:  # scope-authority-defaults DI-1: on by default, say so and how to turn it off
         out.warnings.append("默认打开了「检查点答复即授权」：决策收件箱转来的检查点答复，算作你对 Plan 范围内操作"
                             "（含装依赖、加新包、官方源下载）的授权；不要的话加 --no-checkpoint-authority 重跑")

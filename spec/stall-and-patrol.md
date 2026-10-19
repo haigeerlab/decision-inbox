@@ -31,6 +31,7 @@
   - `git add`、本地提交、跑测试两轮都没弹窗；不在规则里的写文件命令照常弹窗。
   - `ask` 规则在你自己开的会话里有效：推送前弹了确认框（E3b）。
   - 但在我替你开的会话里，推送两次都没弹窗，直接执行了。我只读查了全局设置、应用记录的项目授权和上级目录，都没找到原因。**这是宿主层面的观察，要报给宿主那边，也要提醒 module-crew：它开出来的模块会话可能同样不弹。**
+  - **更正（2026-10-19，permission-closeout）**：复查这个代开会话的记录（`~/.claude/projects/-Users-vilin-Documents-haigeerlab-r16-claude/7d26730f-….jsonl`），权限模式是 `default`，两次 `git push` 的 `permissionDecision.source` 都是 `user_temporary`——弹了确认、被点了允许，不是「没弹」。module-crew 的补测会话同样如此（用户决定 67）。上面这句保留作历史记录。
 - **E4（Codex，临时仓库 r16-codex，授权写在 AGENTS.md）**：项目还没被信任时，Codex 第 1 步就停下等批准。guardian 对推送会怎么处理，放到阶段丙实测（你 2026-10-19 定的）。
 
 ### 已有的相关代码
