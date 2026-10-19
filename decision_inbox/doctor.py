@@ -356,6 +356,20 @@ def _patrol_watch(group: str) -> Check:
         return Check("巡视提醒", "bad", "本插件", "没有装：巡视停了只在主视图上提示", fix)
     if not watch.loaded(group):
         return Check("巡视提醒", "bad", "macOS launchd", f"{watch.label(group)} 没有加载", fix)
+    # patrol-watch-runtime: loaded is not enough, it has to run
+    rerun = f"升级到本版后运行 {install.cli()} onboard watch {group} --confirm 重装"
+    prog = watch.program(group)
+    if prog != str(watch.runtime_cli()):
+        return Check("巡视提醒", "bad", "本插件", f"是旧版装的：跑的是 {prog}，不是运行副本", rerun)
+    if not os.access(prog, os.X_OK):
+        return Check("巡视提醒", "bad", "本插件", f"运行副本 {prog} 不在", rerun)
+    code = watch.last_exit(group)
+    if code:
+        tail = watch.log_tail(group)
+        why = f"上次运行退出 {code}" + (f"：{tail}" if tail else "")
+        if "Operation not permitted" in tail:
+            why += "（运行的程序落在 macOS 受保护目录，launchd 读不了）"
+        return Check("巡视提醒", "bad", "macOS launchd", why, rerun)
     return Check("巡视提醒", "ok", "本插件", f"{watch.label(group)} 已加载，每 5 分钟检查一次")
 
 

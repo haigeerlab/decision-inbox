@@ -171,3 +171,30 @@ def uninstall(group: str, confirm: bool) -> bool:
 def loaded(group: str) -> bool:
     r = _launchctl("print", f"{_domain()}/{label(group)}")
     return r is not None and r.returncode == 0
+
+
+_LAST_EXIT_RE = re.compile(r"last exit code = (-?\d+)")
+
+
+def last_exit(group: str) -> int | None:
+    """The job's last exit code from launchctl print; None when it has not exited yet or is not loaded."""
+    r = _launchctl("print", f"{_domain()}/{label(group)}")
+    m = _LAST_EXIT_RE.search(r.stdout) if r is not None and r.returncode == 0 else None
+    return int(m.group(1)) if m else None
+
+
+def program(group: str) -> str | None:
+    """What the installed plist runs (its first argument)."""
+    try:
+        args = plistlib.loads(plist_path(group).read_bytes()).get("ProgramArguments") or [None]
+    except (OSError, plistlib.InvalidFileException, ValueError, AttributeError):
+        return None
+    return args[0]
+
+
+def log_tail(group: str) -> str:
+    try:
+        lines = (store.root_dir() / group / "patrol-watch.log").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return next((line.strip() for line in reversed(lines) if line.strip()), "")

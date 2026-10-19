@@ -47,8 +47,10 @@ class StaticScanTest(unittest.TestCase):
         banned = {"unlink", "rmtree", "truncate", "remove", "rmdir"}
         # stall-and-patrol R19: save_snapshot rotates its own copies under the group's io/snapshots, keeping 24
         # stage-c-fixes DI-11: uninstall removes the launchd plist the hub's own `onboard watch` wrote
+        # patrol-watch-runtime: write_runtime drops its own build dir and the runtime copy it just replaced
         allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink"),
-                   ("patrol.py", "save_snapshot", "unlink"), ("watch.py", "uninstall", "unlink")}
+                   ("patrol.py", "save_snapshot", "unlink"), ("watch.py", "uninstall", "unlink"),
+                   ("install.py", "write_runtime", "rmtree")}
         seen = set()
         for path in _sources():
             tree = ast.parse(path.read_text(encoding="utf-8"))

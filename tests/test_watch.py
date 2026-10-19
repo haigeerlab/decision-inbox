@@ -94,7 +94,8 @@ class InstallTest(TempHomeTestCase):
         fake = self.home / "launchctl"
         # `print` answers 0 only while the last bootstrap/bootout was a bootstrap, like the real one
         fake.write_text(f'#!/bin/sh\necho "$@" >> "{self.log}"\n'
-                        f'if [ "$1" = print ]; then grep -E "^boot(strap|out)" "{self.log}" | tail -1 | grep -q bootstrap; fi\n',
+                        f'if [ "$1" = print ]; then grep -E "^boot(strap|out)" "{self.log}" | tail -1 | grep -q bootstrap || exit 1; '
+                        f'cat "{self.home}/print.out" 2>/dev/null; exit 0; fi\n',
                         encoding="utf-8")
         fake.chmod(0o755)
         self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_LAUNCH_AGENTS", "DECISION_INBOX_LAUNCHCTL")}
@@ -189,6 +190,63 @@ class InstallTest(TempHomeTestCase):
         self.assertIn("onboard watch demo", doctor._patrol_watch("demo").fix)
         watch.install("demo", confirm=True)
         self.assertEqual(doctor._patrol_watch("demo").state, "ok")
+
+
+class DoctorRunsTest(InstallTest):
+    """patrol-watch-runtime: loaded is not enough; the job has to run."""
+
+    def check(self, last=None, log=None):
+        from decision_inbox import doctor
+        if last is not None:
+            (self.home / "print.out").write_text(f"\tstate = not running\n\truns = 1\n\tlast exit code = {last}\n",
+                                                 encoding="utf-8")
+        if log is not None:
+            (self.home / "demo" / "patrol-watch.log").write_text(log, encoding="utf-8")
+        return doctor._patrol_watch("demo")
+
+    def test_ok_when_it_exited_zero_or_has_not_run_yet(self):
+        watch.install("demo", confirm=True)
+        self.assertEqual(self.check().state, "ok")
+        self.assertEqual(self.check("(never exited)").state, "ok")
+        self.assertEqual(self.check("0").state, "ok")
+
+    def test_exit_126_in_a_protected_folder(self):
+        watch.install("demo", confirm=True)
+        c = self.check("126", "/bin/sh: /Users/x/Documents/r/bin/decision-inbox: Operation not permitted\n")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("126", c.evidence)
+        self.assertIn("Operation not permitted", c.evidence)
+        self.assertIn("受保护目录", c.evidence)
+        self.assertIn("onboard watch demo --confirm", c.fix)
+
+    def test_other_exit_shows_the_last_log_line(self):
+        watch.install("demo", confirm=True)
+        c = self.check("1", "Traceback (most recent call last):\nTypeError: unsupported operand\n\n")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("退出 1", c.evidence)
+        self.assertIn("TypeError: unsupported operand", c.evidence)
+        self.assertNotIn("受保护目录", c.evidence)
+
+    def test_job_from_before_the_runtime_copy(self):
+        import plistlib
+        from decision_inbox import install as inst
+        plan = watch.install("demo", confirm=True)
+        job = plistlib.loads(plan.path.read_bytes())
+        job["ProgramArguments"][0] = inst.cli()
+        plan.path.write_bytes(plistlib.dumps(job))
+        c = self.check("0")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("旧版", c.evidence)
+        self.assertIn("onboard watch demo --confirm", c.fix)
+
+    def test_runtime_copy_missing(self):
+        import shutil
+        from decision_inbox import install as inst
+        watch.install("demo", confirm=True)
+        shutil.rmtree(inst.runtime_dir())
+        c = self.check("0")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("运行副本", c.evidence)
 
 
 class WatchOnboardCommandTest(InstallTest):
