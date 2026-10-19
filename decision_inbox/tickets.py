@@ -173,6 +173,7 @@ class TicketView:
     marks: tuple[str, ...]
     notes: tuple[str, ...]
     maybe_stale: int | None = None  # the waiter's later message id (wait-honesty-and-briefs A2)
+    stale_item: int | None = None   # the waiter's own named item that has closed (wait-closed-item)
 
 
 def _instant(value: str) -> datetime:
@@ -218,10 +219,37 @@ def stale_tickets(g: store.Group) -> dict[int, int]:
     return out
 
 
+CLOSED_ITEM = ("closed", "superseded", "withdrawn")
+
+
+def closed_item_tickets(g: store.Group) -> dict[int, int]:
+    """Open tickets naming the waiter's own item that has since closed: {ticket no: item no} (I-11).
+
+    The wait itself says what it waits on, so module-crew coordinators are judged too; the wait may
+    want more than that item, so it is only flagged for the user to close (user decision D1 A).
+    """
+    item_doc = store.read_state(g, "items").get("items", {})
+    out = {}
+    for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
+        if t["status"] != "open":
+            continue
+        for no in _NUM_RE.findall(t["what"]):
+            it = item_doc.get(no)
+            if it and it["sender"] == t["waiter"] and it["status"] in CLOSED_ITEM:
+                out[int(key)] = int(no)
+                break
+    return out
+
+
+def stale_numbers(g: store.Group) -> frozenset[int]:
+    """Every open ticket that is maybe stale, for whichever reason (line state, all-waiting, counts)."""
+    return frozenset(stale_tickets(g)) | frozenset(closed_item_tickets(g))
+
+
 def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
     """Open tickets with the requirement 4.5 marks; `relay` is a relay-reader AgentsSnapshot or None."""
     views = []
-    stale = stale_tickets(g)
+    stale, closed_items = stale_tickets(g), closed_item_tickets(g)
     moment = _instant(now)
     for key, t in store.read_state(g, DOMAIN).get("tickets", {}).items():
         if t["status"] != "open":
@@ -246,7 +274,7 @@ def open_tickets(g: store.Group, now: str, relay=None) -> list[TicketView]:
             notes.append(f"可能卡住：{waiter} 在等 {t['target']} 的「{t['what']}」，"
                          f"请看一下 {t['target']} 是否已完成却没通知 {waiter}")
         views.append(TicketView(int(key), t["waiter"], t["target"], t["what"], minutes, tuple(marks), tuple(notes),
-                                stale.get(int(key))))
+                                stale.get(int(key)), closed_items.get(int(key))))
     return sorted(views, key=lambda v: v.no)
 
 

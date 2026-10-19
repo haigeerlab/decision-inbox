@@ -1063,3 +1063,57 @@ class SendHonestyTest(HubCase):
                                f"{self.answer['id']}=1601"])
         self.assertEqual(code, 0)
         self.assertIn("被跳过", json.loads(out.getvalue())["show"])
+
+
+class ClosedItemStaleTest(HubCase):
+    """wait-closed-item Task 2 (I-11): a wait naming the waiter's own item that has closed is maybe stale."""
+
+    def setUp(self):
+        super().setUp()
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "crew", "shortName": "并行协调2", "role": "dev", "line": ["crew"],
+                            "host": "claude-desktop", "repo": "/tmp/crew", "crewCoordinator": True})
+        self.receive(message(8657, "crew", WAIT_USER))                                       # #1
+        # W8738's own words, the old way that never matched the user (opened before this fix)
+        what = "#1（epsilon 的 Plan，C128）的【用户答复】转达；收到前不批准、不开工"
+        self.receive(message(8738, "crew", wait_session(target="API", what=what)))
+        self.ticket = int(next(k for k, t in self.tickets().items() if t["relayId"] == 8738))
+
+    def view_of(self):
+        return {t.no: t for t in tickets.open_tickets(self.g, NOW)}[self.ticket]
+
+    def close_item(self, how):
+        if how == "closed":
+            items.answer(self.g, items.interpret_reply(self.g, "1 A").answers, answered_at=NOW)
+            items.record_sent(self.g, item=1, to="crew", relay_id=8787, at=NOW)
+            self.receive(message(8790, "crew", "【已恢复】\n结束：#1\n"))
+        elif how == "withdrawn":
+            self.receive(message(8790, "crew", "【撤回】\n事项：#1\n原因：不要了\n"))
+        else:
+            self.receive(message(8790, "crew", WAIT_USER.replace("【等待用户】", "【取代 #1】\n【等待用户】")))
+
+    def test_open_item_is_not_stale(self):
+        self.assertIsNone(self.view_of().stale_item)
+
+    def test_closed_superseded_withdrawn(self):
+        for how in ("closed", "withdrawn", "superseded"):
+            with self.subTest(how=how):
+                self.setUp()
+                self.close_item(how)
+                self.assertEqual(self.view_of().stale_item, 1)
+                self.assertIn(f"（可能已失效：所等的 #1 已结项，回『关掉 W{self.ticket}』）", view.render_waits(self.g, NOW))
+                self.assertIn("其中 1 条可能已失效", hub.main_view(self.g, now=NOW))
+                self.tearDown()
+
+    def test_not_counted_as_all_waiting(self):
+        self.close_item("closed")
+        empty = relay.parse_agents('{"agents": []}', relay_version="0.8.2")
+        self.assertNotIn(1, [s.no for s in health.assess(self.g, now=NOW, relay=empty).signals])
+        self.assertNotIn("全线停住", hub.main_view(self.g, now=NOW, relay=empty))
+
+    def test_someone_elses_item_does_not_count(self):
+        self.receive(message(8800, "fe-codex", WAIT_USER))                                    # #3 by 前端
+        self.receive(message(8801, "crew", wait_session(target="API", what="#3 定了再说")))
+        no = int(next(k for k, t in self.tickets().items() if t["relayId"] == 8801))
+        self.receive(message(8802, "fe-codex", "【撤回】\n事项：#3\n原因：不要了\n"))
+        self.assertIsNone({t.no: t for t in tickets.open_tickets(self.g, NOW)}[no].stale_item)

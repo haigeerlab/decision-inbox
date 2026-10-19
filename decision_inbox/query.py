@@ -467,7 +467,7 @@ def stats(g: store.Group, since: str | None = None) -> Stats:
         questions_returned=sum(1 for rec in store.read_state(g, "hub").get("unknown", {}).values()
                                if rec.get("returned") and (since is None or rec["at"][:10] >= since)),
         relayed_refused=sum(e["type"] == "hub.relayed-input" for e in events),
-        open_tickets=len(open_), stale_tickets=len(tickets.stale_tickets(g)),
+        open_tickets=len(open_), stale_tickets=len(tickets.stale_numbers(g)),
         **_patrol_cadence(events),
     )
 

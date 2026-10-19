@@ -395,7 +395,7 @@ def assess(g: store.Group, now: str, relay=None, maps: dict | None = None,
     snap = _new_snapshot(now, maps, previous)
     moment = _instant(now)
     facts = _facts(g, relay, maps, snap, crews, moment)
-    stale = frozenset(tickets.stale_tickets(g))  # waits the sender has moved past (wait-honesty-and-briefs A2)
+    stale = tickets.stale_numbers(g)  # waits moved past (wait-honesty-and-briefs A2) or whose item closed (I-11)
     names = {e["relayName"]: e["shortName"] for e in store.roster(g)}
     lines = {name: _state(f, moment, stale, names) for name, f in facts.items()}
     if relay is None:
