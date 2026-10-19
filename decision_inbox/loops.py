@@ -89,16 +89,34 @@ def _crew_module_for(it: dict, modules) -> str | None:
     for m in modules:
         if first and any((w.decide or "").strip() == first for w in m.waits):
             return m.module
-    codes = set(_REVIEW_CODE_RE.findall(text))
-    for m in modules:
-        refs = {r for r, _ in m.ask_refs} | {w.ref for w in m.waits} | {a.ref for a in m.answers or ()}
-        if codes & refs:
-            return m.module
+    by_code = _by_code(text, modules)
+    if by_code:
+        return by_code[0] if len(by_code) == 1 else None  # several modules' numbers: a joint item
     for m in modules:
         if m.relay_name and _named(m.relay_name, text):
             return m.module
     named = [m.module for m in modules if _named(m.module, first)]
     return named[0] if len(named) == 1 else None
+
+
+def _by_code(text: str, modules) -> list[str]:
+    codes = set(_REVIEW_CODE_RE.findall(text))
+    return [m.module for m in modules
+            if codes & ({r for r, _ in m.ask_refs} | {w.ref for w in m.waits} | {a.ref for a in m.answers or ()})]
+
+
+def _involved(it: dict, modules) -> set[str]:
+    """stage-c-fixes DI-12: every module a coordinator's untagged (joint) item asks about."""
+    text = f"{it.get('decide') or ''}\n{it.get('brief') or ''}"
+    known = {m.module for m in modules}
+    first = (it.get("decide") or "").split("\n")[0]
+    return (set(_by_code(text, modules)) | (set(approval_modules(it)) & known)
+            | {m for m in known if _named(m, first)})
+
+
+def approval_modules(it: dict) -> list[str]:
+    from decision_inbox import approval
+    return approval.modules_of(it)
 
 
 def _crew_modules(entry: dict | None, crews: dict):
@@ -145,9 +163,28 @@ def tag(g: store.Group, maps: dict, crews: dict) -> None:
             tx.write_state(items.DOMAIN, doc)
 
 
+def _sent_at(it: dict) -> str | None:
+    """When agent-relay took the answer for the proposer (decision-cards DI-6), the first time."""
+    sent = [s["at"] for s in it.get("sent") or () if s.get("to") == it["sender"] and s.get("at")]
+    return min(sent, key=_instant) if sent else None
+
+
+def last_delivered(f) -> str | None:
+    """stage-c-fixes DI-12: the latest answer of this module that reached it, on the hub's side."""
+    sent = [t for t in (_sent_at(it) for it in getattr(f, "items", ())) if t]
+    return max(sent, key=_instant) if sent else None
+
+
+def _ticket_names(t: dict, module: str, modules) -> bool:
+    """A coordinator's wait record holds up the modules it names, or all of them when it names none."""
+    named = {m.module for m in modules if _named(m.module, t.get("what") or "")}
+    return not named or module in named
+
+
 def _wait_end(it: dict, now: str) -> str:
-    if it.get("answers"):
-        return it["answers"][0]["at"]
+    """stage-c-fixes DI-12: waiting lasts until the answer is sent; an answer never sent keeps it waiting."""
+    if sent := _sent_at(it):
+        return sent
     ended = [it["statusAt"][s] for s in _ENDED if s in it.get("statusAt", {})]
     return min(ended, key=_instant) if ended else now
 
@@ -286,7 +323,12 @@ def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) 
                 if m.stage in ("merged",) or m.suspended:
                     continue
                 own = [it for it in every if it["sender"] == name and it.get("module") == m.module]
-                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own] + _crew_waits(m, now)
+                joint = [it for it in every if it["sender"] == name and it.get("module") is None
+                         and m.module in _involved(it, read.modules)]
+                waits = [(it["receivedAt"], _wait_end(it, now)) for it in own + joint] + _crew_waits(m, now)
+                waits += [(t["sentAt"], t["close"]["at"] if t.get("close") else now) for t in tickets.values()
+                          if t.get("waiter") == name and t.get("sentAt")
+                          and _ticket_names(t, m.module, read.modules)]
                 if m.answers is None:
                     segments, unread = None, "进度读不到（module-crew 早于 0.5.0）"
                 else:

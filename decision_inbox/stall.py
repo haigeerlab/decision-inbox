@@ -68,6 +68,17 @@ _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
 _SKIP_STAGES = ("merged", "wait-merge")   # done, or waiting for the merge: no new commits are expected
 
 
+def _work_start(m, f) -> tuple[str | None, str]:
+    """stage-c-fixes DI-12: the stall clock starts at the latest of the last commit, the start and the latest
+    answer that reached the module (module-crew's answers, or the hub's own send); none when commits are unread."""
+    if m.commits_error:
+        return None, "commit"
+    answered = [a.at for a in m.answers or ()] + ([t] if f is not None and (t := loops.last_delivered(f)) else [])
+    found = [(t, kind) for t, kind in [(m.last_commit_at, "commit"), (m.started_at, "start")]
+             + [(t, "answer") for t in answered] if t]
+    return max(found, key=lambda p: _instant(p[0])) if found else (None, "start")
+
+
 def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[str, str]:
     """key -> where, from module-crew 0.4.0 facts; modules without them (0.3.x) are never judged.
 
@@ -82,12 +93,14 @@ def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[
         for m in read.modules:
             if m.stage in _SKIP_STAGES or m.suspended:
                 continue
-            since = None if m.commits_error else (m.last_commit_at or m.started_at)
             f = facts.get(f"{coordinator}|{m.module}")
+            since, start = _work_start(m, f)
             worked = (loops.worked_since(f, since, now) if f is not None else _hours(now, since)) if since else 0
             if since and worked >= cfg["stalledHours"]:
-                what = (f"已经 {int(worked)} 小时没有新提交（最后一次提交 {since[5:16].replace('T', ' ')}，"
-                        "等你答复的时间不算）" if m.last_commit_at else f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）")
+                when = since[5:16].replace("T", " ")
+                what = {"commit": f"已经 {int(worked)} 小时没有新提交（最后一次提交 {when}，等你答复的时间不算）",
+                        "answer": f"你的答复 {when} 送达后 {int(worked)} 小时没有新提交（等你答复的时间不算）",
+                        "start": f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）"}[start]
                 found[f"{coordinator}|stalled:{m.module}"] = what
             answered = max((a.at for a in m.answers or ()), key=_instant, default=None)
             for node, ats in m.asks:

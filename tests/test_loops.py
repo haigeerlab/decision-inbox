@@ -50,7 +50,9 @@ class LoopsCase(TempHomeTestCase):
         it = {"sender": sender, "receivedAt": received, "decide": decide, "multi": multi, "project": "",
               "approvalModule": approval, "approvalNode": "spec" if approval else None, "waitKind": kind,
               "answers": [{"letter": "A", "original": "A", "at": answered}] if answered else [],
-              "status": status or ("forwarded" if answered else "pending"), "statusAt": {"pending": received}}
+              "status": status or ("forwarded" if answered else "pending"), "statusAt": {"pending": received},
+              # stage-c-fixes DI-12: a wait ends when the answer is sent, so an answered item has its send
+              "sent": [{"to": sender, "relayId": 1, "at": answered, "state": None, "ackAt": None}] if answered else []}
         if closed:
             it["statusAt"][it["status"]] = closed
         if module is not ...:
@@ -485,3 +487,74 @@ B：不同意
         self.assertEqual(list(store.read_state(self.g, "loops")["quiet"]), ["co|zeta"])
         again = loops.facts(self.g, at(8), {}, self.crews)
         self.assertFalse(stall._hushed("co|stalled:zeta", again))
+
+
+class StallClockTest(LoopsCase):
+    """stage-c-fixes DI-12: work time starts no earlier than the latest delivered answer; waiting for the user
+    (until the answer is sent), joint items and the coordinator's wait records are taken out."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        doc = json.loads((self.g.path / "group.json").read_text(encoding="utf-8"))
+        doc["stall"] = {"stalledHours": 0.5}
+        (self.g.path / "group.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def sent(self, no, when, to="co"):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["sent"] = [{"to": to, "relayId": 1, "at": when, "state": None, "ackAt": None}] \
+                if when else []
+            tx.write_state("items", doc)
+
+    def stalled(self, crews, now):
+        from decision_inbox import stall
+        loops.tag(self.g, {}, crews)
+        found = loops.facts(self.g, now, {}, crews)
+        return {k: v for k, v in stall._module_findings(now, crews, stall.settings(self.g), found).items()
+                if "stalled" in k}
+
+    def test_epsilon_answer_sent_late_is_not_a_stall(self):
+        """#47: answered at 1.4, the send failed until 1.8; #55 came at 1.85 saying no new commits."""
+        no = self.item(sender="co", approval="epsilon", received=at(1), answered=at(1.4),
+                       decide="批准 epsilon 的 Plan（C128）吗")
+        self.sent(no, at(1.8))
+        crews = {"co": crew_read(crew_module("epsilon", started=at(0), last_commit=at(0.5), ask_refs=[("C128", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(1.85)), {})
+
+    def test_answer_never_sent_keeps_waiting(self):
+        no = self.item(sender="co", approval="epsilon", received=at(1), answered=at(1.4),
+                       decide="批准 epsilon 的 Plan（C128）吗")
+        self.sent(no, None)
+        crews = {"co": crew_read(crew_module("epsilon", started=at(0), last_commit=at(0.8), ask_refs=[("C128", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(3)), {})
+
+    def test_joint_item_waits_for_every_module_it_names(self):
+        no = self.item(sender="co", received=at(1), answered=at(2.9),
+                       decide="一起批准 delta（C121）、epsilon（C119）两份 Plan 吗")
+        self.sent(no, at(2.9))
+        crews = {"co": crew_read(crew_module("delta", started=at(0), last_commit=at(0.8), ask_refs=[("C121", at(1))]),
+                                 crew_module("epsilon", started=at(0), last_commit=at(0.8), ask_refs=[("C119", at(1))]))}
+        self.assertEqual(self.stalled(crews, at(3)), {})
+        self.assertIsNone(store.read_state(self.g, "items")["items"][str(no)]["module"])
+
+    def ticket(self, what, sent, closed=None):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("tickets") or {}
+            t = {"waiter": "co", "target": "API", "what": what, "sentAt": sent, "relayId": 9, "status": "open"}
+            if closed:
+                t.update(status="closed", close={"at": closed})
+            doc.setdefault("tickets", {})[str(len(doc.get("tickets", {})) + 1)] = t
+            tx.write_state("tickets", doc)
+
+    def crews_two(self):
+        return {"co": crew_read(crew_module("delta", started=at(0), last_commit=at(0.2)),
+                                crew_module("zeta", started=at(0), last_commit=at(0.2)))}
+
+    def test_wait_record_naming_a_module_counts_for_it_only(self):
+        self.ticket("zeta 要的 fixtures 文件", at(0.3), at(2.9))
+        self.assertEqual(list(self.stalled(self.crews_two(), at(3))), ["co|stalled:delta"])
+
+    def test_wait_record_naming_none_counts_for_all(self):
+        self.ticket("等 API 线给 mock 地址", at(0.3), at(2.9))
+        self.assertEqual(self.stalled(self.crews_two(), at(3)), {})
