@@ -296,7 +296,9 @@ B：不换
         self.assertEqual(list(store.read_state(self.g, "loops")["quiet"]), ["fe|m1"])
 
     def test_words_are_plain_text_without_a_hint(self):
-        self.reply(f"{self.third} 继续等", found=[])
+        # decision-cards DI-7: without a hint the words are no option, so they are asked back, or sent as 原话
+        self.assertIn("没认出", self.reply(f"{self.third} 继续等", found=[]).text)
+        self.reply(f"{self.third} 原话：继续等", found=[])
         self.assertIsNone(items_mod().get(self.g, self.third)["answers"][0]["loopOption"])
         self.assertNotIn("quiet", store.read_state(self.g, "loops"))
 

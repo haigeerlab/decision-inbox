@@ -2,8 +2,9 @@
 
 - [x] Task 1：超时与报批计数（DI-8 的 I-12、I-13；验收 12、13）
   - 验证：`tests/test_crew.py`、`tests/test_stall.py` 新用例先失败后通过
-- [ ] Task 2：答复解析与操作指令（DI-7；验收 9、10）
+- [x] Task 2：答复解析与操作指令（DI-7；验收 9、10）
   - 验证：`tests/test_items.py`、`tests/test_hub.py` 新用例先失败后通过；答法示例扫描通过
+  - 改写的旧测试（按 Spec 第 7 节，带编号却没有选项字母的话不再静默转出）：`test_items` 的 `test_copy_block_and_free_sentence`、`test_free_sentence_forwarded_verbatim` 改用「N 原话：…」；`test_loops` 的 `test_words_are_plain_text_without_a_hint` 改为先断言被问回、再用「N 原话：继续等」
 - [ ] Task 3：发送记账与「已转达」（DI-5、DI-6；验收 7、8）
   - 验证：新用例先失败后通过
 - [ ] Task 4：7 类卡片与一次答完（DI-1、DI-2、I-10；验收 1、2、3、11）

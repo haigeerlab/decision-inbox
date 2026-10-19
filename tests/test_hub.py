@@ -290,6 +290,29 @@ class ReplyTest(HubCase):
         r = self.reply(words)
         self.assertIn(f"用户原话：{words}", self.bodies(r)[0])
 
+    def test_operation_instructions_are_not_answers(self):
+        """decision-cards DI-7 (I-5): words the hub asks for are handled, never parsed as an answer."""
+        self.assertIn("没有和 #1 有关的没发出去的消息", self.reply("重发 1").show)
+        self.assertIn("没有和 #1 有关的没发出去的消息", self.reply("重发 #1").show)
+        self.assertNotIn(items.NO_ITEM_QUESTION, self.reply("看 1 全文").show)
+        self.assertNotIn(items.NO_ITEM_QUESTION, self.reply("看 #1 全文").show)
+        for words in ("去掉 alsoAnswers 重发 #1", "重发 #1 去掉 alsoAnswers", "看一下 1", "关掉 W"):
+            with self.subTest(words=words):
+                r = self.reply(words)
+                self.assertNotIn(items.NO_ITEM_QUESTION, r.show)
+                self.assertEqual(r.sends, [])
+                self.assertIn("写法", r.show)
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
+
+    def test_resend_one_item_lists_only_its_messages(self):
+        self.receive(message(1303, "api-codex", WAIT_USER))                                   # item #3
+        first = self.reply("1 A").sends
+        third = self.reply("3 A").sends
+        hub.sent(self.g, done={}, failed=[s["id"] for s in first + third], at=NOW)
+        again = self.reply("重发 3")
+        self.assertEqual([s["id"] for s in again.sends], [s["id"] for s in third])
+        self.assertEqual(len(self.reply("重发").sends), len(first + third))
+
     def test_views(self):
         self.assertTrue(self.reply("1 详情").show.startswith("#1 详情 · 前端"))
         self.assertTrue(self.reply("#1 详情").show.startswith("#1 详情"))
@@ -941,3 +964,31 @@ class PatrolSessionAlarmTest(HubCase):
         self.assertIn("claude://claude.ai/epitaxy/local_patrol1", alarm)
         self.assertTrue(hub.patrol_due(self.g, NOW))
         self.assertIn("停止巡视", hub.patrol_session_fix("local_patrol1"))  # patrol-stop-fixes: restart keeps the stop rule
+
+
+class ExampleScanTest(HubCase):
+    """decision-cards DI-7 (I-5): every way of answering the hub shows is understood when said back to it."""
+
+    EXAMPLE_RE = __import__("re").compile(r"(?:回|说)\s*「([^」]+)」|回 (\d+ [A-Z](?:：[^\s，。]+)?)")
+
+    def examples(self, *texts):
+        found = []
+        for text in texts:
+            for quoted, plain in self.EXAMPLE_RE.findall(text):
+                found.append(quoted or plain)
+        return list(dict.fromkeys(found))
+
+    def test_examples_in_views_and_questions(self):
+        self.receive(message(1301, "fe-codex", WAIT_USER), message(1302, "api-codex", WAIT_USER))
+        texts = [hub.main_view(self.g, NOW), hub.reply(self.g, "1 好的", now=NOW).show,
+                 hub.reply(self.g, "看一下", now=NOW).show, view.render_look(self.g, 1, NOW),
+                 view.render_full(self.g, 1, NOW)]
+        examples = self.examples(*texts)
+        self.assertTrue(examples)
+        for said in examples:
+            with self.subTest(said=said):
+                if said[0].isdigit():
+                    parsed = items.interpret_reply(self.g, said.replace("你的话", "好").replace("你的意见", "好"))
+                    self.assertTrue(parsed.answers, parsed.question)
+                else:
+                    self.assertNotIn(items.NO_ITEM_QUESTION, hub.reply(self.g, said, now=NOW).show)

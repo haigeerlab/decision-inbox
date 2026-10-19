@@ -369,6 +369,14 @@ def render_look(g: store.Group, no: int, now: str) -> str:
     return render_approval(g, it, now) if approval.is_approval(it) else _item_card(g, now, it)
 
 
+def render_full(g: store.Group, no: int, now: str) -> str:
+    """「看 N 全文」: everything behind a card, answered or not (decision-cards DI-3)."""
+    it = items.get(g, no)
+    if it is None:
+        return f"#{no} 不存在"
+    return render_approval(g, it, now) if approval.is_approval(it) else render_detail(g, no)
+
+
 GO_TO_SESSION_REMIND_MINUTES = 30
 _LINK = "claude://claude.ai/epitaxy/{}"
 

@@ -376,6 +376,13 @@ _LOOK_RE = re.compile(r"^看\s*([#WwＷ]?)\s*(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:[#WwＷ]?\s*\d+[\s、，,]*)+)(.*)$", re.S)
+_RESEND_RE = re.compile(r"^重发\s*#?(\d+)$")
+_FULL_RE = re.compile(r"^看\s*#?(\d+)\s*全文$")
+# decision-cards DI-7 (I-5): a sentence shaped like a command is never parsed as an answer.
+_COMMAND_LIKE_RE = re.compile(r"^(看|关掉)|重发|alsoAnswers")
+COMMANDS = ("这是操作指令，写法是：「重发」或「重发 N」（重发没发出去的消息）；「看 N」看卡片、「看 N 全文」看原文、"
+            "「N 详情」；「看等待」「看已关闭」「看失效」「看模块 <模块>」；「关掉 W编号 原因」。"
+            "答复待决事项请以编号开头，例如「12 B」。")
 
 
 def today(now: str) -> str:
@@ -441,8 +448,17 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
+    if m := _RESEND_RE.match(said):
+        no = int(m.group(1))
+        again = [s for s in outgoing(g) if _item_of(g, s) == no]
+        return Reply(f"重新列出 #{no} 的 {len(again)} 条没发出去的消息" if again
+                     else f"没有和 #{no} 有关的没发出去的消息", again)
+    if m := _FULL_RE.match(said):
+        return Reply(view.render_full(g, int(m.group(1)), now))
     if m := _MODULE_RE.match(said):
         return Reply(view.render_module(g, m.group(1), now, loop_facts))
+    if _COMMAND_LIKE_RE.search(said):
+        return Reply(COMMANDS)
     looping = loops.looping_items(loop_facts or [])
     parsed = items.interpret_reply(g, text, looping)
     if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
