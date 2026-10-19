@@ -16,5 +16,5 @@
 ## 检查点
 
 - [x] Checkpoint（gate）：本机实机验收——你批准后装 di-p0 的巡视提醒，核对退出 0、通知、doctor ok，复现 126 时 doctor bad（用户 2026-10-20 批准；di-p0 首次运行 last exit code = 0，日志「已提醒：巡视 70 分钟没跑」，doctor 报 ok；临时组复现 126，doctor 报 bad 并写明受保护目录，已卸掉）
-- [ ] Checkpoint（gate）：模块最终验收——全部测试通过；列出实际改动的文件；批准后开 PR
+- [x] Checkpoint（gate）：模块最终验收——全部测试通过；列出实际改动的文件；批准后开 PR（用户 2026-10-20 批准；1091 项测试通过）
 
