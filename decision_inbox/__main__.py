@@ -678,7 +678,12 @@ def _onboard(argv: list[str]) -> int:
             store.open_group(args.group)
             plan = watch.install(args.group, args.confirm)
             print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
-                  f"{install.cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+                  f"{watch.runtime_cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+            print(f"运行副本：{install.runtime_dir()}（从 {install.plugin_root()} 复制，插件升级后开会话时自动刷新）")
+            print(f"python：{sys.executable}")
+            if plan.refused:
+                print(f"不能装：{plan.error}", file=sys.stderr)
+                return 1
             print(f"{'已写入' if args.confirm else '要写入'}：{plan.path}" + ("" if plan.changed else "（内容没变）"))
             if not args.confirm:
                 print(plan.content.rstrip())

@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from helpers import REPO, TempHomeTestCase
 
@@ -123,13 +124,50 @@ class InstallTest(TempHomeTestCase):
         from decision_inbox import install as inst
         plan = watch.install("demo", confirm=True)
         self.assertTrue(plan.path.is_file())
-        self.assertIn(f"<string>{inst.cli()}</string>", plan.path.read_text(encoding="utf-8"))
+        self.assertIn(f"<string>{inst.runtime_dir()}/bin/decision-inbox</string>", plan.path.read_text(encoding="utf-8"))
         self.assertTrue(any(c.startswith("bootstrap gui/") and c.endswith(str(plan.path)) for c in self.calls()))
         self.assertTrue(watch.loaded("demo"))
         self.assertTrue(watch.uninstall("demo", confirm=True))
         self.assertFalse(plan.path.exists())
         self.assertTrue(any(c.startswith("bootout gui/") for c in self.calls()))
         self.assertFalse(watch.uninstall("demo", confirm=True))
+
+    def test_job_runs_the_runtime_copy_with_this_python(self):
+        """patrol-watch-runtime: not the forwarding script (it may lead into ~/Documents), not launchd's python3."""
+        import plistlib
+        from decision_inbox import install as inst
+        preview = watch.install("demo", confirm=False)
+        self.assertFalse(inst.runtime_dir().exists())
+        plan = watch.install("demo", confirm=True)
+        self.assertIsNone(plan.error)
+        self.assertEqual(plan.content, preview.content)
+        rt = inst.runtime_dir()
+        self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
+                         (REPO / "decision_inbox" / "watch.py").read_bytes())
+        job = plistlib.loads(plan.path.read_bytes())
+        self.assertEqual(job["ProgramArguments"], [str(rt / "bin" / "decision-inbox"), "patrol-watch", "demo"])
+        self.assertEqual(job["EnvironmentVariables"]["PATH"], f"{os.path.dirname(sys.executable)}:/usr/bin:/bin")
+        self.assertEqual(job["EnvironmentVariables"]["DECISION_INBOX_HOME"], str(self.home))
+        self.assertEqual(job["StartInterval"], 300)
+
+    def test_refuses_folders_launchd_may_not_read(self):
+        from unittest import mock
+        protected = Path.home() / "Documents"
+        with mock.patch.object(sys, "executable", str(protected / "py" / "bin" / "python3")):
+            plan = watch.install("demo", confirm=True)
+        self.assertTrue(plan.refused)
+        self.assertIn("Documents", plan.error)
+        self.assertIn("python", plan.error)
+        self.assertFalse(plan.path.exists())
+        self.assertEqual(self.calls(), [])
+        os.environ["DECISION_INBOX_HOME"] = str(Path.home() / "Desktop" / "di-home")
+        try:
+            plan = watch.install("demo", confirm=True)
+        finally:
+            os.environ["DECISION_INBOX_HOME"] = str(self.home)
+        self.assertIn("Desktop", plan.error)
+        self.assertFalse(plan.path.exists())
+        self.assertFalse((Path.home() / "Desktop" / "di-home").exists())
 
     def test_hub_steps_and_teardown(self):
         from decision_inbox import onboard
@@ -163,6 +201,9 @@ class WatchOnboardCommandTest(InstallTest):
         r = self.run_cli()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("这是预览", r.stdout)
+        from decision_inbox import install as inst
+        self.assertIn(f"运行副本：{inst.runtime_dir()}", r.stdout)
+        self.assertIn(f"python：{sys.executable}", r.stdout)
         self.assertFalse(watch.plist_path("demo").exists())
         r = self.run_cli("--confirm")
         self.assertEqual(r.returncode, 0, r.stderr)
