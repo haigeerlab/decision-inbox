@@ -1,6 +1,6 @@
 # Todo: crew-stall-facts
 
-- [ ] Task 1：读新字段（Spec 验收 6、7 的解析部分）
+- [x] Task 1：读新字段（Spec 验收 6、7 的解析部分）
   - 验证：`tests/test_crew.py` 新断言先失败后通过；原有断言不改
 - [ ] Task 2：按模块判断与叫醒（Spec 验收 1–4、6）
   - 验证：`tests/test_stall.py`、`tests/test_patrol.py` 新断言先失败后通过；线级 R14 原有测试不变

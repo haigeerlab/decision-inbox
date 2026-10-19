@@ -142,6 +142,57 @@ from helpers import TempHomeTestCase  # noqa: E402
 from decision_inbox import store, tickets  # noqa: E402
 
 
+ROW_040 = {"module": "alpha", "relayName": "rh-alpha", "stage": "build", "suspended": None,
+           "startedAt": "2026-10-18T21:14:09+08:00",
+           "commits": {"ahead": 2, "last": {"commit": "8a2fe79", "at": "2026-10-18T21:33:00+08:00"}, "error": None},
+           "asks": [{"node": "spec", "count": 1, "refs": ["C6"], "ats": ["2026-10-18T21:31:08+08:00"],
+                     "lastAt": "2026-10-18T21:31:08+08:00"},
+                    {"node": "final", "count": 2, "refs": ["C15", "C24"],
+                     "ats": ["2026-10-18T22:12:50+08:00", "2026-10-18T23:33:13+08:00"],
+                     "lastAt": "2026-10-18T23:33:13+08:00"}],
+           "returns": [], "waitUser": [{"ref": "C30", "state": "closed"}, {"ref": "C31", "state": "open"}]}
+
+
+def parse_one(row) -> crew.Module:
+    parsed = crew._parse(json.dumps({"schemaVersion": 1, "sessions": [row]}))
+    assert not isinstance(parsed, str), parsed
+    return parsed[0]
+
+
+class StallFactsParseTest(unittest.TestCase):
+    """module-crew 0.4.0 stall facts (crew-stall-facts): optional, an odd shape reads as absent."""
+
+    def test_reads_040_fields(self):
+        m = parse_one(ROW_040)
+        self.assertEqual(m.started_at, "2026-10-18T21:14:09+08:00")
+        self.assertEqual(m.last_commit_at, "2026-10-18T21:33:00+08:00")
+        self.assertIsNone(m.commits_error)
+        self.assertEqual(m.asks, (("spec", ("2026-10-18T21:31:08+08:00",)),
+                                  ("final", ("2026-10-18T22:12:50+08:00", "2026-10-18T23:33:13+08:00"))))
+        self.assertTrue(m.waiting_user)
+
+    def test_closed_wait_user_only_is_not_waiting(self):
+        self.assertFalse(parse_one({**ROW_040, "waitUser": [{"ref": "C30", "state": "closed"}]}).waiting_user)
+
+    def test_commit_error_and_no_last(self):
+        m = parse_one({**ROW_040, "commits": {"ahead": None, "last": None, "error": "worktree 不存在"}})
+        self.assertIsNone(m.last_commit_at)
+        self.assertEqual(m.commits_error, "worktree 不存在")
+
+    def test_030_shape_has_no_facts(self):
+        m = parse_one({"module": "a", "relayName": "x", "stage": "build", "suspended": None})
+        self.assertEqual((m.started_at, m.last_commit_at, m.commits_error, m.asks, m.waiting_user),
+                         (None, None, None, (), False))
+
+    def test_odd_shapes_read_as_absent(self):
+        odd = {**ROW_040, "startedAt": 5, "commits": "x", "asks": [{"node": "spec", "ats": "nope"}, 3,
+               {"node": 1, "ats": []}], "waitUser": {"state": "open"}}
+        m = parse_one(odd)
+        self.assertEqual((m.started_at, m.last_commit_at, m.commits_error, m.asks, m.waiting_user),
+                         (None, None, None, (), False))
+        self.assertEqual((m.module, m.stage), ("alpha", "build"))
+
+
 class WiringTest(TempHomeTestCase):
     """crew-line-status Task 3: every entry point reads the coordinator's modules."""
 
