@@ -1,6 +1,6 @@
 # Todo: go-to-session
 
-- [ ] Task 1：契约 v2.2 解析（Spec 验收 1）
+- [x] Task 1：契约 v2.2 解析（Spec 验收 1）
   - 验证：v2.2 全部样例逐字对齐，`test_contract` 通过
 - [ ] Task 2：事项入库、回复与结项（Spec 验收 5、6）
   - 验证：新测试先失败后通过；混答普通事项照常转发
