@@ -37,7 +37,6 @@ class LoopsCase(TempHomeTestCase):
     def setUp(self):
         super().setUp()
         self.g, _ = store.init_group("demo")
-        self.no = 0
         with self.g.transaction() as tx:
             tx.add_session({"relayName": "fe", "shortName": "前端", "role": "dev", "line": ["前端"],
                             "host": "claude-desktop", "repo": "/tmp/fe"})
@@ -48,7 +47,6 @@ class LoopsCase(TempHomeTestCase):
 
     def item(self, sender="fe", received=T0, answered=None, decide="要不要换分页", status=None, closed=None,
              module=..., approval=None, kind=None, multi=False):
-        self.no += 1
         it = {"sender": sender, "receivedAt": received, "decide": decide, "multi": multi, "project": "",
               "approvalModule": approval, "approvalNode": "spec" if approval else None, "waitKind": kind,
               "answers": [{"letter": "A", "original": "A", "at": answered}] if answered else [],
@@ -58,10 +56,11 @@ class LoopsCase(TempHomeTestCase):
         if module is not ...:
             it["module"] = module
         with self.g.transaction() as tx:
+            no = tx.allocate_number()
             doc = tx.read_state("items") or {}
-            doc.setdefault("items", {})[str(self.no)] = it
+            doc.setdefault("items", {})[str(no)] = it
             tx.write_state("items", doc)
-        return self.no
+        return no
 
     def module_of(self, no):
         return store.read_state(self.g, "items")["items"][str(no)].get("module", "untagged")
@@ -192,3 +191,116 @@ class ReadCommitsTest(TempHomeTestCase):
         got = loops.read_commits(str(repo), "2000-01-01T00:00:00+00:00")
         self.assertEqual(len(got), 1)
         self.assertIsNone(loops.read_commits(str(self.home / "nope"), T0))
+
+
+class HitTest(LoopsCase):
+    def three_asks(self, commits, now=at(7)):
+        self.item(module="m1", received=at(0), answered=at(1))
+        self.item(module="m1", received=at(3), answered=at(4))
+        third = self.item(module="m1", received=at(6))
+        return third, self.facts(commits=commits, now=now)["fe|m1"]
+
+    def test_two_answers_without_progress(self):
+        third, f = self.three_asks(commits=[])
+        self.assertEqual(f.hit, "你答了 2 次进度没动")
+        self.assertEqual(list(loops.looping_items([f])), [third])
+
+    def test_a_commit_in_between_is_no_hit(self):
+        _, f = self.three_asks(commits=[at(2)])
+        self.assertIsNone(f.hit)
+
+    def test_open_last_segment_does_not_count(self):
+        self.item(module="m1", received=at(0), answered=at(1))
+        self.item(module="m1", received=at(3), answered=at(4))   # nothing asked after 4 yet
+        self.assertIsNone(self.facts(commits=[at(2)], now=at(4.1))["fe|m1"].hit)
+        self.assertIsNone(self.facts(commits=[], now=at(4.1))["fe|m1"].hit)  # only one closed segment idle
+
+    def test_idle_work_adds_up_to_twelve_hours(self):
+        self.item(module="m1", received=at(0), answered=at(1))
+        self.item(module="m1", received=at(8), answered=at(30))  # waiting 8–30 is not work
+        f = self.facts(commits=[at(31)], now=at(40))["fe|m1"]
+        self.assertIsNone(f.hit)                                  # idle work 1–8 = 7 hours
+        f = self.facts(commits=[], now=at(36))["fe|m1"]
+        self.assertEqual(f.hit, "没进展的出手时间累计 13 小时")   # 7 + (30–36) = 13; 8–30 not counted
+
+    def test_unread_is_never_judged_and_quiet_hushes(self):
+        self.assertIsNone(self.three_asks(commits=None)[1].hit)
+        loops.quiet(self.g, "fe|m1", at(7), 12)
+        self.assertIsNone(self.facts(commits=[], now=at(8))["fe|m1"].hit)
+        self.assertIsNotNone(self.facts(commits=[], now=at(20))["fe|m1"].hit)
+
+    def test_thresholds_from_group_json(self):
+        import json
+        (self.g.path / "group.json").write_text(json.dumps({**json.loads((self.g.path / "group.json").read_text()),
+                                                            "stall": {"loopAnswers": 3}}), encoding="utf-8")
+        self.assertIsNone(self.three_asks(commits=[])[1].hit)
+
+
+def items_mod():
+    from decision_inbox import items
+    return items
+
+
+class LoopReplyTest(LoopsCase):
+    WAIT = """【等待用户】
+结束：无
+来自：前端
+要你决定：要不要换分页
+要点：列表太慢
+选项与我的建议：
+推荐 A：换
+  选了会怎样：变快
+B：不换
+  选了会怎样：不变
+是否完全停住：是
+"""
+
+    def setUp(self):
+        super().setUp()
+        from decision_inbox import items as it_mod
+        self.item(module="m1", received=at(0), answered=at(1))
+        self.item(module="m1", received=at(3), answered=at(4))
+        r = it_mod.receive(self.g, self.WAIT, sender="fe", relay_id=7, received_at=at(6))
+        self.third = r.item
+        loops.tag(self.g, {"fe": line_map()}, {})
+        self.found = list(self.facts(commits=[], now=at(7)).values())
+
+    def reply(self, text, found=...):
+        from decision_inbox import hub
+        r = hub.reply(self.g, text, at(7), loop_facts=self.found if found is ... else found)
+        return NS(text=r.show, sends=[{**s, "text": open(s["bodyFile"], encoding="utf-8").read()} for s in r.sends])
+
+    def test_options_forwarded_with_their_text(self):
+        r = self.reply(f"{self.third} 换方案：先只做第一页")
+        self.assertEqual(len(r.sends), 1)
+        self.assertIn(f"用户原话：{self.third} 换方案：先只做第一页", r.sends[0]["text"])
+        self.assertNotIn("原文：", r.sends[0]["text"])  # no letter, so no option line (contract unchanged)
+        self.assertEqual(items_mod().get(self.g, self.third)["answers"][0]["loopOption"], "换方案：先只做第一页")
+
+    def test_suspend_names_the_module(self):
+        r = self.reply(f"{self.third} 挂起")
+        self.assertIn(f"用户原话：{self.third} 挂起", r.sends[0]["text"])
+
+    def test_keep_waiting_hushes_the_module(self):
+        self.reply(f"{self.third} 继续等")
+        self.assertEqual(list(store.read_state(self.g, "loops")["quiet"]), ["fe|m1"])
+
+    def test_words_are_plain_text_without_a_hint(self):
+        self.reply(f"{self.third} 继续等", found=[])
+        self.assertIsNone(items_mod().get(self.g, self.third)["answers"][0]["loopOption"])
+        self.assertNotIn("quiet", store.read_state(self.g, "loops"))
+
+    def test_letter_and_loop_word_together_asks_back(self):
+        r = self.reply(f"{self.third} A 继续等")
+        self.assertEqual(r.sends, [])
+        self.assertIn("分成两次答", r.text)
+
+    def test_letters_still_work(self):
+        r = self.reply(f"{self.third} A")
+        self.assertIn("A：换", r.sends[0]["text"])
+
+    def test_look_at_module(self):
+        r = self.reply("看模块 m1")
+        self.assertIn("第 1 次 · #1", r.text)
+        self.assertIn("第 3 次 · #3", r.text)
+        self.assertIn("可能在打转：你答了 2 次进度没动", r.text)

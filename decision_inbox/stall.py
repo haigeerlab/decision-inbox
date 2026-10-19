@@ -13,7 +13,8 @@ from datetime import datetime
 from decision_inbox import items, protocol, reviews, store
 
 DEFAULTS = {"stalledHours": 12, "reworkRounds": 3, "repeatAsks": 3, "repeatHours": 24,
-            "askAgainHours": 12, "answerWaitMinutes": 30}
+            "askAgainHours": 12, "answerWaitMinutes": 30,
+            "loopAnswers": 2, "loopHours": 12, "loopQuietHours": 12}  # loop-detection (DI-6)
 DESKTOP_LINK = "claude://claude.ai/epitaxy/{session}"
 
 

@@ -496,3 +496,68 @@ def render_invalidated(g: store.Group) -> str:
         topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
         rows.append(f"#{it['no']} {state}· {_source(g, it)} · {topic}")
     return "\n".join(rows) or "没有失效的待决事项"
+
+
+# loop-detection (R21 DI-5): a module's earlier questions, one line each; the module's facts in a few words.
+HISTORY_ROWS = 5
+
+
+def _result(it: dict) -> str:
+    if items.is_go_to_session(it):
+        return "去会话操作已结项" if it["status"] == "closed" else "去会话操作"
+    if it["status"] == "pending":
+        return "等你答"
+    if it["status"] in INVALIDATED:
+        return "已失效"
+    if it.get("answers"):
+        a = it["answers"][-1]
+        return f"答了 {a.get('loopOption') or a.get('letter') or clip(_one_line(a['original']), 12)}"
+    return "已关"
+
+
+def history_rows(own, before: int | None = None) -> list[str]:
+    """「第 i 次 · 要你决定首行 · 结果」 for a module's items (before item `before` when given)."""
+    rows, n = [], 0
+    for it in own:
+        if before is not None and it["no"] == before:
+            break
+        counted = not items.is_go_to_session(it) and it["status"] != "superseded"
+        n += counted
+        head = f"第 {n} 次" if counted else "不计次"
+        rows.append(f"{head} · #{it['no']} {clip(it['decide'].split(chr(10))[0], TOPIC_CHARS)} · {_result(it)}")
+    return rows
+
+
+def loop_facts_text(f) -> str:
+    """「第 n 次问你（基准 M，超出第 k 次）· 你答了 j 次进度没动 · 开工 X 小时 · 进度 a/b」."""
+    base = f"基准 {f.baseline}" if f.baseline is not None else "基准未知"
+    if f.over:
+        base += f"，超出第 {f.over} 次"
+    parts = [f"第 {f.asked} 次问你（{base}）"]
+    parts.append(f"你答了 {f.still} 次进度没动" if f.still is not None else (f.unread or "进度读不到"))
+    if f.worked_hours is not None:
+        parts.append(f"开工 {f.worked_hours:.0f} 小时")
+    if f.progress is not None:
+        parts.append(f"进度 {f.progress[0]}/{f.progress[1]}")
+    return " · ".join(parts)
+
+
+def render_module(g: store.Group, module: str, now: str, loop_facts=None) -> str:
+    """「看模块 <id>」: every question of the module and its facts."""
+    found = [f for f in loop_facts or () if f.module == module]
+    if found:
+        f = found[0]
+        own = list(f.items)
+        head = f"模块 {module}（{_short(g, f.line)}）· {loop_facts_text(f)}"
+        if f.hit:
+            head += f"\n⚠ 可能在打转：{f.hit}"
+    else:
+        own = sorted((it for it in items.by_status(g, *_EVERY) if it.get("module") == module),
+                     key=lambda it: _instant(it["receivedAt"]))
+        head = f"模块 {module}（不在做的模块里，只列问过的待决事项）"
+    if not own:
+        return f"模块 {module} 还没有问过你的待决事项"
+    return "\n".join([head, *history_rows(own)])
+
+
+_EVERY = ("pending", *FORWARDED, *INVALIDATED)

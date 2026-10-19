@@ -16,6 +16,7 @@ from decision_inbox import items, store
 
 GIT_TIMEOUT = 3.0
 _ENDED = ("closed", "withdrawn", "superseded")
+DOMAIN = "loops"
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,56 @@ def _later(*values):
     return max(found, key=_instant) if found else None
 
 
+def _hit(segments, cfg: dict) -> str | None:
+    """① the last N answers the module came back after left it where it was; ② that idle work adds up."""
+    if not segments or any(s.moved is None for s in segments):
+        return None
+    closed = [s for s in segments if s.closed]
+    n = int(cfg["loopAnswers"])
+    if len(closed) >= n and all(s.moved is False for s in closed[-n:]):
+        return f"你答了 {n} 次进度没动"
+    idle = sum(_hours(s.start, s.worked_until) for s in segments if s.moved is False)
+    if idle >= cfg["loopHours"]:
+        return f"没进展的出手时间累计 {int(idle)} 小时"
+    return None
+
+
+def quiet(g: store.Group, key: str, now: str, hours: float) -> None:
+    """「继续等」: no hint for this module for `hours` (DI-6 C)."""
+    from datetime import timedelta
+    until = (_instant(now) + timedelta(hours=hours)).isoformat()
+    with g.transaction() as tx:
+        doc = tx.read_state(DOMAIN)
+        doc.setdefault("quiet", {})[key] = until
+        tx.append_event("loops.quiet", ref=None, actor="user", data={"module": key, "until": until})
+        tx.write_state(DOMAIN, doc)
+
+
+def _judged(g: store.Group, found: list[ModuleLoop], now: str) -> list[ModuleLoop]:
+    from dataclasses import replace
+    from decision_inbox import stall
+    cfg = stall.settings(g)
+    quiet_until = store.read_state(g, DOMAIN).get("quiet", {})
+    out = []
+    for f in found:
+        until = quiet_until.get(f.key)
+        hushed = until is not None and _instant(now) < _instant(until)
+        out.append(replace(f, hit=None if hushed else _hit(f.segments, cfg)))
+    return out
+
+
 def facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) -> list[ModuleLoop]:
+    """Every module in progress, judged: the facts below, then whether it looks like going round in circles."""
+    return _judged(g, _facts(g, now, maps, crews, git), now)
+
+
+def looping_items(found: list[ModuleLoop]) -> dict[int, ModuleLoop]:
+    """Open items that carry the hint: every open, non go-to-session item of a module that is hit."""
+    return {it["no"]: f for f in found if f.hit for it in f.items
+            if it["status"] == "pending" and not items.is_go_to_session(it)}
+
+
+def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) -> list[ModuleLoop]:
     """One ModuleLoop per module in progress: a plain dev line's activeModule, a crew's unmerged modules."""
     every = sorted((dict(it, no=int(no)) for no, it in store.read_state(g, items.DOMAIN).get("items", {}).items()),
                    key=lambda it: _instant(it["receivedAt"]))

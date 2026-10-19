@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import deps, health, install, items, protocol, reviews, stall, store, tickets, view
+from decision_inbox import deps, health, install, items, loops, protocol, reviews, stall, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -368,6 +368,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
+_MODULE_RE = re.compile(r"^看模块\s*(\S+)$")
 _LOOK_RE = re.compile(r"^看\s*([#WwＷ]?)\s*(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
@@ -400,7 +401,7 @@ def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, map
 
 
 def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = None,
-          relayed_from: str | None = None, crews: dict | None = None) -> Reply:
+          relayed_from: str | None = None, crews: dict | None = None, loop_facts=None) -> Reply:
     """Everything the user says in the hub, matched as a whole sentence (spec 关键决策 4).
 
     `relayed_from` names where words came from when the user did not type them in the hub
@@ -435,7 +436,10 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
-    parsed = items.interpret_reply(g, text)
+    if m := _MODULE_RE.match(said):
+        return Reply(view.render_module(g, m.group(1), now, loop_facts))
+    looping = loops.looping_items(loop_facts or [])
+    parsed = items.interpret_reply(g, text, looping)
     if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
         # Nothing to answer: the user is most likely asking how things stand (「卡住了吗」).
         return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews)}")
@@ -445,7 +449,11 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     skipped = [a.item for a in parsed.answers if items.is_go_to_session(items.get(g, a.item))]
     answers = [a for a in parsed.answers if a.item not in skipped]
     notes = "".join(f"#{n} 是去会话操作，不需要回复；点完对方会发【已恢复】自动结项。\n" for n in skipped)
+    quiet_hours = stall.settings(g)["loopQuietHours"]
     sends = _queue_answers(g, items.answer(g, answers, answered_at=now), now) if answers else []
+    for a in answers:  # 「继续等」 under a loop hint: no hint for that module for a while (DI-6 C)
+        if a.loop_option == "继续等" and a.item in looping:
+            loops.quiet(g, looping[a.item].key, now, quiet_hours)
     told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews)
     return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
