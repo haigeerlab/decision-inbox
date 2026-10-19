@@ -207,6 +207,8 @@ def _alerts(ctx: _Context, signals) -> None:
 def _handoffs(ctx: _Context) -> None:
     """answer-handoff-gaps 已定事项 2: an answer queued for an offline owner wakes it and tells the user now."""
     for it in items.by_status(ctx.g, "forwarded"):
+        if not items.delivered(it):
+            continue  # decision-cards DI-6: the hub has not sent it, nothing waits on the owner yet
         for name in it["recipients"]:
             entry = store.find_session(ctx.g, relay_name=name)
             fact = _fact(ctx, name)

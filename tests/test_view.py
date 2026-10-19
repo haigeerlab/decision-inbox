@@ -56,8 +56,10 @@ class ViewCase(TempHomeTestCase):
         return items.receive(self.g, text, sender=sender, relay_id=next(self.relay_ids),
                              received_at=at(minutes_ago)).item
 
-    def forward(self, no, minutes_ago, letter="A"):
+    def forward(self, no, minutes_ago, letter="A", sent=True):
         items.answer(self.g, [items.Answer(no, letter, f"{no} {letter}")], answered_at=at(minutes_ago))
+        if sent:  # decision-cards DI-6: forwarded means agent-relay took it
+            items.record_sent(self.g, no, to=items.get(self.g, no)["sender"], relay_id=8800 + no, at=at(minutes_ago))
 
     def render(self, assessment=None, relay=None):
         return view.render(self.g, now=NOW, assessment=assessment or self.assessment(), relay=relay)
@@ -425,7 +427,7 @@ def hhmm(value: str) -> str:
 class ExpandedViewTest(ViewCase):
     def test_detail(self):
         no = self.ask(MULTI, sender="coord", minutes_ago=30)
-        self.forward(no, 2)
+        self.forward(no, 2, sent=False)
         sent_ids = []
         for to in ("coord", "fe-codex", "api-codex"):
             sent_ids.append(next(self.relay_ids))

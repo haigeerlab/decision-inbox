@@ -175,11 +175,18 @@ if __name__ == "__main__":
 class AnsweredNotResumedTest(HookCase):
     """answer-handoff-gaps 已定事项 1：已答未恢复也拦一次（宿主差异 H17）。"""
 
-    def answered(self, reply="1 A", sender="api-codex", minutes_ago=3):
+    def answered(self, reply="1 A", sender="api-codex", minutes_ago=3, sent=True):
         no = items.receive(self.g, WAIT_USER, sender=sender, relay_id=7, received_at=at(30)).item
         items.answer(self.g, items.interpret_reply(self.g, reply.replace("1", str(no), 1)).answers,
                      answered_at=at(minutes_ago))
+        if sent:  # decision-cards DI-6: only an answer that reached the proposer is waited on
+            items.record_sent(self.g, no, to=sender, relay_id=3900 + no, at=at(minutes_ago))
         return no
+
+    def test_unsent_answer_does_not_block(self):
+        """decision-cards DI-6 (I-2): the proposer never got the answer, so 【已恢复】 is not due yet."""
+        self.answered(sent=False)
+        self.assertFalse(self.decide().block)
 
     def test_h17_scenario_blocks_once(self):
         no = self.answered()
@@ -300,6 +307,7 @@ class CrewCoordinatorTest(HookCase):
     def test_answered_not_resumed_still_blocks(self):
         no = items.receive(self.g, WAIT_USER, sender="crew-coord", relay_id=21, received_at=at(30)).item
         items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=at(3))
+        items.record_sent(self.g, no, to="crew-coord", relay_id=3999, at=at(3))
         self.assertTrue(self.decide_with(progress(2, 5)).block)
 
     def test_ordinary_dev_line_still_blocks(self):

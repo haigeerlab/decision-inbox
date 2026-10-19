@@ -147,7 +147,8 @@ def _overview(g: store.Group, now: str, assessment, extra=()) -> str:
     decide = len([it for it in items.pending(g) if not items.is_go_to_session(it)]) + len(_needs_user(g, assessment))
     text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment)) + len(extra)}"
     recent = [it for it in items.by_status(g, *FORWARDED)  # a go-to-session item is closed without forwarding
-              if "forwarded" in it["statusAt"] and _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES]
+              if "forwarded" in it["statusAt"] and _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES
+              and items.delivered(it)]  # decision-cards DI-6: not sent yet is not forwarded
     if recent:
         recent.sort(key=lambda it: _instant(it["statusAt"]["forwarded"]))
         text += " · 刚转达：" + "、".join(

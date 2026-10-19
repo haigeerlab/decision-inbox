@@ -126,8 +126,8 @@ def _answered(g: store.Group, me: str, now: str) -> list[str]:
     """Items this session raised that the user answered and it has not ended with 【已恢复】 (H17)."""
     rows = []
     for it in items.by_status(g, *ANSWERED):
-        if it["sender"] != me or not it["answers"]:
-            continue
+        if it["sender"] != me or not it["answers"] or not items.delivered(it):
+            continue  # decision-cards DI-6: an answer never sent is not waiting for 【已恢复】
         last = it["answers"][-1]
         original = "".join(x.strip() for x in last["original"].splitlines())
         if len(original) > ORIGINAL_CHARS:

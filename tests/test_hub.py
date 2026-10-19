@@ -268,7 +268,8 @@ class ReplyTest(HubCase):
         self.assertEqual([(s["to"], s["replyTo"], s["kind"]) for s in r.sends], [("fe-codex", 1301, "answer")])
         self.assertIn("用户原话：1 B", self.bodies(r)[0])
         self.assertEqual(items.get(self.g, 1)["status"], "forwarded")
-        self.assertIn("已转达：#1 → 前端", r.show)
+        self.assertIn("已收下你的答复：#1 → 前端", r.show)
+        self.assertNotIn("已转达", r.show)
         self.assertNotIn("没发出去", r.show)
         self.assertIn("等你决定 0 项", r.show)
 
@@ -375,7 +376,7 @@ class ReplyTest(HubCase):
         self.reply("1 A")
         text = hub.main_view(self.g, now=NOW, relay=None)
         lines = text.split("\n")
-        self.assertEqual(lines[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
+        self.assertEqual(lines[0], "⚠ #1 已答复，待发送（发给 前端，还没发）；说「重发 1」")
         self.assertEqual(lines[1], "⚠ 本次没带 agent-relay 状态，各线状态不全")  # wait-honesty-and-briefs A3
         self.assertIn("本次没有 agent-relay 状态，无法判断", text)
         self.assertNotIn("agent-relay 没有它的数据", text)
@@ -476,9 +477,9 @@ class CommandLineTest(HubCase):
         self.assertEqual(code, 0)
         got = json.loads(out)
         self.assertEqual([s["id"] for s in got["sends"]], ["out:2"])
-        self.assertIn("已转达：#1 → 前端", got["show"])
+        self.assertIn("已收下你的答复：#1 → 前端", got["show"])
         code, out, _ = self.run_cli("inbox", "sent", "demo", "--done", "out:1=3949", "out:2=3950")
-        self.assertEqual((code, json.loads(out)), (0, {"closedTickets": []}))
+        self.assertEqual((code, json.loads(out)), (0, {"closedTickets": [], "show": "已转达：#1 → 前端"}))
         outbox = self.write("outbox.json", json.dumps({"agent": "di-hub", "entries": [
             {"id": 3950, "toAgent": "fe-codex", "createdAt": NOW, "deliveryState": "accepted",
              "acknowledgedAt": "2026-10-16T05:40:00Z"}]}))
@@ -493,7 +494,7 @@ class CommandLineTest(HubCase):
         self.run_cli("inbox", "receive", "demo", "--inbox", self.inbox_file((1403, "api-codex", "【等待用户】\n结束：无\n")))
         code, out, _ = self.run_cli("view", "demo", "--agents", self.write("agents.json", "not json"))
         self.assertEqual(code, 0)
-        self.assertEqual(out.split("\n")[0], "⚠ 有 1 条消息没发出去，说「重发」再试")
+        self.assertEqual(out.split("\n")[0], "⚠ 给 API 的退回没发出去（还没发）；说「重发」")
         self.assertTrue(out.split("\n")[1].startswith("⚠ 读不到 agent-relay（"), out)
         code, out, _ = self.run_cli("view", "demo")
         self.assertEqual(code, 0)
@@ -532,7 +533,7 @@ class AnswerNoticeTest(HubCase):
         r = hub.reply(self.g, "1 A", now=NOW)
         self.assertEqual([(s["to"], s["kind"], s["replyTo"]) for s in r.sends],
                          [("fe-owner", "answer", 1501), ("fe-codex", "notice", None)])
-        self.assertIn("已转达：#1 → 前端负责人（另告知：前端）", r.show)
+        self.assertIn("已收下你的答复：#1 → 前端负责人（另告知：前端）", r.show)
         body = Path(r.sends[1]["bodyFile"]).read_text(encoding="utf-8")
         self.assertEqual(body, "\n".join([
             "【答复告知】", "事项：#1（由前端负责人抛出，原消息 #1501）", "用户原话：1 A", f"答复时间：{NOW}",
@@ -804,7 +805,8 @@ class AlsoAnswersTest(HubCase):
         self.receive(message(1405, "api-codex", WAIT_USER))                                 # #4 other session
         self.receive(message(1406, "api-codex", WAIT_USER))                                 # #5 supersedes #4
         sends = self.answer(3)
-        self.assertEqual((sends[0]["replyTo"], sends[0]["alsoAnswers"]), (1404, [1401, 1402]))
+        # decision-cards DI-5 (I-1): a withdrawn request was closed by its own withdraws; agent-relay refuses it
+        self.assertEqual((sends[0]["replyTo"], sends[0]["alsoAnswers"]), (1404, [1401]))
         self.receive(message(1407, "fe-codex", WAIT_USER))                                  # #6
         self.assertNotIn("alsoAnswers", self.answer(6)[0])                                  # not repeated
         self.assertEqual(self.answer(5)[0]["alsoAnswers"], [1405])
@@ -992,3 +994,72 @@ class ExampleScanTest(HubCase):
                     self.assertTrue(parsed.answers, parsed.question)
                 else:
                     self.assertNotIn(items.NO_ITEM_QUESTION, hub.reply(self.g, said, now=NOW).show)
+
+
+class SendHonestyTest(HubCase):
+    """decision-cards DI-5, DI-6 (I-1, I-2, I-3): a send counts only once agent-relay took it."""
+
+    def setUp(self):
+        super().setUp()
+        self.receive(message(1601, "fe-codex", WAIT_USER))                                  # #1
+        self.receive(message(1602, "fe-codex", WAIT_USER.replace("【等待用户】", "【与 #1 并行】\n【等待用户】")))  # #2
+        self.receive(message(1603, "fe-codex", WAIT_USER))                                  # #3 supersedes #1
+        self.answer = hub.reply(self.g, "3 A", now=NOW).sends[0]
+
+    def test_success_shows_forwarded(self):
+        hub.sent(self.g, done={self.answer["id"]: 4100}, failed=[], at=NOW)
+        self.assertIn("已转达：#3 → 前端", hub.sent_show(self.g, [self.answer["id"]]))
+        self.assertIn("刚转达：3 → 前端", hub.main_view(self.g, NOW))
+
+    def test_failure_names_item_recipient_and_reason(self):
+        hub.sent(self.g, done={}, failed=[self.answer["id"]], at=NOW,
+                 reasons={self.answer["id"]: "Transport closed"})
+        show = hub.sent_show(self.g, [self.answer["id"]])
+        self.assertIn("⚠ #3 的答复没发出去（发给 前端）：Transport closed", show)
+        self.assertIn("「重发 3」", show)
+        main = hub.main_view(self.g, NOW)
+        self.assertIn("#3 已答复，待发送（发给 前端）：Transport closed", main)
+        self.assertNotIn("刚转达", main)
+        self.assertNotIn("有 1 条消息没发出去", main)
+
+    def test_failure_without_reason(self):
+        hub.sent(self.g, done={}, failed=[self.answer["id"]], at=NOW)
+        self.assertIn("原因未记录", hub.sent_show(self.g, [self.answer["id"]]))
+
+    def test_withdrawn_request_dropped_after_refusal(self):
+        reason = "Cannot close request #1601: it was withdrawn by #1650. Nothing was sent."
+        self.assertEqual(self.answer["alsoAnswers"], [1601, 1602])                         # #3 took over both
+        hub.sent(self.g, done={}, failed=[self.answer["id"]], at=NOW, reasons={self.answer["id"]: reason})
+        show = hub.sent_show(self.g, [self.answer["id"]])
+        self.assertIn("已去掉 #1601", show)
+        [again] = hub.reply(self.g, "重发 3", now=NOW).sends
+        self.assertEqual(again["alsoAnswers"], [1602])
+
+    def test_skipped_recorded(self):
+        hub.sent(self.g, done={self.answer["id"]: 4101}, failed=[], at=NOW, skipped={self.answer["id"]: [1601]})
+        show = hub.sent_show(self.g, [self.answer["id"]])
+        self.assertIn("已转达：#3 → 前端", show)
+        self.assertIn("#1601 已关闭，被跳过", show)
+
+    def test_item_view_says_waiting_to_send(self):
+        from decision_inbox import query
+        self.assertIn("当前：已答复，待发送", query.render_item(self.g, 3))
+        hub.sent(self.g, done={self.answer["id"]: 4102}, failed=[], at=NOW)
+        self.assertIn("当前：已转达", query.render_item(self.g, 3))
+
+    def test_command_line_failed_with_reason(self):
+        import io, json
+        from contextlib import redirect_stdout
+        from decision_inbox import __main__ as cli
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli._inbox(["sent", "demo", "--failed", f"{self.answer['id']}=Transport closed"])
+        self.assertEqual(code, 0)
+        doc = json.loads(out.getvalue())
+        self.assertIn("Transport closed", doc["show"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli._inbox(["sent", "demo", "--done", f"{self.answer['id']}=4103", "--skipped",
+                               f"{self.answer['id']}=1601"])
+        self.assertEqual(code, 0)
+        self.assertIn("被跳过", json.loads(out.getvalue())["show"])

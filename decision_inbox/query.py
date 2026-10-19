@@ -314,6 +314,12 @@ _ITEM_STATUS = {"pending": "待答", "superseded": "已取代", "withdrawn": "�
                 "picked": "对方已取走", "acknowledged": "对方已确认", "closed": "已结束"}
 
 
+def _status_word(it: dict) -> str:
+    if it["status"] == "forwarded" and not items.delivered(it):
+        return "已答复，待发送"  # decision-cards DI-6 (I-2)
+    return _ITEM_STATUS.get(it["status"], it["status"])
+
+
 def item_message_ids(g: store.Group, number: int) -> tuple[int, ...]:
     """agent-relay ids to look up for /item: the 【等待用户】 itself, then each reply sent."""
     it = items.get(g, number)
@@ -369,7 +375,7 @@ def _item_timeline(g: store.Group, it: dict, statuses: dict) -> list[str]:
         rows.append((times["closed"], f"{_short(g, actor)} 已结项，待决事项结束"))
     source = f"多线：{'＋'.join(it['lines'])}" if it["multi"] else _short(g, it["sender"])
     head = (f"#{no} · {source} · {it['decide'].splitlines()[0]} · "
-            f"当前：{_ITEM_STATUS.get(it['status'], it['status'])}")
+            f"当前：{_status_word(it)}")
     return [head] + [f"{_clock(t)} {text}" for t, text in sorted(rows, key=lambda r: _instant(r[0]))]
 
 

@@ -226,7 +226,8 @@ def _also_answers(g: store.Group, doc: dict, it: dict) -> list[int]:
     hub recorded as that sender's items, and never put in alsoAnswers before, go in.
     """
     done = set(doc.get("alsoClosed", []))
-    return sorted(x["relayId"] for x in items.by_status(g, "superseded", "withdrawn")
+    # decision-cards DI-5 (I-1): a withdrawn request was already closed by its sender's withdraws
+    return sorted(x["relayId"] for x in items.by_status(g, "superseded")
                   if x["sender"] == it["sender"] and x["relayId"] is not None and x["relayId"] not in done
                   and x["relayId"] != it["relayId"])
 
@@ -253,9 +254,17 @@ def outgoing(g: store.Group) -> list[dict]:
     return [_send_view(g, out_id, e) for out_id, e in ordered if e["relayId"] is None]
 
 
-def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
-    """Record what the hub sent (agent-relay ids) or failed to send; then close answered tickets."""
-    failed = list(failed)
+_CANNOT_CLOSE_RE = re.compile(r"Cannot close request #(\d+)")
+
+
+def sent(g: store.Group, done: dict, failed, at: str, reasons: dict | None = None,
+         skipped: dict | None = None) -> tuple[int, ...]:
+    """Record what the hub sent (agent-relay ids) or failed to send; then close answered tickets.
+
+    decision-cards DI-5, DI-6: `reasons` keeps agent-relay's words for a failed send, and a request it refused
+    to close leaves that send's alsoAnswers; `skipped` keeps what agent-relay 0.8.5+ skipped as already closed.
+    """
+    failed, reasons, skipped = list(failed), reasons or {}, skipped or {}
     recorded = []
     with g.transaction() as tx:
         doc = _doc(tx)
@@ -268,15 +277,77 @@ def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
             entry.update(relayId=relay_id, failed=False, sentAt=at)
             tx.append_event("hub.sent", ref=entry["item"], actor="hub", data={"id": out_id, "relayId": relay_id})
             recorded.append((out_id, entry))
+        for out_id, ids in skipped.items():
+            if out_id in done:
+                doc["outgoing"][out_id]["skipped"] = [int(i) for i in ids]
+                doc.setdefault("alsoClosed", []).extend(int(i) for i in ids)
         for out_id in failed:
-            doc["outgoing"][out_id]["failed"] = True
-            tx.append_event("hub.send-failed", ref=doc["outgoing"][out_id]["item"], actor="hub", data={"id": out_id})
+            entry = doc["outgoing"][out_id]
+            entry["failed"] = True
+            reason = reasons.get(out_id)
+            entry["error"] = reason
+            refused = [int(n) for n in _CANNOT_CLOSE_RE.findall(reason or "")]
+            if refused and entry.get("alsoAnswers"):
+                entry["alsoAnswers"] = [i for i in entry["alsoAnswers"] if i not in refused]
+                entry["dropped"] = sorted(set(entry.get("dropped", [])) | set(refused))
+                if not entry["alsoAnswers"]:
+                    del entry["alsoAnswers"]
+            tx.append_event("hub.send-failed", ref=entry["item"], actor="hub", data={"id": out_id, "reason": reason})
         tx.write_state(DOMAIN, doc)
     # Body files stay: nothing in a group is ever deleted (spec/group-store.md 关键决策 5).
     for out_id, entry in recorded:
         if entry["kind"] == "answer":
             items.record_sent(g, entry["item"], to=entry["to"], relay_id=entry["relayId"], at=at)
     return tickets.close_answered(g, at)
+
+
+_KIND_NAMES = {"answer": "答复", "notice": "答复告知", "return": "退回", "receipt": "登记回执"}
+
+
+def sent_show(g: store.Group, ids) -> str:
+    """What the user reads after 「inbox sent」: each answer forwarded, or which one failed and why (DI-6)."""
+    doc = store.read_state(g, DOMAIN).get("outgoing", {})
+    rows = []
+    for out_id in ids:
+        entry = doc.get(out_id)
+        if entry is None:
+            continue
+        to, item = _short(g, entry["to"]), entry["item"]
+        what = f"#{item} 的{_KIND_NAMES.get(entry['kind'], '消息')}" if item is not None else \
+            f"给 {to} 的{_KIND_NAMES.get(entry['kind'], '消息')}"
+        if entry["relayId"] is not None:
+            if entry["kind"] == "answer":
+                rows.append(f"已转达：#{item} → {to}")
+            if entry.get("skipped"):
+                rows.append(f"#{item} 顺带要关的 " + "、".join(f"#{i}" for i in entry["skipped"]) + " 已关闭，被跳过")
+        elif entry.get("failed"):
+            again = f"「重发 {item}」" if item is not None else "「重发」"
+            row = f"⚠ {what}没发出去（发给 {to}）：{entry.get('error') or '原因未记录'}。"
+            if entry.get("dropped"):
+                row += "已去掉 " + "、".join(f"#{i}" for i in entry["dropped"]) + f"（提出方已撤回），说{again}即可"
+            else:
+                row += f"处理好后说{again}"
+            rows.append(row)
+    return "\n".join(rows)
+
+
+def unsent_rows(g: store.Group, exclude=()) -> list[str]:
+    """Main view: each message not sent yet, by item, recipient and reason (decision-cards DI-6, I-3)."""
+    doc = store.read_state(g, DOMAIN).get("outgoing", {})
+    rows = []
+    for s in outgoing(g):
+        if s["id"] in exclude:
+            continue
+        entry = doc[s["id"]]
+        to, item = _short(g, entry["to"]), entry["item"]
+        reason = f"：{entry.get('error') or '原因未记录'}" if entry.get("failed") else ""
+        unsent = "" if entry.get("failed") else "，还没发"
+        if entry["kind"] == "answer":
+            rows.append(f"⚠ #{item} 已答复，待发送（发给 {to}{unsent}）{reason}；说「重发 {item}」")
+        else:
+            rows.append(f"⚠ 给 {to} 的{_KIND_NAMES.get(entry['kind'], '消息')}没发出去（{unsent[1:] or '发送失败'}）"
+                        f"{reason}；说「重发」")
+    return rows
 
 
 @dataclass
@@ -357,9 +428,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
     head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
     head += view.loop_rows(g, loop_facts)    # loop-detection: R21 DI-6
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
-    unsent = [s for s in outgoing(g) if s["id"] not in exclude]
-    if unsent:
-        head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
+    head += unsent_rows(g, exclude)
     if relay is None and relay_status == "unreadable":
         head.append(deps.sourced(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全", "agent-relay"))
     elif relay is None:
@@ -477,7 +546,9 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
             loops.quiet(g, looping[a.item].key, now, quiet_hours)
     told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews, loop_facts=loop_facts)
-    return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
+    # decision-cards DI-6 (I-2): forwarded only once agent-relay took it, which 「inbox sent」 reports
+    return Reply(f"{notes}{f'已收下你的答复：{told}（发送结果见下一步）' if answers else ''}\n\n{body}".lstrip("\n"),
+                 sends)
 
 
 def _told(g: store.Group, item: int, sends: list[dict]) -> str:

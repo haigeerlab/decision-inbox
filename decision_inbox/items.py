@@ -502,6 +502,11 @@ def is_go_to_session(it: dict | None) -> bool:
     return bool(it) and it.get("waitKind") == GO_TO_SESSION
 
 
+def delivered(it: dict) -> bool:
+    """agent-relay took the answer for the proposer: only then is an item 已转达 (decision-cards DI-6)."""
+    return any(s["to"] == it["sender"] for s in it.get("sent") or ())
+
+
 def record_sent(g: store.Group, item: int, to: str, relay_id, at: str) -> None:
     """Remember the agent-relay id of a reply the hub sent, so /item can prove who sent it."""
     with g.transaction() as tx:

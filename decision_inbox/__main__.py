@@ -381,7 +381,8 @@ def _inbox(argv: list[str]) -> int:
     p = sub.add_parser("sent")
     p.add_argument("group")
     p.add_argument("--done", nargs="*", default=[])
-    p.add_argument("--failed", nargs="*", default=[])
+    p.add_argument("--failed", nargs="*", default=[])  # out:N, or out:N=<agent-relay's error> (decision-cards DI-6)
+    p.add_argument("--skipped", nargs="*", default=[])  # out:N=<id>[,<id>] from agent-relay 0.8.5+ `skipped`
     p = sub.add_parser("convention")
     p.add_argument("group")
     try:
@@ -422,12 +423,26 @@ def _inbox(argv: list[str]) -> int:
                 print(f"--done 要写成 out:N=消息编号：{pair}", file=sys.stderr)
                 return 2
             done[out_id] = int(relay_id)
+        failed, reasons = [], {}
+        for pair in args.failed:
+            out_id, sep, reason = pair.partition("=")
+            failed.append(out_id)
+            if sep and reason.strip():
+                reasons[out_id] = reason.strip()
+        skipped = {}
+        for pair in args.skipped:
+            out_id, sep, ids = pair.partition("=")
+            numbers = [x.strip().lstrip("#") for x in ids.split(",") if x.strip()]
+            if not sep or not numbers or not all(n.isdigit() for n in numbers):
+                print(f"--skipped 要写成 out:N=消息编号[,消息编号]：{pair}", file=sys.stderr)
+                return 2
+            skipped[out_id] = [int(n) for n in numbers]
         try:
-            closed = hub.sent(g, done=done, failed=args.failed, at=now)
+            closed = hub.sent(g, done=done, failed=failed, at=now, reasons=reasons, skipped=skipped)
         except hub.UnknownOutgoing as e:
             print(f"没有这条待发消息，或已经记过：{e}", file=sys.stderr)
             return 2
-        _print_json({"closedTickets": list(closed)})
+        _print_json({"closedTickets": list(closed), "show": hub.sent_show(g, [*done, *failed])})
     else:
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         print(hub.convention(args.group, workdir=str(g.path / "io")), end="")
