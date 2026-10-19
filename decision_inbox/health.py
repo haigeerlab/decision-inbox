@@ -219,7 +219,8 @@ def _state(f: _Facts, now: datetime, stale=frozenset(), names: dict | None = Non
         return LineState("blocked", f"阻塞：等 {target}", target=target, since=t["sentAt"])
     if f.asks:
         it = f.asks[0]
-        return LineState("blocked", f"阻塞：等你决定 #{it['no']}", item=it["no"], since=it["receivedAt"])
+        what = "等你去会话操作" if items.is_go_to_session(it) else "等你决定"  # loop-detection (go-to-session)
+        return LineState("blocked", f"阻塞：{what} #{it['no']}", item=it["no"], since=it["receivedAt"])
     if _is_working(f, now):
         return LineState("working", "干活中")
     last = f.progress or f.activity

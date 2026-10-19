@@ -190,3 +190,14 @@ class ProxiedSessionNoteTest(GoToSessionCase):
 
     def test_codex_join_preview_has_no_note(self):
         self.assertFalse([w for w in self.join("codex-desktop").warnings if "亲手开的会话" in w])
+
+
+class LineStateWordingTest(GoToSessionCase):
+    """loop-detection: a line held by a go-to-session item says so, not 「等你决定」."""
+
+    def test_wording(self):
+        no = self.receive(CLAUDE)
+        text = hub.main_view(self.g, NOW)
+        self.assertIn(f"前端 阻塞：等你去会话操作 #{no}", text)
+        other = self.receive(ORDINARY.replace("是否完全停住：否", "是否完全停住：是"), sender="be", relay_id=2)
+        self.assertIn(f"后端 阻塞：等你决定 #{other}", hub.main_view(self.g, NOW))

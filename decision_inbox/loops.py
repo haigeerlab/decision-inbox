@@ -44,6 +44,7 @@ class ModuleLoop:
     progress: tuple | None  # (done, total)
     last_progress: str | None
     unread: str | None      # why the progress could not be read
+    ready: tuple = ()       # modules ready to start on that line (option A lists them)
     hit: str | None = None  # why it looks like going round in circles
 
 
@@ -142,7 +143,7 @@ def _fact(line_map, module: str):
     return next((m for m in line_map.modules if m.id == module), None) if line_map is not None else None
 
 
-def _build(key, line, module, project, own, fact, segments, unread, start, now, waits, last_progress):
+def _build(key, line, module, project, own, fact, segments, unread, start, now, waits, last_progress, line_map):
     asked = len([it for it in own if not items.is_go_to_session(it) and it["status"] != "superseded"])
     baseline = 2 + fact.gates_total if fact is not None and fact.gates_total is not None else None
     still = None if segments is None or any(s.moved is None for s in segments) \
@@ -152,7 +153,8 @@ def _build(key, line, module, project, own, fact, segments, unread, start, now, 
     return ModuleLoop(key, line, module, project, tuple(own), asked, baseline,
                       max(0, asked - baseline) if baseline is not None else 0, segments, still,
                       _worked(start, now, waits), (fact.progress_done, fact.progress_total) if fact else None,
-                      last_progress, unread)
+                      last_progress, unread,
+                      tuple(m.id for m in line_map.modules if m.status == "ready") if line_map is not None else ())
 
 
 def _later(*values):
@@ -237,7 +239,7 @@ def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) 
                     asks = [a for _, a in m.ask_refs] + [w.at for w in m.waits if w.at]
                     segments, unread = _segments([(a.at, mv) for a, mv in zip(m.answers, moved)], asks, now), None
                 out.append(_build(f"{name}|{m.module}", name, m.module, project, own, _fact(line_map, m.module),
-                                  segments, unread, m.started_at, now, waits, m.last_commit_at))
+                                  segments, unread, m.started_at, now, waits, m.last_commit_at, line_map))
             continue
         if line_map is None or line_map.stage == "DONE" or not line_map.active_module:
             continue
@@ -260,6 +262,6 @@ def _facts(g: store.Group, now: str, maps: dict, crews: dict, git=read_commits) 
         fact = _fact(line_map, module)
         last = _later(commits[-1] if commits else None, fact.last_tick_at if fact else None)
         out.append(_build(f"{name}|{module}", name, module, project, own, fact, segments, unread, start, now,
-                          waits, last))
+                          waits, last, line_map))
     return out
 

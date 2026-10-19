@@ -219,3 +219,25 @@ class VerbatimTest(unittest.TestCase):
         lines = view._verbatim("a ```` b\n", "x.txt")
         self.assertEqual((lines[0], lines[-1]), ("`````text", "`````"))
         self.assertEqual(view._verbatim("# 标题\n", "spec/a.md"), ["# 标题"])
+
+
+class LoopHeadTest(ApprovalCase):
+    """loop-detection: the full approval opens with the DI-5 head; the rest stays as it was."""
+
+    def test_head(self):
+        from types import SimpleNamespace as NS
+        no = self.ask()
+        it = items.get(self.g, no)
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["module"] = "alpha"
+            tx.write_state("items", doc)
+        it = dict(items.get(self.g, no), blocks=1)
+        f = NS(line="coord", module="alpha", project="crew-rehearsal", items=(it,), asked=4, baseline=3, over=1,
+               still=0, unread=None, worked_hours=2.4, progress=(1, 4), hit=None, ready=())
+        text = view.render_approval(self.g, it, T1, read_map=fake_map(module("alpha", 1)), loop_facts=[f])
+        first = text.split("\n")[0]
+        self.assertTrue(first.startswith(f"━━ #{no} · crew-rehearsal（门店） · 模块 alpha · 审 Spec · "
+                                         "第 4 次问你（基准 3，超出第 1 次） · 你答了 0 次进度没动 · 开工 2 小时 · 进度 1/4"),
+                        first)
+        self.assertIn("项目：crew-rehearsal", text.split("\n")[1])

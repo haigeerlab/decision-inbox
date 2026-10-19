@@ -350,10 +350,12 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
 
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
-              relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
+              relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None,
+              loop_facts=None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
+    head += view.loop_rows(g, loop_facts)    # loop-detection: R21 DI-6
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
@@ -364,7 +366,8 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
         head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
     previous = store.read_state(g, "patrol").get("snapshot")
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous, crews=crews)
-    return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now))])
+    return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now),
+                                          loop_facts=loop_facts)])
 
 
 _DETAIL_RE = re.compile(r"^#?(\d+)\s*详情$")
@@ -386,7 +389,8 @@ def _original(g: store.Group, relay_id: str) -> str:
     return f"{_short(g, rec['sender'])} 发来的 #{relay_id} 原文：\n{rec['text']}"
 
 
-def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps, crews=None) -> Reply:
+def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, maps, crews=None,
+           loop_facts=None) -> Reply:
     """「关掉 W编号」 (or #编号): every number must be an open ticket, else nothing is closed."""
     open_ = store.read_state(g, "tickets").get("tickets", {})
     for no in numbers:
@@ -397,7 +401,8 @@ def _close(g: store.Group, numbers: list[int], reason: str, now: str, relay, map
     for no in numbers:
         tickets.close_by_user(g, no, reason or None, now)
     listed = "、".join(view.wait_no(n) for n in numbers)
-    return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n" + main_view(g, now, relay, maps, crews=crews))
+    return Reply(f"已关掉 {listed}（{reason or '用户关闭'}）\n\n"
+                 + main_view(g, now, relay, maps, crews=crews, loop_facts=loop_facts))
 
 
 def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = None,
@@ -432,7 +437,7 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         return Reply(view.render_invalidated(g))
     if m := _CLOSE_RE.match(said):
         numbers = [int(n) for n in re.findall(r"\d+", m.group(1))]
-        return _close(g, numbers, m.group(2).strip(), now, relay, maps, crews)
+        return _close(g, numbers, m.group(2).strip(), now, relay, maps, crews, loop_facts)
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
@@ -442,7 +447,7 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     parsed = items.interpret_reply(g, text, looping)
     if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
         # Nothing to answer: the user is most likely asking how things stand (「卡住了吗」).
-        return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews)}")
+        return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews, loop_facts=loop_facts)}")
     if parsed.question:
         return Reply(parsed.question)
     # go-to-session: nothing to forward, its sender closes it with 【已恢复】 (session-protocol v2.2 section 8)
@@ -455,7 +460,7 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         if a.loop_option == "继续等" and a.item in looping:
             loops.quiet(g, looping[a.item].key, now, quiet_hours)
     told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
-    body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews)
+    body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews, loop_facts=loop_facts)
     return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
 
 
