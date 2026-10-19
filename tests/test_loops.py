@@ -163,6 +163,16 @@ class CrewFactsTest(LoopsCase):
         self.assertEqual([(s.moved, s.closed) for s in f.segments], [(False, True), (True, False)])
         self.assertEqual((f.still, f.asked, f.progress), (1, 1, (2, 5)))
 
+    def test_two_still_answers_hit(self):
+        answers = (crew.Answer("C1", at(1), 0, 0), crew.Answer("C2", at(4), 0, 0))
+        asks = [("C1", at(0)), ("C2", at(3)), ("C3", at(6))]
+        f = self.facts({}, self.crews(answers=answers, ask_refs=asks), now=at(7))["co|alpha"]
+        self.assertEqual(f.hit, "你答了 2 次进度没动")
+        moved = (crew.Answer("C1", at(1), 0, 1), crew.Answer("C2", at(4), 0, 0))
+        self.assertIsNone(self.facts({}, self.crews(answers=moved, ask_refs=asks), now=at(7))["co|alpha"].hit)
+        unread = (crew.Answer("C1", at(1), None, 0), crew.Answer("C2", at(4), 0, 0))
+        self.assertIsNone(self.facts({}, self.crews(answers=unread, ask_refs=asks), now=at(7))["co|alpha"].hit)
+
     def test_null_and_before_050(self):
         f = self.facts({}, self.crews(answers=(crew.Answer("C1", at(1), None, 0),)))["co|alpha"]
         self.assertIsNone(f.still)
