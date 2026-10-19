@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 750375c12688 -->
+<!-- spec-guard: review approved 7b21ef18fa99 -->
 
 # Spec: loop-detection
 
