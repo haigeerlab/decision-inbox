@@ -97,14 +97,16 @@ class MainViewTest(GoToSessionCase):
         no = self.receive(CLAUDE)
         text = self.view()
         top = text.split("\n\n")[0]
-        for words in (f"#{no} · 前端 · 去会话操作", "claude://claude.ai/epitaxy/local_f9d5b932-946c-407b-a5c2-87845cb29425",
+        # decision-cards: the template's class 7 card, no copy block
+        for words in (f"**#{no} · 去 rh2-alpha 点一下弹窗**", "claude://claude.ai/epitaxy/local_f9d5b932-946c-407b-a5c2-87845cb29425",
                       "被拦的操作：Bash: git push origin alpha", "点：允许（Yes）",
                       "为什么这里批不了：宿主弹窗只能在那个会话里点，决策收件箱代点不了",
-                      "你在 #21 已同意，只差宿主这一下", "点完不用回复，对方会发【已恢复】自动结项"):
+                      "你在 #21 已同意，只差宿主这一下", "点完不用回复，会自动结项。"):
             self.assertIn(words, top)
         self.assertNotIn("推荐 A", text)
         self.assertNotIn("我去点", text)
-        self.assertNotIn(f"━━ {no} ·", text)  # not an ordinary card
+        self.assertNotIn("```", text)
+        self.assertEqual(text.count(f"**#{no} ·"), 1)  # not an ordinary card as well
 
     def test_full_link_shown_as_is(self):
         self.receive(CLAUDE.replace("链接：local_f9d5b932-946c-407b-a5c2-87845cb29425",
@@ -121,7 +123,7 @@ class MainViewTest(GoToSessionCase):
     def test_reminder_after_thirty_minutes(self):
         self.receive(CLAUDE)
         self.assertNotIn("再提醒一次", self.view(minutes(29)))
-        self.assertIn("已等 40 分钟，再提醒一次", self.view(minutes(40)))
+        self.assertIn("等了 40 分钟（再提醒一次）", self.view(minutes(40)))
 
     def test_closed_item_leaves_the_top(self):
         no = self.receive(CLAUDE)

@@ -325,16 +325,18 @@ class ShowTest(LoopReplyTest):
         from decision_inbox import hub
         return hub.main_view(self.g, at(7), loop_facts=self.found if found is ... else found)
 
-    def test_head_hint_and_folded_history(self):
+    def test_head_hint_and_no_folded_history(self):
+        """decision-cards (I-10): the card head follows the template; loop counts stay in 「在做的模块」 and 看模块."""
         text = self.view()
         no = self.third
-        self.assertIn(f"━━ #{no} · 演示项目（前端） · 模块 m1 · 等待用户 · 第 3 次问你（基准 5） · "
-                      "你答了 2 次进度没动 · 开工 4 小时 · 进度 2/5 · ", text)
+        self.assertIn(f"**#{no} · 要不要换分页** · 等了 ", text)
+        self.assertNotIn("第 3 次问你", text.split(f"**#{no}")[1].split("\n")[0])
         hint = text.index(f"⚠ 模块 m1 可能在打转：你答了 2 次进度没动\n  A 挂起它")
-        self.assertLess(hint, text.index(f"━━ #{no}"))
+        self.assertLess(hint, text.index(f"**#{no}"))
         for words in (f"回「{no} 挂起」", f"回「{no} 换方案：<怎么换>」", f"C 继续等，12 小时内不再提示：回「{no} 继续等」"):
             self.assertIn(words, text)
-        self.assertIn("同模块之前问过：\n  第 1 次 · #1 要不要换分页 · 答了 A\n  第 2 次 · #2 要不要换分页 · 答了 A", text)
+        self.assertNotIn("同模块之前问过", text)
+        self.assertIn("第 1 次 · #1 要不要换分页 · 答了 A", self.reply("看模块 m1").text)
 
     def test_main_view_rows(self):
         text = self.view()
@@ -345,26 +347,26 @@ class ShowTest(LoopReplyTest):
         text = self.view(found=None)
         self.assertNotIn("在做的模块", text)
         self.assertNotIn("可能在打转", text)
-        self.assertIn(f"━━ {self.third} · 前端 · ", text)
+        self.assertIn(f"**#{self.third} · 要不要换分页** · 等了 ", text)
 
     def test_quiet_hides_the_hint(self):
         loops.quiet(self.g, "fe|m1", at(7), 12)
         self.found = list(self.facts(commits=[], now=at(7)).values())
         self.assertNotIn("可能在打转", self.view())
 
-    def test_history_keeps_five_rows(self):
+    def test_history_stays_in_look_module(self):
         for _ in range(6):
             self.item(module="m1", received=at(5), answered=at(5.5))
         found = list(self.facts(commits=[], now=at(7)).values())
         from decision_inbox import view
         card = view._item_card(self.g, at(7), dict(items_mod().get(self.g, self.third), blocks=0), found)
-        self.assertEqual(card.count("\n  第 "), 5)
-        self.assertIn("还有 3 次，回「看模块 m1」看全部", card)
+        self.assertNotIn("\n  第 ", card)
+        self.assertEqual(view.render_module(self.g, "m1", at(7), found).count("\n第 "), 9)  # 3 + 6
 
     def test_unknown_module_head(self):
         no = items_mod().receive(self.g, self.WAIT, sender="co", relay_id=8, received_at=at(6)).item
         loops.tag(self.g, {}, {})
         from decision_inbox import view
         card = view._item_card(self.g, at(7), dict(items_mod().get(self.g, no), blocks=1), self.found)
-        self.assertIn(f"━━ #{no} · 协调 · 模块未知 · 等待用户 · ", card)
+        self.assertTrue(card.startswith(f"**#{no} · "), card)
         self.assertNotIn("第 ", card.split("\n")[0])

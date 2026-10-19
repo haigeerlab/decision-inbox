@@ -155,7 +155,7 @@ class DisplayTest(ApprovalCase):
         self.assertIn("指纹对不上", text)
         self.assertNotIn("第二行", text)  # never the brief instead
 
-    def test_main_view_opens_first_only_and_look_command(self):
+    def test_main_view_opens_none_and_look_commands(self):
         a = self.ask(at=T1)
         b = self.ask(node="Plan", at=T2)
         with self.g.transaction() as tx:  # a second sender so b does not supersede a
@@ -167,10 +167,13 @@ class DisplayTest(ApprovalCase):
         with self.g.transaction() as tx:
             tx.write_state("items", doc)
         out = view.render(self.g, now=NOW, assessment=health.assess(self.g, now=NOW, relay=None))
-        self.assertEqual(out.count("━━ 开发会话的交审原文"), 1)
-        self.assertIn(f"回「看 {b}」看全文", out)
+        # decision-cards DI-3: no original opens in the main view; 「看 N」 is the card, 「看 N 全文」 the originals
+        self.assertEqual(out.count("━━ 开发会话的交审原文"), 0)
+        self.assertEqual(out.count("```\n"), 2 * 2 + 2)  # one copy block per card, and 「一次答完」
         look = hub.reply(self.g, f"看 {b}", now=NOW).show
-        self.assertIn("━━ 开发会话的交审原文", look)
+        self.assertNotIn("━━ 开发会话的交审原文", look)
+        self.assertIn(f"**#{b} ·", look)
+        self.assertIn("━━ 开发会话的交审原文", hub.reply(self.g, f"看 {b} 全文", now=NOW).show)
         self.assertIn(f"#{b} 详情", hub.reply(self.g, f"{b} 详情", now=NOW).show)
 
 

@@ -10,10 +10,9 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from decision_inbox import approval, items, sources, specguard, stall, store, tickets
+from decision_inbox import approval, cards, items, sources, specguard, stall, store, tickets
 
 RECENT_MINUTES = 10
-COPY_LABEL = "推荐回复（点代码块右上角复制，发给我）："  # says what the copy block is even when it is not rendered
 TOPIC_CHARS = 20
 FORWARDED = ("forwarded", "picked", "acknowledged", "closed")
 INVALIDATED = ("superseded", "withdrawn")
@@ -183,17 +182,6 @@ def _source(g: store.Group, it: dict) -> str:
     return f"多线：{'＋'.join(it['lines'])}" if it["multi"] else _short(g, it["sender"])
 
 
-def _review_lines(it: dict) -> list[str]:
-    review = it["review"]
-    label = f"**{review['text']}**" if review.get("highlight") else review["text"]
-    out = [f"审查：{label} · 详情：{it['no']} 详情"]
-    if review.get("warn"):
-        out += [f"  正文提到：{m}" for m in review.get("mentions", [])]
-    if it.get("writingNotes"):  # rehearsal2-fixes: shown to the user only
-        out.append("写法提示：" + "；".join(it["writingNotes"]))
-    return out
-
-
 def _decision_lines(it: dict) -> list[str]:
     """Each 「待用户决定」 as its own question with the reviewer's lean (review-nearby R2)."""
     out = ["待你决定的问题（每条都要答，没答全会被追问）："]
@@ -205,52 +193,16 @@ def _decision_lines(it: dict) -> list[str]:
     return out if len(out) > 1 else []
 
 
-def _unanswered_in_copy(it: dict, line: str) -> str | None:
-    missing = [d["id"] for d in it.get("decisions") or ()
-               if not re.search(rf"(?<![A-Za-z0-9]){d['id']}(?![0-9])", line)]
-    return f"  还要答 {'、'.join(missing)}，写在同一条回复里" if missing else None
-
-
 def _item_card(g: store.Group, now: str, it: dict, loop_facts=None) -> str:
-    no = it["no"]
-    topic = clip(it["decide"].split("\n")[0], TOPIC_CHARS)
-    if loop_facts is None:
-        title = f"━━ {no} · {_source(g, it)} · {topic} · {ago(now, it['receivedAt'])}"
-    else:  # loop-detection: the fixed head of DI-5
-        title = loop_head(g, it, "等待用户", _loop_of(it, loop_facts), now)
-    if it["blocks"]:
-        title += f" · 挡住 {it['blocks']} 条线"
-    out = [*_hint(g, it, loop_facts), title, f"要你决定：{it['decide']}"]
-    options = it["options"]
-    rec = next((o for o in options if o["letter"] == it["recommended"]), None)
-    if rec is not None:
-        options = [rec] + [o for o in options if o is not rec]
-    for o in options:
-        first = o["text"].split("\n")[0]  # whole first line: clipped options looked alike (e2e-round1-fixes F12)
-        out.append(f"推荐 {o['letter']}：{first}" if o is rec else f"{o['letter']}：{first}")
-        out.append(f"  选了会怎样：{o['consequence'] or '提出方未说明后果'}")
-        if o is rec:
-            line = copy_line(no, o["letter"], it["suggestedReply"])
-            out += [COPY_LABEL, "```", line, "```"]
-            if (gap := _unanswered_in_copy(it, line)) is not None:
-                out.append(gap)
-        else:
-            out.append(f"  回 {no} {o['letter']}")
-    return "\n".join(out + _decision_lines(it) + _review_lines(it) + _folded(it, loop_facts))
+    """One card after the template (decision-cards); a loop hint stays on top of a non-approval item."""
+    hint = [] if cards.kind(it) in cards.APPROVALS else _hint(g, it, loop_facts)
+    card = cards.render(g, it, waited(_minutes(now, it["receivedAt"])), _source(g, it))
+    return "\n".join([*hint, card])
 
 
 def _combined(g: store.Group) -> str | None:
-    """One copy block answering every recommended card at once (relay-checkpoint-authority R4)."""
-    pending = [it for it in items.pending(g) if not items.is_go_to_session(it)]  # nothing to answer
-    asks = [it for it in pending if it.get("decisions")]  # answered on their own (review-nearby R2)
-    pending = [it for it in pending if not it.get("decisions") and not approval.is_approval(it)]
-    picks = [f"{it['no']} {it['recommended']}" for it in pending if it["recommended"]]
-    if len(picks) < 2:
-        return None
-    out = ["一次答完（全按推荐）：", "```", "，".join(picks), "```"]
-    out += [f"#{it['no']} 没有推荐，要单独回" for it in pending if not it["recommended"]]
-    out += [f"#{it['no']} 带待你决定的问题，要单独回" for it in asks]
-    return "\n".join(out)
+    """One copy block answering every recommended card at once, approvals included (decision-cards DI-2)."""
+    return cards.combined(items.pending(g))
 
 
 ADDED = "【决策收件箱补充】"
@@ -357,17 +309,14 @@ def render_approval(g: store.Group, it: dict, now: str, read_map=specguard.read_
     return "\n".join(out + _folded(it, loop_facts))
 
 
-def _approval_line(g: store.Group, now: str, it: dict) -> str:
-    return (f"━━ #{it['no']} · {it.get('project') or _short(g, it['sender'])} · 模块 {it.get('approvalModule') or '未知'}"
-            f" · 审 {it.get('approvalNode') or '未知节点'} · {ago(now, it['receivedAt'])} · 回「看 {it['no']}」看全文")
-
-
 def render_look(g: store.Group, no: int, now: str) -> str:
-    """「看 N」: one pending item in full."""
+    """「看 N」: one pending item's card; its originals are 「看 N 全文」 (decision-cards DI-3)."""
     it = next((x for x in items.pending(g) if x["no"] == no), None)
     if it is None:
         return f"#{no} 不在待答表里"
-    return render_approval(g, it, now) if approval.is_approval(it) else _item_card(g, now, it)
+    if items.is_go_to_session(it):
+        return _go_to_card(g, now, it)
+    return _item_card(g, now, it)
 
 
 def render_full(g: store.Group, no: int, now: str) -> str:
@@ -392,42 +341,22 @@ def _go_to_where(it: dict) -> str:
     return f"去：在 Codex 应用里打开 {gts['session']} 对应的任务"
 
 
+def _go_to_card(g: store.Group, now: str, it: dict) -> str:
+    minutes = _minutes(now, it["receivedAt"])
+    return cards.go_to_session(it, waited(minutes), _go_to_where(it), minutes >= GO_TO_SESSION_REMIND_MINUTES)
+
+
 def go_to_session_rows(g: store.Group, now: str) -> list[str]:
-    """go-to-session (R21 DI-7): what the user must click in another session, on top of the main view."""
-    rows = []
-    for it in items.pending(g):
-        if not items.is_go_to_session(it):
-            continue
-        gts, waited = it["goToSession"], _minutes(now, it["receivedAt"])
-        title = f"#{it['no']} · {_short(g, it['sender'])} · 去会话操作"
-        if waited >= GO_TO_SESSION_REMIND_MINUTES:
-            title += f"（已等 {waited} 分钟，再提醒一次）"
-        lines = [title, f"  {_go_to_where(it)}", f"  被拦的操作：{gts['blockedAction']}", f"  点：{gts['button']}",
-                 f"  为什么这里批不了：{gts['reason']}"]
-        if gts.get("hostText"):
-            lines.append(f"  宿主原文：{gts['hostText']}")
-        if gts.get("relatedItem"):
-            lines.append(f"  你在 #{gts['relatedItem']} 已同意，只差宿主这一下")
-        lines.append("  点完不用回复，对方会发【已恢复】自动结项")
-        rows.append("\n".join(lines))
-    return ["⚠ 要你去会话里操作：\n" + "\n".join(rows)] if rows else []
+    """go-to-session (R21 DI-7): class 7 cards on top of the main view, no copy block (decision-cards)."""
+    return [_go_to_card(g, now, it) for it in items.pending(g) if items.is_go_to_session(it)]
 
 
 def _cards(g: store.Group, now: str, assessment, relay, loop_facts=None) -> list[str]:
     reported = {it["sender"] for it in items.pending(g) if items.is_go_to_session(it)}
     confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment) if name not in reported]
-    cards, opened = [], False
-    for it in items.pending(g):
-        if items.is_go_to_session(it):
-            continue  # shown on top by go_to_session_rows
-        if not approval.is_approval(it):
-            cards.append(_item_card(g, now, it, loop_facts))
-        elif not opened:  # only the first approval opens in full (approval-display decision 1)
-            cards.append(render_approval(g, it, now, loop_facts=loop_facts))
-            opened = True
-        else:
-            cards.append(_approval_line(g, now, it))
-    return confirms + cards
+    # decision-cards: every item is a short card; go-to-session items are shown on top by go_to_session_rows
+    return confirms + [_item_card(g, now, it, loop_facts) for it in items.pending(g)
+                       if not items.is_go_to_session(it)]
 
 
 def render(g: store.Group, now: str, assessment, relay=None, extra=(), loop_facts=None) -> str:

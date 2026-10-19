@@ -9,8 +9,10 @@
   - 验证：新用例先失败后通过
   - 改写的旧测试：措辞——`test_hub` 的 `test_letter_answer`、`test_owner_item_copies_its_dev_lines`、`test_receive_reply_sent_view`（「已转达」→「已收下你的答复」，sent 输出多了 show）、`test_view_without_relay_and_unsent`、`test_main_view_warns_unsent_and_unreadable_relay`（「有 N 条没发出去」→逐条列出）、`test_superseded_and_withdrawn_closed_once`（已撤回的不进 alsoAnswers）；造数据——`test_view` 的 `forward`、`test_patrol` 的 `answered_item`、`test_stophook` 的 `answered` 与 crew 用例补发送记录（不改被测行为）
   - 顺带：巡视「答复卡在离线负责人」只看已发出的答复（patrol._handoffs），否则没发出去的答复也会叫醒负责人
-- [ ] Task 4：7 类卡片与一次答完（DI-1、DI-2、I-10；验收 1、2、3、11）
+- [x] Task 4：7 类卡片与一次答完（DI-1、DI-2、I-10；验收 1、2、3、11）
   - 验证：`tests/test_cards.py` 等新用例先失败后通过；列出改写的旧测试
+  - 改写的旧测试（都是断言旧卡片写法的，按模板改写，原意保留）：`test_view` 的 ItemCardTest 全部、ReviewLineTest 全部、DecisionCardTest 全部（含「一次答完」改为包含带 D 的项）、NeedsUserCardTest 一条、LetterSelfCheckTest 的自检正则、FullViewTest 的样例（hub-view 主视图样例里的卡片段换成模板卡片，其余照旧）、`card()` 辅助；`test_approval` 的「主视图只展开第一项」改为「一项都不展开，看 N／看 N 全文」；`test_go_to_session` 两条（第 7 类卡片的抬头与提醒写法）；`test_loops` ShowTest 四条（卡片抬头不带打转数据、不再折叠历史，历史只在「看模块」）
+  - 写法细节（最终验收时交用户看）：①「一次答完」各项都没有「，；」时用「，」连成一行（同模板例子），有任何一项带这些符号（如 `49 B 换方案：…，先给我看预览`、`40 A；D1 A`）就一项一行，保证能被一次解析；②第 6 类卡片也带第二行「项目 · 线」，不然看不出是哪条线问的；③「注意」按 Spec 假设 3 取审查标签的「正文提到」和写法提示（writingNotes）
 - [ ] Task 5：看 N 与看 N 全文（DI-3；验收 5）
   - 验证：新用例先失败后通过
 - [ ] Task 6：收件箱停止检查（DI-4；验收 6）
