@@ -13,8 +13,10 @@
   - 验证：`tests/test_cards.py` 等新用例先失败后通过；列出改写的旧测试
   - 改写的旧测试（都是断言旧卡片写法的，按模板改写，原意保留）：`test_view` 的 ItemCardTest 全部、ReviewLineTest 全部、DecisionCardTest 全部（含「一次答完」改为包含带 D 的项）、NeedsUserCardTest 一条、LetterSelfCheckTest 的自检正则、FullViewTest 的样例（hub-view 主视图样例里的卡片段换成模板卡片，其余照旧）、`card()` 辅助；`test_approval` 的「主视图只展开第一项」改为「一项都不展开，看 N／看 N 全文」；`test_go_to_session` 两条（第 7 类卡片的抬头与提醒写法）；`test_loops` ShowTest 四条（卡片抬头不带打转数据、不再折叠历史，历史只在「看模块」）
   - 写法细节（最终验收时交用户看）：①「一次答完」各项都没有「，；」时用「，」连成一行（同模板例子），有任何一项带这些符号（如 `49 B 换方案：…，先给我看预览`、`40 A；D1 A`）就一项一行，保证能被一次解析；②第 6 类卡片也带第二行「项目 · 线」，不然看不出是哪条线问的；③「注意」按 Spec 假设 3 取审查标签的「正文提到」和写法提示（writingNotes）
-- [ ] Task 5：看 N 与看 N 全文（DI-3；验收 5）
+- [x] Task 5：看 N 与看 N 全文（DI-3；验收 5）
   - 验证：新用例先失败后通过
+  - 改写的旧测试：`test_approval` 的 VerbatimTest（不再加围栏）与 DisplayTest 一条（原文每行带「│ 」）
+  - 补充规则：Markdown 原文里自带的围栏行（``` 或 ~~~ 开头）也加「│ 」，不然全文里仍会出现代码块
 - [ ] Task 6：收件箱停止检查（DI-4；验收 6）
   - 验证：`tests/test_stophook.py` 新用例先失败后通过；原有用例不变
 - [ ] Checkpoint（gate）：DI-9 信号样本——用户让一个会话停在权限弹窗上，抓桌面版会话列表样本

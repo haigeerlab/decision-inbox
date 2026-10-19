@@ -192,3 +192,47 @@ class CombinedTest(CardCase):
         [joined] = code_blocks(self.main().split("一次答完（全按推荐）：")[1])
         self.assertEqual(joined, f"{a} A，{b} B")
 
+
+
+class FullTextTest(CardCase):
+    """decision-cards Task 5 (DI-3): 「看 N 全文」 shows the originals, never as a code block."""
+
+    def full(self, no):
+        from decision_inbox import hub
+        return hub.reply(self.g, f"看 {no} 全文", now=NOW).show
+
+    def test_originals_without_code_blocks(self):
+        no = self.ask()
+        text = self.full(no)
+        self.assertIn("━━ 开发会话的交审原文", text)
+        self.assertNotIn("```", text)
+        self.assertIn("│ 【交审】\n│ 结束：无\n│ 模块：alpha", text)
+        self.assertIn("# alpha", text)  # Markdown shown as it is
+
+    def test_markdown_fences_are_not_code_blocks(self):
+        self.commit_file("spec/alpha.md", "# alpha\n\n```js\nlet x = 1\n```\n")
+        no = self.ask()
+        text = self.full(no)
+        self.assertNotIn("\n```", text)
+        self.assertIn("│ ```js\nlet x = 1\n│ ```", text)
+
+    def test_long_file_is_cut(self):
+        self.commit_file("spec/alpha.md", "".join(f"第 {i} 行\n" for i in range(1, 351)))
+        no = self.ask()
+        text = self.full(no)
+        self.assertIn("第 300 行", text)
+        self.assertNotIn("第 301 行", text)
+        self.assertIn(f"还有 50 行，见 {self.repo}/spec/alpha.md ＠ {self.commit}", text)
+
+    def test_answered_item_still_viewable(self):
+        no = self.ask()
+        items.answer(self.g, [items.Answer(no, "A", f"{no} A")], answered_at=T2)
+        self.assertIn("━━ 开发会话的交审原文", self.full(no))
+        self.assertIn("不存在", self.full(999))
+
+    def commit_file(self, rel, text):
+        import subprocess
+        (self.repo / rel).write_text(text, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qam", "y"], check=True)
+        self.commit = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "--short=7", "HEAD"], check=True,
+                                     capture_output=True, text=True).stdout.strip()

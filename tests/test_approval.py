@@ -138,11 +138,11 @@ class DisplayTest(ApprovalCase):
                          ["原文】", "原文】", "决策收件箱补充】", "决策收件箱补充】"])
         self.assertIn("开发会话的交审原文", heads[1])
         self.assertIn(f"spec/alpha.md @ {self.commit}", heads[2])
-        self.assertIn("【交审】\n结束：无\n模块：alpha\n节点：Spec\n要点：x\n", text)  # verbatim
+        self.assertIn("│ 【交审】\n│ 结束：无\n│ 模块：alpha\n│ 节点：Spec\n│ 要点：x\n", text)  # verbatim, marked
         self.assertIn("# alpha\n", text)
         self.assertTrue(heads[-1].startswith("━━ 选项与推荐"))
         self.assertNotIn("```", text.split("━━ 选项与推荐")[1])  # no copy block for the answer
-        self.assertIn("```text\n【交审】", text)  # plain-text originals are fenced, verbatim
+        self.assertIn("│ 【交审】", text)  # decision-cards: plain-text originals marked, never fenced
         self.assertIn("Spec 批准后，授权写 Plan", text)
         self.assertIn("开始写计划", text)  # the proposer's own consequence
         self.assertTrue(text.rstrip().endswith(f"答复写法示例：{no} A"))
@@ -218,9 +218,9 @@ class SplitAndEvidenceTest(ApprovalCase):
 
 
 class VerbatimTest(unittest.TestCase):
-    def test_fence_outgrows_backticks_inside(self):
-        lines = view._verbatim("a ```` b\n", "x.txt")
-        self.assertEqual((lines[0], lines[-1]), ("`````text", "`````"))
+    def test_no_fence_at_all(self):
+        """decision-cards DI-3 (I-9): originals are never a code block; plain text is marked line by line."""
+        self.assertEqual(view._verbatim("a ```` b\nc\n", "x.txt"), ["│ a ```` b\n│ c"])
         self.assertEqual(view._verbatim("# 标题\n", "spec/a.md"), ["# 标题"])
 
 

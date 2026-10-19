@@ -213,17 +213,25 @@ NODE_EFFECTS = {"Spec": "Spec 批准后，授权写 Plan；不授权开始实现
                 "接口提案": "接口提案批准后，授权按提案改接口；用到它的模块要跟着改。"}
 
 
-def _verbatim(text: str, path: str) -> list[str]:
-    """Markdown files render as they do in their project; anything else is fenced so every line shows as is.
+FULL_LINES = 300  # decision-cards DI-3: one file in 「看 N 全文」
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
-    The fence is longer than any backtick run inside, so the original can never close it early.
+
+def _verbatim(text: str, path: str, where: str | None = None) -> list[str]:
+    """Originals as they are, never as a code block (decision-cards DI-3, I-9).
+
+    Markdown renders as in its project, its own fence lines marked so they open no block; any other
+    file has every line marked with 「│ 」. Past FULL_LINES lines the rest is named, not shown.
     """
-    body = text.rstrip("\n")
+    lines = text.rstrip("\n").split("\n")
+    shown = lines[:FULL_LINES]
     if path.endswith(".md"):
-        return [body]
-    longest = max((len(run) for run in re.findall(r"`+", body)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return [fence + "text", body, fence]
+        out = [f"│ {line}" if _FENCE_RE.match(line) else line for line in shown]
+    else:
+        out = [f"│ {line}" for line in shown]
+    if len(lines) > FULL_LINES:
+        out.append(f"还有 {len(lines) - FULL_LINES} 行，见 {where or path}")
+    return ["\n".join(out)]
 
 
 def _original_lines(kind: str, ref: dict) -> list[str]:
@@ -243,7 +251,7 @@ def _artifact_lines(a: dict) -> list[str]:
     out = [head]
     if got.diff is not None:
         out += [f"与上一版 {a['previous']} 的差异：", *_verbatim(got.diff, "diff"), "全文："]
-    return out + _verbatim(got.text, a["path"])
+    return out + _verbatim(got.text, a["path"], f"{a['path']} ＠ {a['commit']}")
 
 
 def _module_sources(it: dict, keep) -> list[str]:
