@@ -119,6 +119,45 @@ class PatrolTest(DoctorCase):
         self.assertEqual(self.check("巡视").state, "ok")
 
 
+class TornDownTest(DoctorCase):
+    """doctor-skip-teardown: a group whose decision inbox has left is not checked for patrol."""
+
+    def stale_patrol_and_leave(self, left):
+        onboard.record_task("g", "decision-inbox-patrol-g", "2026-10-15T20:00:00+08:00")
+        g = store.open_group("g")
+        with g.transaction() as tx:
+            tx.write_state("patrol", {"lastRunAt": "2026-10-15T21:00:00+08:00"})
+            tx.write_state(onboard.DOMAIN, {**tx.read_state(onboard.DOMAIN), "left": left})
+
+    def test_torn_down_group_is_ok_and_not_counted(self):
+        self.stale_patrol_and_leave({"g-hub": "2026-10-17T21:30:00+08:00", "g-dev": "2026-10-17T21:29:00+08:00"})
+        c = self.check("巡视")
+        self.assertEqual(c.state, "ok")
+        for words in ("g 的决策收件箱已卸载", "10-17 21:30", "状态目录保留", "不再检查巡视"):
+            self.assertIn(words, c.evidence)
+        self.assertIn("异常 0", doctor.render([c]))
+
+    def test_only_a_line_left_is_still_checked(self):
+        self.stale_patrol_and_leave({"g-dev": NOW})
+        self.assertEqual(self.check("巡视").state, "bad")
+
+    def test_hub_set_up_again_is_checked_again(self):
+        self.stale_patrol_and_leave({"g-hub": "2026-10-17T21:30:00+08:00"})
+        onboard.hub("g", "g-hub", "local_1", self.work / "hub", True, NOW)
+        self.assertEqual(self.check("巡视").state, "bad")
+
+    def test_no_hub_in_roster_is_checked_as_before(self):
+        solo, _ = store.init_group("solo")
+        with solo.transaction() as tx:
+            tx.add_session({"relayName": "s-dev", "shortName": "独立", "role": "dev", "line": ["web"],
+                            "host": "codex-desktop", "repo": str(self.work / "dev")})
+        onboard.record_task("solo", "decision-inbox-patrol-solo", "2026-10-15T20:00:00+08:00")
+        with store.open_group("solo").transaction() as tx:
+            tx.write_state("patrol", {"lastRunAt": "2026-10-15T21:00:00+08:00"})
+            tx.write_state(onboard.DOMAIN, {**tx.read_state(onboard.DOMAIN), "left": {"s-dev": NOW}})
+        self.assertEqual(self.check("巡视", doctor.run(["solo"], NOW)).state, "bad")
+
+
 class HookTrustTest(DoctorCase):
     def test_codex_trust_states(self):
         self.assertEqual(self.check("Codex 钩子信任").state, "unknown")

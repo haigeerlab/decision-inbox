@@ -120,7 +120,20 @@ def _shim() -> Check:
     return Check("转发脚本", "ok", "本插件", f"{path} → {root}（版本 {version or '未知'}）")
 
 
+def _torn_down(g: store.Group) -> str | None:
+    """When every decision inbox in the roster has left (onboard teardown), the latest leaving time."""
+    left = store.read_state(g, onboard.DOMAIN).get("left", {})
+    hubs = [e["relayName"] for e in store.roster(g) if e.get("role") == "hub"]
+    if not hubs or any(h not in left for h in hubs):
+        return None
+    return max(left[h] for h in hubs)
+
+
 def _patrol(g: store.Group, now: str) -> Check:
+    gone = _torn_down(g)  # doctor-skip-teardown: a torn-down group is not a stopped patrol
+    if gone:
+        return Check("巡视", "ok", "本插件",
+                     f"{g.name} 的决策收件箱已卸载（{gone[5:16].replace('T', ' ')}），状态目录保留，不再检查巡视")
     state = store.read_state(g, onboard.DOMAIN)
     session, task = state.get("patrolSession"), state.get("patrolTask")
     if not (session or task):
