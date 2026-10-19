@@ -2,13 +2,14 @@
 
 # Implementation Plan: decision-cards
 
-> 依据：`spec/decision-cards.md`（用户 2026-10-19 批准，指纹 65ed289206df；D1 选 A）。任务清单：`tasks/decision-cards/todo.md`。分支 `claude/decision-cards-9de87b`（从 main a2ecc67 = v0.0.29 开出）。
+> 依据：`spec/decision-cards.md`（用户 2026-10-19 批准，指纹 65ed289206df；D1 选 A；同日修订：v2.3 并入本模块、DI-9 改读 `bridge_sessions`，待复审）。
+> 修订（2026-10-19）：去掉「DI-9 信号样本」检查点，Task 7 改读 agent-relay `bridge_sessions`；新增 Task 9 升到 v2.3；Task 1～6 已完成不变。任务清单：`tasks/decision-cards/todo.md`。分支 `claude/decision-cards-9de87b`（从 main a2ecc67 = v0.0.29 开出）。
 
 需要的外部条件：无（不装依赖、不联网；只用仓库已有的 `python3`、`git` 与测试）。
 
 ## Overview
 
-八个任务，每条修复先写在 v0.0.29 上会失败的测试再改：先做独立的小修复（超时、计数、答复解析），再做发送记账，然后是卡片本体、全文、停止检查、弹窗兜底，最后改规则段与文档，并用 di-p0 数据副本实跑。不升版本号，不推送。
+九个任务，每条修复先写在 v0.0.29 上会失败的测试再改：先做独立的小修复（超时、计数、答复解析），再做发送记账，然后是卡片本体、全文、停止检查、弹窗兜底，最后改规则段与文档，并用 di-p0 数据副本实跑。不升版本号，不推送。
 
 ## Architecture Decisions
 
@@ -41,9 +42,10 @@
   - 拿这份输出对照本轮最后一条 assistant 文字。
   - `__main__._hook` 先做这项检查，再按 cwd 去找名册。已核对本机会话记录格式：user 消息、Bash 的 tool_use／tool_result、assistant 文字都能读到。
 - **弹窗兜底（DI-9）**：
-  - 新增 `decision_inbox/desktop.py`，解析巡视会话写下的桌面版会话列表 JSON；
+  - 新增 `decision_inbox/desktop.py`，解析 agent-relay `bridge_sessions` 的输出；
   - `view` 和 `patrol plan` 新增选填 `--sessions`；
-  - 字段名以 Task 7 抓到的真实样本为准。
+  - 「停在弹窗」按 `status: waiting` 且 `waitingFor` 含 permission 判；字段值来自转述，第一次遇到真弹窗时核对。
+- **v2.3（Task 9）**：`protocol.parse` 输出新增 `wait_kind` 的八种取值、`points`、三个选填字段；`cards.kind` 先看 `kind` 再看节点。
 - **小修**：
   - `crew.DEFAULT_TIMEOUT` 改为 15；
   - `stall._findings` 只数最后一次答复之后的事项；
@@ -97,17 +99,17 @@
     - 原有开发线停止钩子的用例不变。
   - 再改 `stophook.py`、`__main__.py`。
   - doctor 加一项：用本机最近一份会话记录试读一次，报告「读得懂／读不懂」。
-- **Checkpoint（gate）：DI-9 的信号样本**
-  - 要你配合：让某个会话停在一次权限弹窗上（任意会话都行，弹窗不用点），我调桌面版会话列表抓一份样本，存进测试 fixture。
-  - 样本里有「停在弹窗」的状态：照 Task 7 做。
-  - 没有：我把实际字段报给你，你决定 Task 7 是缩成只覆盖登记过邮箱的会话，还是先挂起。
 - **Task 7：会话停在弹窗上的兜底提醒**（DI-9；验收 14）
-  - 先写测试，用样本 fixture：
-    - 满 5 分钟、没有对应事项时出第 7 类提醒，且没有复制块；
-    - 有对应事项、不满 5 分钟、读不到会话列表时都不出，读不到时写「读不到会话列表」；
-    - 只看名册里的会话和它们开出来的会话。
-  - 再写 `desktop.py`，改 `view.py`、`patrol.py`、`__main__.py`；巡视提示词加一步「读会话列表写入 io」。
-- **Task 8：规则段、文档与真实数据验收**（Spec 第 10 节；验收 4、15）
+  - 先写测试，夹具是 `bridge_sessions` 的输出（idle、busy 用 2026-10-19 实测的形状；waiting／`waitingFor: permission prompt` 按 rh2-coord 的转述，夹具里注明来源）：
+    - 属于本组（链接编号在名册、cwd 在名册仓库里或在「<仓库名>-crew/」模块工作区里）、停满 5 分钟、没有对应去会话操作事项时，出第 7 类提醒，没有复制块；
+    - 有对应事项、不满 5 分钟、不属于本组、收件箱和巡视会话自己，都不出；
+    - 没带 `--sessions` 时写「本次没带会话状态」；巡视的桌面通知同一次弹窗只发一次。
+  - 再写 `decision_inbox/desktop.py`（解析 `bridge_sessions`），改 `view.py`、`hub.py`、`patrol.py`、`__main__.py`（`--sessions`）、`stall.DEFAULTS`（`promptMinutes`）；巡视提示词和 CONVENTION 加「读 `bridge_sessions` 写入 sessions.json」。
+- **Task 9：升到 session-protocol v2.3**（Spec 要做的 10；验收 15）
+  - 先做一致性：复制 v2.3 样例到 `tests/fixtures/session-protocol/v2.3/`，`CONTRACT_VERSION` 改 2.3，跑一致性测试看到新样例失败。
+  - 再改 `protocol.py`：「类型」认九种取值、按类型解析 `points`、三个选填字段；`items.py` 记 `kind`、`points`、`note`、`reason`、`approveEffect`。
+  - 再写 `tests/test_cards.py` 用例（card-final、card-spec-plan、旧事项不受影响），改 `cards.py`：有 `kind` 时按小项出内容要点、「批了会怎样」放最后、「推荐理由」接在推荐后面；「看 N 全文」列出全部 `points`。
+- **Task 8：规则段、文档与真实数据验收**（Spec 第 11 节；验收 4、16）
   - 改 `hub.CONVENTION`：停止时会被程序检查；失败要填原因；`inbox sent` 的 show 也要贴；新增「看 N 全文」「重发 N」「N 原话：」三种写法。
   - 改 README「提请批准怎么读」「要你去会话里操作」两节，`docs/glossary.md` 加「复制块」「看 N 全文」。
   - 用 di-p0 的 `items.json` 副本实跑：放在 scratchpad，把 #47、#49、#50、#54 置为待答，用 `DECISION_INBOX_HOME` 指向副本。跑 `view`，再逐张对照模板样例，看外框、字段顺序、复制块、行数。结果写进 todo；真实状态目录前后的 md5 不变。
@@ -132,5 +134,6 @@
 | 会话记录格式变了，停止检查失效 | 读不懂就放行，并在 stderr 写原因；doctor 会报出来 |
 | 停止检查误拦（例如会话把卡片按 Markdown 换了缩进） | 只对抬头行和复制块内容做逐字比较，忽略空白差异；只拦一次 |
 | 挑选规则把关键内容挤掉 | 卡片上一律提示「看 N 全文」；用真实数据实跑核对 |
-| 桌面版会话列表不给弹窗状态 | 前面设了检查点，先抓样本，没有就报给你定 |
+| 「停在弹窗」的字段值来自转述 | 夹具注明来源；第一次遇到真弹窗读一次 `bridge_sessions` 核对，对不上就改 |
+| v2.3 让 Task 4 的卡片代码分两条路（有类型／没类型） | 没类型的旧事项沿用已测过的第一期规则；两条路共用外框、结论、选项、复制块 |
 | 旧测试大量断言旧卡片写法 | 按新写法改，并在 todo 列出改过哪些，最终验收时交你看 |
