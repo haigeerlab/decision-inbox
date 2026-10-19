@@ -216,16 +216,18 @@ class ReadmeTest(unittest.TestCase):
                        # relay-presence-and-doubt
                        "送达存疑", "决策收件箱欠回复越来越多",
                        # protocol-contract-v1-3, protocol-contract-v1-4, p0-field-fixes
-                       # proxied-session-note
-                       "被代开的会话碰到不可逆操作",
+                       # proxied-session-note, corrected by permission-closeout
+                       "确认框也会弹", "permissionDecision.source",
                        # host-permission-check
                        "宿主权限", ".codex/config.toml", "network_access = true", "没实测",
                        # go-to-session
                        "session-protocol` v2.2", "要你去会话里操作", "去会话操作", "下一版改了协作规则段",
                        # scope-authority-defaults
-                       "--no-checkpoint-authority", "默认打开", "npm ci", "pip install -r", "旧版本写的", "下一版改了协作规则段",
+                       "--no-checkpoint-authority", "默认打开", "npm ci", "旧版本写的", "下一版改了协作规则段",
+                       # permission-closeout
+                       "pnpm add *", "禁止", "curl … | sh", "开发服务命令", "依赖清单",
                        # stall-and-patrol
-                       "/loop 5m", "### 常规授权（Claude 线）", "先问」规则可能不生效", "io/snapshots/",
+                       "/loop 5m", "### 常规授权（Claude 线）", "io/snapshots/",
                        # approval-display
                        "### 提请批准怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
                        # review-nearby

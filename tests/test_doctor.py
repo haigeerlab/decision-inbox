@@ -159,23 +159,18 @@ class TornDownTest(DoctorCase):
 
 
 class HostPermissionTest(DoctorCase):
-    """host-permission-check (R21 DI-4): each dev line's host permissions against its Plan's needs."""
+    """host-permission-check, permission-closeout: each dev line's host against what its repository needs to install."""
 
     def setUp(self):
         super().setUp()
-        from unittest import mock
-        self.module = mock.patch.object(doctor, "_active_module", return_value="m")
-        self.module.start()
-        self.addCleanup(self.module.stop)
         self.codex.write_text('sandbox_mode = "workspace-write"\n', encoding="utf-8")
 
-    def plan(self, needs):
-        d = self.work / "dev" / "tasks" / "m"
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "plan.md").write_text(f"# Plan\n\n需要的外部条件：{needs}\n\n## Overview\n", encoding="utf-8")
+    def manifest(self, name="package.json", text='{"dependencies": {}}'):
+        (self.work / "dev").mkdir(parents=True, exist_ok=True)
+        (self.work / "dev" / name).write_text(text, encoding="utf-8")
 
     def test_bad_lists_both_options_and_writes_nothing(self):
-        self.plan("从官方源装 vitest")
+        self.manifest()
         before = (self.codex.read_bytes(), sorted(p.name for p in (self.work / "dev").rglob("*")))
         c = self.check("宿主权限：开发")
         self.assertEqual((c.state, c.source), ("bad", "Codex"))
@@ -184,17 +179,16 @@ class HostPermissionTest(DoctorCase):
             self.assertIn(words, c.fix)
         self.assertEqual((self.codex.read_bytes(), sorted(p.name for p in (self.work / "dev").rglob("*"))), before)
 
-    def test_ok_when_nothing_needed_or_no_plan(self):
-        self.plan("无")
-        self.assertEqual(self.check("宿主权限：开发").state, "ok")
-        (self.work / "dev" / "tasks" / "m" / "plan.md").unlink()
+    def test_ok_without_a_manifest_and_plan_does_not_matter(self):
+        (self.work / "dev" / "tasks" / "m").mkdir(parents=True, exist_ok=True)
+        (self.work / "dev" / "tasks" / "m" / "plan.md").write_text("需要的外部条件：装 vitest\n", encoding="utf-8")
         c = self.check("宿主权限：开发")
         self.assertEqual(c.state, "ok")
-        self.assertIn("没法对照", c.evidence)
+        self.assertIn("没有依赖清单", c.evidence)
         self.assertIn("异常 0", doctor.render([c]))
 
     def test_unknown_when_config_unreadable(self):
-        self.plan("装依赖")
+        self.manifest("requirements.txt", "requests\n")
         self.codex.unlink()
         c = self.check("宿主权限：开发")
         self.assertEqual(c.state, "unknown")

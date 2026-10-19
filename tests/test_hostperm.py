@@ -90,14 +90,17 @@ class ClaudeFactsTest(HostCase):
         (self.repo / ".claude").mkdir(exist_ok=True)
         (self.repo / ".claude" / name).write_text(json.dumps(doc), encoding="utf-8")
 
-    def test_allowed_and_retired(self):
+    def test_allowed_retired_and_dev(self):
         self.assertFalse(hostperm.claude_facts(str(self.repo)).installs_allowed)
         self.settings("settings.local.json", {"permissions": {"allow": ["Bash(npm ci)"], "ask": ["Bash(npm install *)"]}})
         f = hostperm.claude_facts(str(self.repo))
-        self.assertEqual((f.installs_allowed, f.retired), (True, ["Bash(npm install *)"]))
+        self.assertEqual((f.installs_allowed, f.retired), (False, ["Bash(npm install *)"]))  # only lockfile installs
+        self.settings("settings.local.json", {"permissions": {"allow": ["Bash(npm install *)", "Bash(pnpm dev)"]}})
+        f = hostperm.claude_facts(str(self.repo))
+        self.assertEqual((f.installs_allowed, f.retired, f.allow[-1]), (True, [], "Bash(pnpm dev)"))
 
     def test_shared_settings_count_and_bad_json(self):
-        self.settings("settings.json", {"permissions": {"allow": ["Bash(pip install -r *)"]}})
+        self.settings("settings.json", {"permissions": {"allow": ["Bash(pnpm add *)"]}})
         self.assertTrue(hostperm.claude_facts(str(self.repo)).installs_allowed)
         (self.repo / ".claude" / "settings.local.json").write_text("{bad", encoding="utf-8")
         f = hostperm.claude_facts(str(self.repo))
@@ -105,29 +108,25 @@ class ClaudeFactsTest(HostCase):
         self.assertIn("settings.local.json", f.reason)
 
 
-class PlanNeedsTest(HostCase):
-    def plan(self, text, module="m"):
-        d = self.repo / "tasks" / module
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "plan.md").write_text(text, encoding="utf-8")
+class ProjectNeedsTest(HostCase):
+    def test_manifests(self):
+        self.assertEqual(hostperm.project_needs(str(self.repo)), hostperm.ProjectNeeds(False, None))
+        for name in ("pyproject.toml", "requirements-dev.txt", "uv.lock", "package.json"):
+            with self.subTest(name=name):
+                (self.repo / name).write_text("{}", encoding="utf-8")
+                self.assertTrue(hostperm.project_needs(str(self.repo)).installs)
+                (self.repo / name).unlink()
 
-    def test_field_line(self):
-        self.plan("# Plan\n\n需要的外部条件：无（不装依赖、不联网）。\n\n## Overview\n")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "none")
-        self.plan("# Plan\n\n需要的外部条件：从官方源装 vitest\n  以及联网拉取 schema\n\n## Overview\n")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "needs")
+    def test_dev_script(self):
+        (self.repo / "package.json").write_text('{"scripts": {"dev": "vite"}}', encoding="utf-8")
+        (self.repo / "pnpm-lock.yaml").write_text("", encoding="utf-8")
+        self.assertEqual(hostperm.project_needs(str(self.repo)), hostperm.ProjectNeeds(True, "Bash(pnpm dev)"))
 
-    def test_section_heading(self):
-        self.plan("# Plan\n\n## 需要的外部条件\n\n- 依赖：zod@3\n- 联网：npm 官方源\n\n## Tasks\n")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "needs")
-        self.plan("# Plan\n\n## 需要的外部条件\n\n无\n\n## Tasks\n")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "none")
-
-    def test_unknown(self):
-        self.assertEqual(hostperm.plan_needs(str(self.repo), None), "unknown")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "unknown")  # no file
-        self.plan("# Plan\n\n## Overview\n")
-        self.assertEqual(hostperm.plan_needs(str(self.repo), "m"), "unknown")
+    def test_plan_is_not_read(self):
+        (self.repo / "tasks" / "m").mkdir(parents=True)
+        (self.repo / "tasks" / "m" / "plan.md").write_text("需要的外部条件：装 vitest\n", encoding="utf-8")
+        self.assertFalse(hostperm.project_needs(str(self.repo)).installs)
+        self.assertFalse(hasattr(hostperm, "plan_needs"))
 
 
 class CompareTest(HostCase):
@@ -135,38 +134,62 @@ class CompareTest(HostCase):
         return hostperm.CodexFacts(write=True, network=network, trusted=trusted,
                                    network_source="全局配置" if network else "", reason=None)
 
+    def needs(self, installs=True, dev=None):
+        return hostperm.ProjectNeeds(installs, dev)
+
     def test_codex_bad_gives_both_options(self):
-        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, "needs")
+        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, self.needs())
         self.assertEqual(r.state, "bad")
+        self.assertIn("依赖清单", r.evidence)
         for words in (".codex/config.toml", "[sandbox_workspace_write]", "network_access = true", "没实测",
                       "不改 ~/.codex/config.toml", "B ", "去会话操作"):
             self.assertIn(words, r.fix)
 
     def test_untrusted_starts_with_trust(self):
-        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False, trusted=False), None, "needs")
+        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False, trusted=False), None, self.needs())
         self.assertIn("先在 Codex 里信任这个项目", r.fix)
 
-    def test_ok_and_cannot_compare(self):
-        self.assertEqual(hostperm.compare("codex-desktop", str(self.repo), self.codex(True), None, "needs").state, "ok")
-        self.assertEqual(hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, "none").state, "ok")
-        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, "unknown")
+    def test_ok_cases(self):
+        self.assertEqual(hostperm.compare("codex-desktop", str(self.repo), self.codex(True), None, self.needs()).state, "ok")
+        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, self.needs(False))
         self.assertEqual(r.state, "ok")
-        self.assertIn("没法对照", r.evidence)
+        self.assertIn("没有依赖清单", r.evidence)
+
+    def test_codex_dev_server_mentions_the_browser(self):
+        r = hostperm.compare("codex-desktop", str(self.repo), self.codex(False), None, self.needs(dev="Bash(npm run dev)"))
+        self.assertEqual(r.state, "bad")
+        self.assertIn("可能下载不了浏览器", r.evidence)
+        self.assertIn("A 你自己改", r.fix)
+        self.assertNotIn("浏览器", hostperm.compare("codex-desktop", str(self.repo), self.codex(True), None,
+                                                    self.needs(dev="Bash(npm run dev)")).evidence)
 
     def test_unknown_facts(self):
         facts = hostperm.CodexFacts(write=None, network=None, trusted=None, network_source="", reason="读不到 x")
-        r = hostperm.compare("codex-desktop", str(self.repo), facts, None, "needs")
+        r = hostperm.compare("codex-desktop", str(self.repo), facts, None, self.needs())
         self.assertEqual((r.state, r.evidence), ("unknown", "读不到 x"))
 
     def test_claude(self):
         bad = hostperm.ClaudeFacts(installs_allowed=False, retired=[], reason=None)
-        r = hostperm.compare("claude-desktop", str(self.repo), None, bad, "needs")
+        r = hostperm.compare("claude-desktop", str(self.repo), None, bad, self.needs())
         self.assertEqual(r.state, "bad")
         self.assertIn("重跑接入", r.fix)
         old = hostperm.ClaudeFacts(installs_allowed=True, retired=["Bash(npm install *)"], reason=None)
-        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, old, "needs").state, "bad")
+        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, old, self.needs()).state, "bad")
         good = hostperm.ClaudeFacts(installs_allowed=True, retired=[], reason=None)
-        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, good, "needs").state, "ok")
+        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, good, self.needs()).state, "ok")
+        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, bad, self.needs(False)).state, "ok")
+
+    def test_claude_dev_server(self):
+        no_dev = hostperm.ClaudeFacts(installs_allowed=True, retired=[], reason=None, allow=["Bash(npm install *)"])
+        r = hostperm.compare("claude-desktop", str(self.repo), None, no_dev, self.needs(dev="Bash(pnpm dev)"))
+        self.assertEqual(r.state, "bad")
+        self.assertIn("开发服务命令 pnpm dev 没放行", r.evidence)
+        for words in ("重跑接入", "去会话操作"):
+            self.assertIn(words, r.fix)
+        ok = hostperm.ClaudeFacts(installs_allowed=True, retired=[], reason=None,
+                                  allow=["Bash(npm install *)", "Bash(pnpm dev)"])
+        self.assertEqual(hostperm.compare("claude-desktop", str(self.repo), None, ok,
+                                          self.needs(dev="Bash(pnpm dev)")).state, "ok")
 
 
 if __name__ == "__main__":
@@ -198,13 +221,12 @@ class JoinPreviewTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def join(self, needs):
-        from unittest import mock
-        from decision_inbox import doctor, onboard
-        (self.repo / "tasks" / "m" / "plan.md").write_text(f"需要的外部条件：{needs}\n", encoding="utf-8")
-        with mock.patch.object(doctor, "_active_module", return_value="m"):
-            return onboard.join("demo", role="dev", relay_name="app", short_name="应用", host="codex-desktop",
-                                lines=["应用"], desktop_session=None, project=self.repo, reviewer=None, nodes=[],
-                                confirm=False, now="2026-10-19T12:00:00+08:00", session_cwd=str(self.repo))
+        from decision_inbox import onboard
+        if needs != "无":
+            (self.repo / "package.json").write_text("{}", encoding="utf-8")
+        return onboard.join("demo", role="dev", relay_name="app", short_name="应用", host="codex-desktop",
+                            lines=["应用"], desktop_session=None, project=self.repo, reviewer=None, nodes=[],
+                            confirm=False, now="2026-10-19T12:00:00+08:00", session_cwd=str(self.repo))
 
     def test_warns_with_both_options(self):
         notes = [w for w in self.join("装 vitest").warnings if "宿主权限" in w]

@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved c24532482f19 -->
+<!-- spec-guard: review approved 422faad90de3 -->
 
 # Spec: proxied-session-note
 
@@ -11,6 +11,7 @@
 ## 现状（已核对）
 
 - **实测依据**：stall-and-patrol 的 E3（`spec/stall-and-patrol.md`）——用户亲手开的会话里推送前弹了确认；本插件替用户开的会话里推送两次都没弹确认、直接执行了，原因不明（宿主层面）。
+- **更正（2026-10-19，permission-closeout）**：复查这个代开会话的记录（`~/.claude/projects/-Users-vilin-Documents-haigeerlab-r16-claude/7d26730f-….jsonl`），权限模式是 `default`，两次 `git push` 的 `permissionDecision.source` 都是 `user_temporary`——弹了确认、被点了允许，不是「没弹」。module-crew 的补测会话同样如此（用户决定 67）。上面这句保留作历史记录。
 - **已有提醒**：README「使用注意事项」第 158 行写了这一条，但接入预览和协作规则段里没有。
 - **相关规则**：
   - scope-authority-defaults 起，Claude 线的「先问」规则是推送、`reset --hard`、`rm -rf`；加新包不写规则，交给宿主默认处理，规则段要求先问一次。
