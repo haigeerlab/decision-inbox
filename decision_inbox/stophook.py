@@ -7,7 +7,9 @@ host's `stop_hook_active`.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -126,8 +128,8 @@ def _answered(g: store.Group, me: str, now: str) -> list[str]:
     """Items this session raised that the user answered and it has not ended with 【已恢复】 (H17)."""
     rows = []
     for it in items.by_status(g, *ANSWERED):
-        if it["sender"] != me or not it["answers"]:
-            continue
+        if it["sender"] != me or not it["answers"] or not items.delivered(it):
+            continue  # decision-cards DI-6: an answer never sent is not waiting for 【已恢复】
         last = it["answers"][-1]
         original = "".join(x.strip() for x in last["original"].splitlines())
         if len(original) > ORIGINAL_CHARS:
@@ -139,3 +141,115 @@ def _answered(g: store.Group, me: str, now: str) -> list[str]:
 
 def _instant(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+# decision-cards DI-4 (user chose A): the hub session's own turn, checked against what the command printed.
+_HUB_COMMAND_RE = re.compile(r"decision[-_]inbox\S*\s+(?:view|inbox\s+reply)\b")
+_PERSISTED_RE = re.compile(r"Full output saved to: (\S+)")
+_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)\n```", re.S)
+_HEAD_RE = re.compile(r"^\*\*(?:#\d+ · |去 ).*$", re.M)  # item cards, and DI-9 prompt reminders
+
+
+class _Unreadable(ValueError):
+    pass
+
+
+def _text_of(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def _turn(path: str) -> tuple[str | None, str]:
+    """(last hub command output of this turn or None, what the assistant wrote after it)."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    rows.append(json.loads(line))
+    except (OSError, ValueError) as e:
+        raise _Unreadable(str(e)) from e
+    start = 0
+    for i, row in enumerate(rows):
+        content = (row.get("message") or {}).get("content") if isinstance(row, dict) else None
+        if row.get("type") == "user" and (isinstance(content, str) or
+                                          (isinstance(content, list) and any(
+                                              isinstance(b, dict) and b.get("type") == "text" for b in content))):
+            start = i
+    commands, output, after = {}, None, []
+    for row in rows[start:]:
+        content = (row.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if row.get("type") == "assistant" and b.get("type") == "tool_use":
+                command = (b.get("input") or {}).get("command")
+                if isinstance(command, str) and _HUB_COMMAND_RE.search(command):
+                    commands[b.get("id")] = command
+            elif row.get("type") == "user" and b.get("type") == "tool_result" and b.get("tool_use_id") in commands:
+                output, after = _text_of(b.get("content")), []
+            elif row.get("type") == "assistant" and b.get("type") == "text":
+                after.append(b.get("text") or "")
+    if output is not None and (saved := _PERSISTED_RE.search(output)):
+        try:
+            output = open(saved.group(1), encoding="utf-8").read()
+        except OSError as e:
+            raise _Unreadable(f"读不到 {saved.group(1)}") from e
+    if output is not None:
+        try:
+            doc = json.loads(output)
+            output = doc["show"] if isinstance(doc, dict) and isinstance(doc.get("show"), str) else output
+        except ValueError:
+            pass
+    return output, "\n".join(after)
+
+
+def _norm(text: str) -> str:
+    return " ".join(text.split())
+
+
+def hub_turn_check(payload: dict) -> Decision:
+    """Block once when the hub's reply dropped a card head or a copy block, or added code blocks with nothing pending."""
+    if payload.get("stop_hook_active"):
+        return _pass("本轮已经拦过一次")
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return _pass("没有会话记录")
+    try:
+        output, said = _turn(path)
+    except _Unreadable as e:
+        return _pass(f"会话记录读不懂，收件箱停止检查放行：{e}")
+    if output is None:
+        return _pass("本轮没有出主视图")
+    blocks = [b.strip() for b in _BLOCK_RE.findall(output)]
+    heads = _HEAD_RE.findall(output)
+    written = {_norm(b) for b in _BLOCK_RE.findall(said)}
+    flat = _norm(said)
+    problems = []
+    missing_heads = [h for h in heads if _norm(h) not in flat]
+    if missing_heads:
+        problems.append("缺了这些卡片抬头：" + "；".join(missing_heads))
+    missing_blocks = [b for b in blocks if _norm(b) not in written]
+    if missing_blocks:
+        problems.append("缺了这些复制块（要放在代码块里，一字不差）：" + "；".join(missing_blocks))
+    if not blocks and "```" in said:
+        problems.append("没有待答的待决事项，回复里却出现了代码块（代码块只给要你回答的待决事项用）")
+    if not problems:
+        return _pass("收件箱这一轮的卡片和复制块都在")
+    return Decision(True, "\n".join([
+        "【decision-inbox】这一轮的回复没有照命令输出显示决策卡片：", *(f"- {p}" for p in problems),
+        "请把命令输出的主视图逐字贴给用户（按 Markdown 直接显示，不要套进代码块），不要改写成摘要。"]), None)
+
+
+def transcript_readable(path: str) -> str | None:
+    """None when the hub stop check understands a session record, else why not (doctor)."""
+    try:
+        _turn(path)
+    except _Unreadable as e:
+        return str(e)
+    return None

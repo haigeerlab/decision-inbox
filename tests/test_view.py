@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -56,8 +57,10 @@ class ViewCase(TempHomeTestCase):
         return items.receive(self.g, text, sender=sender, relay_id=next(self.relay_ids),
                              received_at=at(minutes_ago)).item
 
-    def forward(self, no, minutes_ago, letter="A"):
+    def forward(self, no, minutes_ago, letter="A", sent=True):
         items.answer(self.g, [items.Answer(no, letter, f"{no} {letter}")], answered_at=at(minutes_ago))
+        if sent:  # decision-cards DI-6: forwarded means agent-relay took it
+            items.record_sent(self.g, no, to=items.get(self.g, no)["sender"], relay_id=8800 + no, at=at(minutes_ago))
 
     def render(self, assessment=None, relay=None):
         return view.render(self.g, now=NOW, assessment=assessment or self.assessment(), relay=relay)
@@ -182,11 +185,14 @@ def snapshot(*facts):
 
 
 def card(text, no):
-    """The card whose title starts with `━━ <no> ·`, up to the next blank line."""
-    for block in text.split("\n\n"):
-        if block.startswith(f"━━ {no} ·"):
-            return block
-    raise AssertionError(f"no card #{no} in:\n{text}")
+    """The template card that starts with `**#<no> ·`, up to the next card, 「一次答完」 or the footer."""
+    import re
+    start = text.find(f"**#{no} ·")
+    if start < 0:
+        raise AssertionError(f"no card #{no} in:\n{text}")
+    rest = text[start:]
+    ends = [m.start() for m in re.finditer(r"\n\n(?:\*\*#\d+ ·|⚠ 模块|一次答完|等待中 )", rest)]
+    return rest[:min(ends)] if ends else rest.rstrip("\n")
 
 
 class NeedsUserCardTest(ViewCase):
@@ -199,7 +205,7 @@ class NeedsUserCardTest(ViewCase):
         blocks = text.split("\n\n")
         self.assertEqual(blocks[1], "━━ 去原会话确认 · 前端 · 14 分钟前\n"
                                     "要你做：打开「前端」会话，确认它弹出的请求（permission prompt）")
-        self.assertTrue(blocks[2].startswith("━━ "))
+        self.assertTrue(blocks[2].startswith("**#"))
         self.assertIn("等你决定 2 项", blocks[0])
 
     def test_without_detail_or_relay(self):
@@ -211,6 +217,8 @@ class NeedsUserCardTest(ViewCase):
 
 
 class ItemCardTest(ViewCase):
+    """decision-cards rewrote these for the template card (formerly e2e-round1-fixes F12, relay-checkpoint-authority R4)."""
+
     def test_reply_with_guessed_number(self):
         raw = (PROTO / "wait-user.txt").read_text(encoding="utf-8")  # 你该回：12 A 先接微信支付
         no = self.ask(raw)
@@ -219,66 +227,68 @@ class ItemCardTest(ViewCase):
     def test_recommended_card(self):
         no = self.ask(SINGLE)
         self.assertEqual(card(self.render(), no), "\n".join([
-            f"━━ {no} · 前端 · 支付页先接哪种支付方式 · 5 分钟前 · 挡住 1 条线",
-            "要你决定：支付页先接哪种支付方式",
-            "推荐 A：先接微信支付",
-            "  选了会怎样：本周能上线支付页，支付宝下周补",
-            "推荐回复（点代码块右上角复制，发给我）：",
+            f"**#{no} · 支付页先接哪种支付方式** · 等了 5 分钟 · 挡住 1 条线",
+            "商城改版 · 前端",
+            "",
+            "**出了什么事**：",
+            "- Mock 已就绪，两种方式工作量差一倍。",
+            "- 来自：这一行是要点正文的一部分，不是新字段",
+            "",
+            "**A 先接微信支付**：本周能上线支付页，支付宝下周补",
+            f"**B 先接支付宝**：要多等三天 API 补签名接口。答复写法：回 {no} B",
+            f"**C 两种一起接**：提出方未说明后果。答复写法：回 {no} C",
+            "",
+            "**推荐 A**",
+            "",
             "```",
             f"{no} A 先接微信支付",
             "```",
-            "B：先接支付宝",
-            "  选了会怎样：要多等三天 API 补签名接口",
-            f"  回 {no} B",
-            "C：两种一起接",
-            "  选了会怎样：提出方未说明后果",
-            f"  回 {no} C",
-            f"审查：不需审：本会话无审查者 · 详情：{no} 详情",
         ]))
 
     def test_recommended_moves_first_and_one_code_block(self):
         text = SINGLE.replace("推荐 A：先接微信支付", "A：先接微信支付").replace("B. 先接支付宝", "推荐 B：先接支付宝")
         no = self.ask(text.replace("你该回：A 先接微信支付", "你该回：B"))
         c = card(self.render(), no)
-        self.assertTrue(c.split("\n")[2].startswith("推荐 B：先接支付宝"))
+        self.assertIn("**推荐 B**", c)
         self.assertEqual(c.count("```"), 2)
         self.assertIn(f"```\n{no} B\n```", c)
-        self.assertIn(f"A：先接微信支付\n  选了会怎样：本周能上线支付页，支付宝下周补\n  回 {no} A", c)
+        self.assertIn(f"**A 先接微信支付**：本周能上线支付页，支付宝下周补。答复写法：回 {no} A", c)
 
     def test_no_recommendation(self):
         text = SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", "")
         no = self.ask(text)
         c = card(self.render(), no)
-        self.assertNotIn("```", c)
-        self.assertNotIn("推荐", c)  # no 「推荐回复」 line either
-        self.assertIn(f"A：先接微信支付\n  选了会怎样：本周能上线支付页，支付宝下周补\n  回 {no} A", c)
+        self.assertNotIn("**推荐", c)
+        self.assertIn("提出方没写推荐，下面只是写法示例：", c)
+        self.assertEqual(c.count("```"), 2)  # still one block: every card that needs an answer has one
+        self.assertIn(f"**A 先接微信支付**：本周能上线支付页，支付宝下周补。答复写法：回 {no} A", c)
 
-    def test_long_option_shown_whole_topic_clipped(self):
-        """e2e-round1-fixes F12: a clipped option like `{"name":"d…` cannot be told apart."""
-        long_option = "一" * 31
-        long_topic = "二" * 21
+    def test_long_option_clipped_topic_clipped(self):
+        """The template keeps a card to a few lines: option and topic are clipped, the consequence is not."""
+        long_option = "一" * 41
+        long_topic = "二" * 41
         text = (SINGLE.replace("B. 先接支付宝", f"B. {long_option}")
                 .replace("要你决定：支付页先接哪种支付方式", f"要你决定：{long_topic}")
                 .replace("是否完全停住：是", "是否完全停住：否"))
         no = self.ask(text, minutes_ago=90)
         c = card(self.render(), no)
-        self.assertEqual(c.split("\n")[0], f"━━ {no} · 前端 · {'二' * 20}… · 1 小时前")
-        self.assertIn(f"B：{'一' * 31}\n", c)
+        self.assertEqual(c.split("\n")[0], f"**#{no} · {'二' * 40}…** · 等了 1 小时")
+        self.assertIn(f"**B {'一' * 40}…**：要多等三天 API 补签名接口", c)
         self.assertNotIn("挡住", c)
 
     def test_combined_reply_for_several_recommended(self):
         """relay-checkpoint-authority R4: one copy block answers every recommended card at once."""
         stopped = self.ask(SINGLE, minutes_ago=3)
         loose = self.ask(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), sender="api-codex", minutes_ago=50)
-        plain = self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：A 先接微信支付\n", "")
+        plain = self.ask(SINGLE.replace("推荐 A：", "A：").replace("你该回：12 A 先接微信支付\n", "")
                          .replace("【等待用户】", f"【等待用户】【与 #{stopped} 并行】"), minutes_ago=10)
         text = self.render()
-        order = sorted((stopped, loose, plain), key=lambda no: text.index(f"━━ {no} ·"))
+        order = sorted((stopped, loose, plain), key=lambda no: text.index(f"**#{no} ·"))
         recommended = [no for no in order if no != plain]
-        block = (f"一次答完（全按推荐）：\n```\n{'，'.join(f'{no} A' for no in recommended)}\n```\n"
+        block = (f"一次答完（全按推荐）：\n```\n{'，'.join(f'{no} A 先接微信支付' for no in recommended)}\n```\n"
                  f"#{plain} 没有推荐，要单独回")
         self.assertIn(block, text)
-        self.assertLess(text.index(f"━━ {order[-1]} ·"), text.index("一次答完"))
+        self.assertLess(text.index(f"**#{order[-1]} ·"), text.index("一次答完"))
         self.assertLess(text.index("一次答完"), text.index("等待中 "))
 
     def test_no_combined_reply_for_one(self):
@@ -288,13 +298,15 @@ class ItemCardTest(ViewCase):
 
     def test_multiline_source(self):
         no = self.ask(MULTI, sender="coord")
-        self.assertIn(f"━━ {no} · 多线：前端＋API · 订单状态字段统一用哪套命名 · 5 分钟前 · 挡住 2 条线", self.render())
+        text = self.render()
+        self.assertIn(f"**#{no} · 订单状态字段统一用哪套命名** · 等了 5 分钟 · 挡住 2 条线", text)
+        self.assertIn("多线：前端＋API", card(text, no))
 
     def test_order_follows_pending(self):
         loose = self.ask(SINGLE.replace("是否完全停住：是", "是否完全停住：否"), minutes_ago=50)
         stopped = self.ask(SINGLE, sender="api-codex", minutes_ago=3)
         text = self.render()
-        self.assertLess(text.index(f"━━ {stopped} ·"), text.index(f"━━ {loose} ·"))
+        self.assertLess(text.index(f"**#{stopped} ·"), text.index(f"**#{loose} ·"))
 
 
 class ReviewLineTest(ViewCase):
@@ -309,14 +321,14 @@ class ReviewLineTest(ViewCase):
     def test_in_review_is_bold(self):
         self.register()
         no = self.ask(SINGLE.replace("要点：", "架构审查：进行中，请勿先批\n要点："))
-        self.assertIn(f"审查：**审查中，请勿先批** · 详情：{no} 详情", card(self.render(), no))
+        self.assertIn("**结论**：**审查中，请勿先批**", card(self.render(), no))
 
     def test_unmarked_lists_mentions(self):
         self.register()
         no = self.ask(SINGLE.replace("要点：", "要点：架构师说审查还没做完。"))
         c = card(self.render(), no)
-        self.assertTrue(c.endswith(f"审查：⚠ 未标审查 · 详情：{no} 详情\n"
-                                   "  正文提到：架构师说审查还没做完。Mock 已就绪，两种方式工作量差一倍。"))
+        self.assertIn("**结论**：⚠ 未标审查", c)
+        self.assertIn("**注意**：正文提到：架构师说审查还没做完。Mock 已就绪，两种方式工作量差一倍。", c)
 
     def test_old_record_without_mentions(self):
         self.register()
@@ -325,7 +337,9 @@ class ReviewLineTest(ViewCase):
             doc = tx.read_state("items")
             del doc["items"][str(no)]["review"]["mentions"]
             tx.write_state("items", doc)
-        self.assertTrue(card(self.render(), no).endswith(f"审查：⚠ 未标审查 · 详情：{no} 详情"))
+        c = card(self.render(), no)
+        self.assertIn("**结论**：⚠ 未标审查", c)
+        self.assertNotIn("**注意**", c)
 
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "hub-view.md"
@@ -339,9 +353,28 @@ def spec_sample() -> str:
     """
     text = SPEC.read_text(encoding="utf-8")
     body = text.split("## 主视图样例", 1)[1].split("```text\n", 1)[1].split("\n```", 1)[0]
-    return body.replace("（下面是代码块，代码块里只有一行：12 A 先接微信支付）",
-                        f"{view.COPY_LABEL}\n```\n12 A 先接微信支付\n```").replace(
-        "等待中 1 单 · 已失效 0 项 · 今天已关 3 单", "等待中 1 条 · 已失效 0 项 · 今天已关 3 条")
+    body = body.replace("等待中 1 单 · 已失效 0 项 · 今天已关 3 单", "等待中 1 条 · 已失效 0 项 · 今天已关 3 条")
+    # decision-cards: the item card follows the user's template; the rest of the sample stays as specified
+    head, _, rest = body.partition("━━ 12 ·")
+    return head + TEMPLATE_CARD_12 + "\n\n" + rest.split("\n\n", 1)[1]
+
+
+TEMPLATE_CARD_12 = "\n".join([
+    "**#12 · 支付页先接哪种支付方式** · 等了 5 分钟 · 挡住 1 条线",
+    "商城改版 · 前端",
+    "",
+    "**出了什么事**：",
+    "- Mock 已就绪，两种方式工作量差一倍。",
+    "- 来自：这一行是要点正文的一部分，不是新字段",
+    "",
+    "**A 先接微信支付**：本周能上线支付页，支付宝下周补",
+    "**B 先接支付宝**：要多等三天 API 补签名接口。答复写法：回 12 B",
+    "",
+    "**推荐 A**",
+    "",
+    "```",
+    "12 A 先接微信支付",
+    "```"])
 
 
 class AnomalyTest(ViewCase):
@@ -425,7 +458,7 @@ def hhmm(value: str) -> str:
 class ExpandedViewTest(ViewCase):
     def test_detail(self):
         no = self.ask(MULTI, sender="coord", minutes_ago=30)
-        self.forward(no, 2)
+        self.forward(no, 2, sent=False)
         sent_ids = []
         for to in ("coord", "fe-codex", "api-codex"):
             sent_ids.append(next(self.relay_ids))
@@ -516,51 +549,53 @@ DECISIONS = (Path(__file__).resolve().parent / "fixtures" / "session-protocol" /
 
 
 class DecisionCardTest(ViewCase):
-    """review-nearby Task 7 (R2): each 「待用户决定」 is its own question on the card."""
+    """review-nearby Task 7 (R2): each 「待用户决定」 is its own question on the card (decision-cards layout)."""
 
     def test_card_lists_each_decision(self):
         no = self.ask(DECISIONS.read_text(encoding="utf-8"), sender="coord")
         c = card(self.render(), no)
         self.assertIn("\n".join([
-            "待你决定的问题（每条都要答，没答全会被追问）：",
-            "D1：alpha 首字母要不要大写？",
-            "  A. 大写　B. 保持小写",
-            "  审查倾向：B（与现有命名一致）",
-            "D2：错误日志保留多久？",
-            "  A. 7 天　B. 30 天",
-            "  审查倾向：A"]), c)
+            "**D1** alpha 首字母要不要大写？ A. 大写　B. 保持小写（审查倾向 B）",
+            "**D2** 错误日志保留多久？ A. 7 天　B. 30 天（审查倾向 A）"]), c)
         self.assertIn(f"```\n{no} A；D1 B；D2 A\n```", c)
 
-    def test_reply_without_decisions_names_them(self):
+    def test_reply_without_decisions_gets_the_leans(self):
+        """decision-cards: D answers join the copy block by the review's lean."""
         text = DECISIONS.read_text(encoding="utf-8").replace("你该回：21 A；D1 B；D2 A", "你该回：A 批准")
         no = self.ask(text, sender="coord")
-        c = card(self.render(), no)
-        self.assertIn(f"```\n{no} A 批准\n```\n  还要答 D1、D2，写在同一条回复里", c)
+        self.assertIn(f"```\n{no} A 批准；D1 B；D2 A\n```", card(self.render(), no))
 
-    def test_combined_skips_items_with_decisions(self):
+    def test_reply_without_lean_names_the_missing(self):
+        text = DECISIONS.read_text(encoding="utf-8").replace("你该回：21 A；D1 B；D2 A", "你该回：A 批准")
+        no = self.ask(text, sender="coord")
+        with self.g.transaction() as tx:  # a decision the reviewer leaned no way on
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["decisions"][1]["lean"] = None
+            tx.write_state("items", doc)
+        c = card(self.render(), no)
+        self.assertIn(f"```\n{no} A 批准；D1 B\n```\n还要答 D2，写在同一条回复里", c)
+
+    def test_combined_includes_items_with_decisions(self):
         a = self.ask(SINGLE)
         b = self.ask(SINGLE, sender="api-codex")
         d = self.ask(DECISIONS.read_text(encoding="utf-8"), sender="coord")
-        out = self.render()
-        self.assertIn(f"{a} A，{b} A", out)
-        self.assertIn(f"#{d} 带待你决定的问题，要单独回", out)
+        [joined] = re.findall(r"一次答完（全按推荐）：\n```\n(.*?)\n```", self.render(), re.S)
+        parsed = items.interpret_reply(self.g, joined)
+        self.assertIsNone(parsed.question)
+        self.assertEqual(sorted(x.item for x in parsed.answers), sorted([a, b, d]))
 
 
-import re  # noqa: E402
 
-_OPTION_LINE = re.compile(r"^(?:推荐 )?([A-Z])：")
-_ANSWER_LINE = re.compile(r"^\s*回 #?\d+ ([A-Z])\s*$")
+_OPTION_LINE = re.compile(r"^\*\*([A-Z]) .*答复写法：回 #?\d+ ([A-Z])(?:：|$)")
 
 
 def assert_letters_match(test, text):
-    """r20-fixes Task 2 (O-hub-option-typo): every 「回 N X」 names the option right above it."""
-    last, seen = None, 0
+    """r20-fixes Task 2 (O-hub-option-typo): every 「回 N X」 names the option it is written on (decision-cards)."""
+    seen = 0
     for line in text.split("\n"):
         if m := _OPTION_LINE.match(line):
-            last = m.group(1)
-        elif m := _ANSWER_LINE.match(line):
             seen += 1
-            test.assertEqual(m.group(1), last, f"「{line.strip()}」写在选项 {last} 下面")
+            test.assertEqual(m.group(2), m.group(1), f"「{line.strip()}」写在选项 {m.group(1)} 上")
     return seen
 
 

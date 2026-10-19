@@ -14,7 +14,8 @@ from decision_inbox import items, loops, protocol, reviews, store
 
 DEFAULTS = {"stalledHours": 12, "reworkRounds": 3, "repeatAsks": 3, "repeatHours": 24,
             "askAgainHours": 12, "answerWaitMinutes": 30,
-            "loopAnswers": 2, "loopHours": 12, "loopQuietHours": 12}  # loop-detection (DI-6)
+            "loopAnswers": 2, "loopHours": 12, "loopQuietHours": 12,  # loop-detection (DI-6)
+            "promptMinutes": 5}  # decision-cards DI-9: a session on a permission prompt this long
 DESKTOP_LINK = "claude://claude.ai/epitaxy/{session}"
 
 
@@ -88,8 +89,11 @@ def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[
                 what = (f"已经 {int(worked)} 小时没有新提交（最后一次提交 {since[5:16].replace('T', ' ')}，"
                         "等你答复的时间不算）" if m.last_commit_at else f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）")
                 found[f"{coordinator}|stalled:{m.module}"] = what
+            answered = max((a.at for a in m.answers or ()), key=_instant, default=None)
             for node, ats in m.asks:
-                recent = [at for at in ats if _hours(now, at) <= cfg["repeatHours"]]
+                # decision-cards I-13: asks the user already answered do not count again
+                recent = [at for at in ats if _hours(now, at) <= cfg["repeatHours"]
+                          and (answered is None or _instant(at) > _instant(answered))]
                 if len(recent) >= cfg["repeatAsks"]:
                     found.setdefault(f"{coordinator}|repeat:{m.module}",
                                      f"的{_NODE_NAMES.get(node, node)} {cfg['repeatHours']} 小时内报批 {len(recent)} 次")
@@ -113,11 +117,24 @@ def _findings(g: store.Group, now: str, lines: dict, cfg: dict) -> dict[str, str
             else it["decide"].splitlines()[0] if it["decide"] else ""
         recent.setdefault((it["sender"], str(topic)), []).append(it)
     for (sender, _), same in recent.items():
+        settled = [_settled_at(it) for it in same if _settled_at(it)]
+        if settled:  # decision-cards I-13: only what came after the user's latest answer counts
+            last = max(settled, key=_instant)
+            same = [it for it in same if _instant(it["receivedAt"]) > _instant(last)]
         if len(same) >= cfg["repeatAsks"]:
             topic = same[-1]["decide"].splitlines()[0] if same[-1]["decide"] else "同一件事"
             found.setdefault(f"{sender}|repeat",
                              f"同一件事「{topic}」{cfg['repeatHours']} 小时内报批 {len(same)} 次")
     return found
+
+
+def _settled_at(it: dict) -> str | None:
+    """When the user's answer (or the sender's closing) settled an item; None while it is open or invalidated."""
+    if it["status"] in items.PROGRESS:
+        return it["statusAt"].get("forwarded")
+    if it["status"] == "closed":
+        return it["statusAt"].get("forwarded") or it["statusAt"].get("closed")
+    return None
 
 
 def _hushed(key: str, loop_facts) -> bool:

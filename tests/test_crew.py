@@ -115,6 +115,10 @@ class ReadModulesTest(CrewCase):
     def test_exit_code_two_gives_stderr(self):
         self.assertUnknown(self.read(out="", code=2, err="❌ /x 不在 git 仓库里\n第二行"), "不在 git 仓库里")
 
+    def test_default_timeout_is_fifteen_seconds(self):
+        """decision-cards I-12: three seconds was too short for sessions --json."""
+        self.assertEqual(crew.DEFAULT_TIMEOUT, 15)
+
     def test_timeout(self):
         self.assertUnknown(self.read(sleep=2), "秒没有结束")
 

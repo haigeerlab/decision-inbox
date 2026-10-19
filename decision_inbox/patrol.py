@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import health, install, items, stall, store, view
+from decision_inbox import desktop, health, install, items, stall, store, view
 
 DOMAIN = "patrol"
 OFFLINE = ("offline", "unreachable")
@@ -207,6 +207,8 @@ def _alerts(ctx: _Context, signals) -> None:
 def _handoffs(ctx: _Context) -> None:
     """answer-handoff-gaps 已定事项 2: an answer queued for an offline owner wakes it and tells the user now."""
     for it in items.by_status(ctx.g, "forwarded"):
+        if not items.delivered(it):
+            continue  # decision-cards DI-6: the hub has not sent it, nothing waits on the owner yet
         for name in it["recipients"]:
             entry = store.find_session(ctx.g, relay_name=name)
             fact = _fact(ctx, name)
@@ -250,7 +252,7 @@ def _cap(ctx: _Context) -> None:
 
 def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
          relay_error: str | None = None, from_hub: bool = False, crews: dict | None = None,
-         outbox=None, loop_facts=None) -> Plan:
+         outbox=None, loop_facts=None, sessions=None) -> Plan:
     """Read-only: what this round should do (spec 关键决策 1)."""
     state = store.read_state(g, DOMAIN)
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=state.get("snapshot"),
@@ -263,6 +265,8 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     _wakes(ctx)
     _offline_mail(ctx)
     _not_loaded(ctx)
+    for s, minutes, _ in desktop.stuck(g, now, sessions):  # decision-cards DI-9: once per prompt
+        ctx.notify(desktop.notice_key(s), f"{s.name} 停在权限弹窗上 {minutes} 分钟，没人报，详见决策收件箱")
     for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews, loop_facts):  # R14: the line raises it
         result.actions.append(Action(f"stall:{ask.key}", ask.kind, ask.target, ask.text))
     _alerts(ctx, assessment.signals)
@@ -310,10 +314,10 @@ def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None =
 
 PROMPT = """这是 decision-inbox 协作组「{group}」的巡视任务，每 5 分钟运行一次。按下面三步做完就结束，不做别的事，不催任何会话干活。
 
-第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}；再用 bridge_outbox（agent 写 {hub}，不带别的参数）读决策收件箱发出、对方还没确认的消息，把返回的 JSON 原文原样写入文件 {outbox}。
+第 1 步：用 agent-relay 的 bridge_agents 工具（不带参数）读取各会话状态，把返回的 JSON 原文原样写入文件 {agents}；再用 bridge_outbox（agent 写 {hub}，不带别的参数）读决策收件箱发出、对方还没确认的消息，把返回的 JSON 原文原样写入文件 {outbox}；再用 bridge_sessions（不带参数）读本机各 Claude 会话的状态，把返回的 JSON 原文原样写入文件 {sessions}。
 
 第 2 步：运行
-{cli} patrol plan {group} --agents {agents} --outbox {outbox} --out {plan}
+{cli} patrol plan {group} --agents {agents} --outbox {outbox} --sessions {sessions} --out {plan}
 它打印本轮要做的动作（JSON 的 actions），每个动作有 id、kind、target、text。没有动作就直接到第 3 步。
 
 逐条执行：
@@ -345,4 +349,5 @@ def prompt(group: str, cli: str | None = None, workdir: str | None = None, hub: 
         hub = next((e["relayName"] for e in roster if e["role"] == "hub"), "<决策收件箱邮箱名>")
     return PROMPT.format(group=group, cli=cli or install.cli(), agents=f"{workdir}/decision-inbox-{group}-agents.json",
                          outbox=f"{workdir}/decision-inbox-{group}-outbox.json", hub=hub,
+                         sessions=f"{workdir}/decision-inbox-{group}-sessions.json",
                          plan=f"{workdir}/decision-inbox-{group}-plan.json")

@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import crew, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import crew, desktop, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
@@ -228,6 +228,10 @@ def _hook(argv: list[str]) -> int:
         payload = json.loads(sys.stdin.read())
         if not isinstance(payload, dict):
             raise ValueError("钩子输入不是 JSON 对象")
+        hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4: the hub's own reply, wherever it runs
+        if hub_turn.block:
+            print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
+            return 0
         session = args.session
         if args.group:
             g = store.open_group(args.group)
@@ -264,6 +268,7 @@ def _patrol(argv: list[str]) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--relay-version")
     p.add_argument("--from-hub", action="store_true")
+    p.add_argument("--sessions")  # decision-cards DI-9: agent-relay bridge_sessions output
     p = sub.add_parser("record")
     p.add_argument("group")
     p.add_argument("--plan", required=True)
@@ -303,12 +308,14 @@ def _patrol(argv: list[str]) -> int:
                 _consume(args.outbox)
             except (OSError, relay.RelayDataError):
                 outbox = None
+        sessions, _, _ = _sessions_read(args.sessions)
         patrol.save_snapshot(args.group, store.now(), raw)
         maps = {e["relayName"]: specguard.read_line(e["repo"]) for e in store.roster(g)
                 if e["role"] == "dev" and e.get("repo")}
         crews, now = crew.crews(g), store.now()
         doc = patrol.plan(g, now=now, relay=agents, maps=maps, relay_error=error, from_hub=args.from_hub,
-                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews)).to_json()
+                          crews=crews, outbox=outbox, loop_facts=_loop_facts(g, now, maps, crews),
+                          sessions=sessions).to_json()
         Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps({"actions": doc["actions"]}, ensure_ascii=False, indent=1))
         return 0
@@ -335,6 +342,18 @@ def _relay_read(path: str | None, version: str | None):
         return relay.parse_agents(Path(path).read_text(encoding="utf-8"), relay_version=version), "ok", None
     except (OSError, relay.RelayDataError) as e:
         return None, "unreadable", (str(e).splitlines() or ["原因不明"])[0]
+
+
+def _sessions_read(path: str | None):
+    """(sessions or None, "ok"／"absent"／"unreadable", error); a read file is consumed like agents.json."""
+    if not path:
+        return None, "absent", None
+    try:
+        sessions = desktop.parse_sessions(Path(path).read_text(encoding="utf-8"))
+    except (OSError, desktop.DesktopDataError) as e:
+        return None, "unreadable", str(e)
+    _consume(path)
+    return sessions, "ok", None
 
 
 def _relay_or_none(path: str | None, version: str | None):
@@ -381,7 +400,8 @@ def _inbox(argv: list[str]) -> int:
     p = sub.add_parser("sent")
     p.add_argument("group")
     p.add_argument("--done", nargs="*", default=[])
-    p.add_argument("--failed", nargs="*", default=[])
+    p.add_argument("--failed", nargs="*", default=[])  # out:N, or out:N=<agent-relay's error> (decision-cards DI-6)
+    p.add_argument("--skipped", nargs="*", default=[])  # out:N=<id>[,<id>] from agent-relay 0.8.5+ `skipped`
     p = sub.add_parser("convention")
     p.add_argument("group")
     try:
@@ -422,12 +442,26 @@ def _inbox(argv: list[str]) -> int:
                 print(f"--done 要写成 out:N=消息编号：{pair}", file=sys.stderr)
                 return 2
             done[out_id] = int(relay_id)
+        failed, reasons = [], {}
+        for pair in args.failed:
+            out_id, sep, reason = pair.partition("=")
+            failed.append(out_id)
+            if sep and reason.strip():
+                reasons[out_id] = reason.strip()
+        skipped = {}
+        for pair in args.skipped:
+            out_id, sep, ids = pair.partition("=")
+            numbers = [x.strip().lstrip("#") for x in ids.split(",") if x.strip()]
+            if not sep or not numbers or not all(n.isdigit() for n in numbers):
+                print(f"--skipped 要写成 out:N=消息编号[,消息编号]：{pair}", file=sys.stderr)
+                return 2
+            skipped[out_id] = [int(n) for n in numbers]
         try:
-            closed = hub.sent(g, done=done, failed=args.failed, at=now)
+            closed = hub.sent(g, done=done, failed=failed, at=now, reasons=reasons, skipped=skipped)
         except hub.UnknownOutgoing as e:
             print(f"没有这条待发消息，或已经记过：{e}", file=sys.stderr)
             return 2
-        _print_json({"closedTickets": list(closed)})
+        _print_json({"closedTickets": list(closed), "show": hub.sent_show(g, [*done, *failed])})
     else:
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
         print(hub.convention(args.group, workdir=str(g.path / "io")), end="")
@@ -440,6 +474,7 @@ def _view(argv: list[str]) -> int:
     parser.add_argument("what", nargs="*")
     parser.add_argument("--agents")
     parser.add_argument("--outbox")
+    parser.add_argument("--sessions")  # decision-cards DI-9: agent-relay bridge_sessions output
     parser.add_argument("--relay-version")
     try:
         args = parser.parse_args(argv)
@@ -468,8 +503,10 @@ def _view(argv: list[str]) -> int:
             except (OSError, relay.RelayDataError):
                 pass  # delivery progress just stays where it was
         maps, crews = _dev_maps(g), crew.crews(g)
+        sessions, sessions_status, _ = _sessions_read(args.sessions)
         print(hub.main_view(g, now, agents, maps, relay_status=relay_status, relay_error=relay_error,
-                            crews=crews, loop_facts=_loop_facts(g, now, maps, crews)))
+                            crews=crews, loop_facts=_loop_facts(g, now, maps, crews), sessions=sessions,
+                            sessions_status=sessions_status))
     elif what[0] == "detail":
         print(view.render_detail(g, int(what[1])))
     elif what[0] == "waits":

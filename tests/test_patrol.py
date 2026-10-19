@@ -397,6 +397,7 @@ class HandoffTest(PatrolCase):
         text = WAIT_USER if stopped else WAIT_USER.replace("是否完全停住：是", "是否完全停住：否")
         no = items.receive(self.g, text, sender=sender, relay_id=50, received_at=later(-minutes_ago)).item
         items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=later(-1))
+        items.record_sent(self.g, no, to=sender, relay_id=8800 + no, at=later(-1))  # decision-cards DI-6
         return no
 
     def offline(self, name):

@@ -158,6 +158,11 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         # go-to-session (session-protocol v2.2): a host confirmation the user must click in that session
         "waitKind": msg.wait_kind,
         "goToSession": msg.go_to_session,
+        # decision-cards (session-protocol v2.3): the card's content points and the three optional fields
+        "points": [[name, text] for name, text in msg.points],
+        "note": msg.fields.get("注意", "").strip() or None,
+        "reason": msg.fields.get("推荐理由", "").strip() or None,
+        "approveEffect": msg.fields.get("批了会怎样", "").strip() or None,
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
@@ -300,6 +305,9 @@ _SEGMENT_RE = re.compile(r"^\s*#?(\d+)(?![0-9a-z])\s*(.*)$", re.S)
 # The option letter may be followed by punctuation: 「21 B，C15 退回」 (review-nearby R6).
 _LETTER_RE = re.compile(r"^([A-Z])(?:[\s，；,;、：:].*)?$", re.S)
 _SPLIT_RE = re.compile(r"[，；;,]")
+# decision-cards DI-7 (I-4): quotes and full stops copied along with the letter, as in 「56 A」」.
+_TRAILING = "」』\"'”’)）。.！!？?"
+_ORIGINAL_RE = re.compile(r"^原话\s*[：:]\s*\S", re.S)
 # session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
 _PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
 ANSWERED = ("forwarded", "picked", "acknowledged")
@@ -409,7 +417,7 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
                 answers.append(answer)
             continue
         letter = None
-        lm = _LETTER_RE.match(rest) if m else None
+        lm = _LETTER_RE.match(rest.rstrip(_TRAILING + " ")) if m else None
         if lm and int(key) in looping and _LOOP_WORD_RE.search(rest[1:]):
             return ReplyParse(question=f"#{key} 这一段里既有选项 {lm.group(1)}，又有打转提示的选项，"
                                        "请分成两次答，或只留一个。")
@@ -417,6 +425,8 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
             letter = lm.group(1)
             if letter not in {o["letter"] for o in it["options"]}:
                 return ReplyParse(question=f"#{key} 没有选项 {letter}，请确认。")
+        if m and not lm and it["options"] and not it.get("decisions") and not _ORIGINAL_RE.match(rest):
+            return ReplyParse(question=_no_letter_question(key, it))
         picked = ()
         if it.get("decisions"):
             picked, question = _decision_answers(key, it, letter, segment)
@@ -429,6 +439,14 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
         if not same:
             answers.append(answer)
     return ReplyParse(answers=tuple(answers))
+
+
+def _no_letter_question(key: str, it: dict) -> str:
+    """Never forward a numbered answer whose option cannot be told (decision-cards DI-7, I-4)."""
+    letters = [o["letter"] for o in it["options"]]
+    first = it.get("recommended") or letters[0]
+    return (f"没认出 #{key} 选的是哪个选项（{'／'.join(letters)}）。选选项就回「{key} {first}」；"
+            f"不选选项、要把你的话原样转过去，回「{key} 原话：你的话」。")
 
 
 @dataclass(frozen=True)
@@ -487,6 +505,11 @@ GO_TO_SESSION = "go-to-session"
 def is_go_to_session(it: dict | None) -> bool:
     """A 去会话操作 item: never answered, closed by its sender's 【已恢复】 (go-to-session)."""
     return bool(it) and it.get("waitKind") == GO_TO_SESSION
+
+
+def delivered(it: dict) -> bool:
+    """agent-relay took the answer for the proposer: only then is an item 已转达 (decision-cards DI-6)."""
+    return any(s["to"] == it["sender"] for s in it.get("sent") or ())
 
 
 def record_sent(g: store.Group, item: int, to: str, relay_id, at: str) -> None:

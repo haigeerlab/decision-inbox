@@ -17,9 +17,12 @@ class DoctorCase(TempHomeTestCase):
         (self.work / "dev").mkdir()
         self.records = self.home / "installed_plugins.json"
         self.codex = self.home / "codex-config.toml"
-        self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_PLUGINS_FILE", "DECISION_INBOX_CODEX_CONFIG")}
+        self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_PLUGINS_FILE", "DECISION_INBOX_CODEX_CONFIG",
+                                                     "DECISION_INBOX_TRANSCRIPTS")}
         os.environ["DECISION_INBOX_PLUGINS_FILE"] = str(self.records)
         os.environ["DECISION_INBOX_CODEX_CONFIG"] = str(self.codex)
+        self.transcripts = self.home / "projects"
+        os.environ["DECISION_INBOX_TRANSCRIPTS"] = str(self.transcripts)
         self.write_records({})
         onboard.hub("g", "g-hub", "local_1", self.work / "hub", True, NOW)
         onboard.join("g", "dev", "g-dev", "开发", "codex-desktop", ["web"], None, self.work / "dev",
@@ -412,3 +415,33 @@ class HostVersionsTest(DoctorCase):
         c = self.check(self.NAME)
         self.assertEqual(c.state, "unknown")
         self.assertIn(str(self.home / "plugins" / "cache" / "mk" / "decision-inbox"), c.evidence)
+
+
+class HubTranscriptTest(DoctorCase):
+    """decision-cards Task 6: whether the hub's stop check can read this host's session records."""
+
+    NAME = "收件箱停止检查"
+
+    def record(self, rows, name="a.jsonl"):
+        folder = self.transcripts / "-hub"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+
+    def test_no_record_yet_is_unknown(self):
+        self.assertEqual(self.check(self.NAME).state, "unknown")
+
+    def test_readable_record_is_ok(self):
+        self.record([{"type": "user", "message": {"content": "看"}},
+                     {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t", "name": "Bash",
+                                                                    "input": {"command": "decision-inbox view g"}}]}},
+                     {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t",
+                                                               "content": "等你决定 0 项"}]}}])
+        self.assertEqual(self.check(self.NAME).state, "ok")
+
+    def test_unreadable_record_is_bad(self):
+        folder = self.transcripts / "-hub"
+        folder.mkdir(parents=True)
+        (folder / "a.jsonl").write_text('{"x": "decision-inbox view g"\n', encoding="utf-8")
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "bad")
+        self.assertIn("读不懂", c.evidence)

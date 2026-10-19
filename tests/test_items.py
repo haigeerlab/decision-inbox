@@ -256,7 +256,7 @@ class InterpretTest(ItemsCase):
     def test_copy_block_and_free_sentence(self):
         copy = f"{self.a} A 先接微信支付"
         self.assertEqual(self.parse(copy).answers, (items.Answer(self.a, "A", copy),))
-        free = f"{self.a} 按推荐来，支付宝下周再说"
+        free = f"{self.a} 原话：按推荐来，支付宝下周再说"
         self.assertEqual(self.parse(free).answers, (items.Answer(self.a, None, free),))
 
     def test_several_items(self):
@@ -284,6 +284,37 @@ class InterpretTest(ItemsCase):
     def test_same_answer_twice_in_one_reply_is_one(self):
         p = self.parse(f"{self.a} B，{self.a} B")
         self.assertEqual([(x.item, x.letter) for x in p.answers], [(self.a, "B")])
+
+
+class TolerantReplyTest(InterpretTest):
+    """decision-cards DI-7 (I-4): trailing punctuation is tolerated; anything else unclear is asked, never guessed."""
+
+    def test_trailing_punctuation_after_the_letter(self):
+        for tail in ("」", "。", "）", ")", "”", "！", "?", "』", "\"", "。」"):
+            with self.subTest(tail=tail):
+                text = f"{self.a} A{tail}"
+                self.assertEqual(self.parse(text).answers, (items.Answer(self.a, "A", text),))
+
+    def test_option_text_goes_out_for_a_punctuated_letter(self):
+        out = items.answer(self.g, self.parse(f"{self.a} A」").answers, answered_at=T2)
+        self.assertIn("选项 A 原文：", out[0].text)
+        self.assertIn(f"用户原话：{self.a} A」", out[0].text)
+
+    def test_no_letter_is_asked_not_forwarded(self):
+        p = self.parse(f"{self.a} 好的")
+        self.assertEqual(p.answers, ())
+        self.assertIn(f"没认出 #{self.a} 选的是哪个选项（A／B／C）", p.question)
+        self.assertIn(f"「{self.a} A」", p.question)
+        self.assertIn(f"「{self.a} 原话：", p.question)
+        self.assertEqual(self.item(self.a)["status"], "pending")
+
+    def test_original_words_without_an_option(self):
+        text = f"{self.a} 原话：好的，先这样"
+        p = self.parse(text)
+        self.assertEqual(p.answers, (items.Answer(self.a, None, text),))
+        out = items.answer(self.g, p.answers, answered_at=T2)
+        self.assertIn(f"用户原话：{text}", out[0].text)
+        self.assertNotIn("原文：", out[0].text.replace("用户原话", ""))
 
 
 class PrefixTest(InterpretTest):
@@ -396,7 +427,7 @@ class AnswerTest(ItemsCase):
 
     def test_free_sentence_forwarded_verbatim(self):
         no = self.receive(SINGLE).item
-        text = f"{no} 按推荐来，支付宝下周再说"
+        text = f"{no} 原话：按推荐来，支付宝下周再说"
         out = items.answer(self.g, items.interpret_reply(self.g, text).answers, answered_at=T2)
         parsed = protocol.parse(out[0].text)
         self.assertEqual(parsed.fields["用户原话"], text)
@@ -632,7 +663,7 @@ class WritingNotesTest(TempHomeTestCase):
             "要点：Mock 已就绪，两种方式工作量差一倍。", "要点：\n- #4 做什么\n- #4 不做什么\n- #5 步骤\n- #5 风险")
         self.assertNotIn("brief-thin-batch", self.notes(text))
 
-    def test_notes_kept_on_item_and_shown_on_card(self):
+    def test_notes_kept_on_item_not_on_card(self):
         from decision_inbox import view
         g, _ = store.init_group("demo")
         with g.transaction() as tx:
@@ -643,6 +674,7 @@ class WritingNotesTest(TempHomeTestCase):
         self.assertTrue(r.accepted)
         self.assertEqual(r.return_text, None)
         it = next(x for x in items.pending(g))
+        self.assertTrue(any("「你该回」只写了选项字母" in n for n in it["writingNotes"]))  # kept for the 回执
         card = view._item_card(g, "2026-10-18T19:45:00+08:00", it)
-        self.assertIn("写法提示：缺「项目：」", card)
-        self.assertIn("「你该回」只写了选项字母", card)
+        # decision-cards D1 B: writing hints are the proposer's business, not the user's card
+        self.assertNotIn("写法提示", card)

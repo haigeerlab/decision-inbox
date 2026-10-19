@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from decision_inbox import deps, health, install, items, loops, protocol, reviews, stall, store, tickets, view
+from decision_inbox import deps, desktop, health, install, items, loops, protocol, reviews, stall, store, tickets, view
 
 DOMAIN = "hub"
 BRIDGE = "bridge"  # agent-relay's automated notices (never answered)
@@ -226,7 +226,8 @@ def _also_answers(g: store.Group, doc: dict, it: dict) -> list[int]:
     hub recorded as that sender's items, and never put in alsoAnswers before, go in.
     """
     done = set(doc.get("alsoClosed", []))
-    return sorted(x["relayId"] for x in items.by_status(g, "superseded", "withdrawn")
+    # decision-cards DI-5 (I-1): a withdrawn request was already closed by its sender's withdraws
+    return sorted(x["relayId"] for x in items.by_status(g, "superseded")
                   if x["sender"] == it["sender"] and x["relayId"] is not None and x["relayId"] not in done
                   and x["relayId"] != it["relayId"])
 
@@ -253,9 +254,17 @@ def outgoing(g: store.Group) -> list[dict]:
     return [_send_view(g, out_id, e) for out_id, e in ordered if e["relayId"] is None]
 
 
-def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
-    """Record what the hub sent (agent-relay ids) or failed to send; then close answered tickets."""
-    failed = list(failed)
+_CANNOT_CLOSE_RE = re.compile(r"Cannot close request #(\d+)")
+
+
+def sent(g: store.Group, done: dict, failed, at: str, reasons: dict | None = None,
+         skipped: dict | None = None) -> tuple[int, ...]:
+    """Record what the hub sent (agent-relay ids) or failed to send; then close answered tickets.
+
+    decision-cards DI-5, DI-6: `reasons` keeps agent-relay's words for a failed send, and a request it refused
+    to close leaves that send's alsoAnswers; `skipped` keeps what agent-relay 0.8.5+ skipped as already closed.
+    """
+    failed, reasons, skipped = list(failed), reasons or {}, skipped or {}
     recorded = []
     with g.transaction() as tx:
         doc = _doc(tx)
@@ -268,15 +277,77 @@ def sent(g: store.Group, done: dict, failed, at: str) -> tuple[int, ...]:
             entry.update(relayId=relay_id, failed=False, sentAt=at)
             tx.append_event("hub.sent", ref=entry["item"], actor="hub", data={"id": out_id, "relayId": relay_id})
             recorded.append((out_id, entry))
+        for out_id, ids in skipped.items():
+            if out_id in done:
+                doc["outgoing"][out_id]["skipped"] = [int(i) for i in ids]
+                doc.setdefault("alsoClosed", []).extend(int(i) for i in ids)
         for out_id in failed:
-            doc["outgoing"][out_id]["failed"] = True
-            tx.append_event("hub.send-failed", ref=doc["outgoing"][out_id]["item"], actor="hub", data={"id": out_id})
+            entry = doc["outgoing"][out_id]
+            entry["failed"] = True
+            reason = reasons.get(out_id)
+            entry["error"] = reason
+            refused = [int(n) for n in _CANNOT_CLOSE_RE.findall(reason or "")]
+            if refused and entry.get("alsoAnswers"):
+                entry["alsoAnswers"] = [i for i in entry["alsoAnswers"] if i not in refused]
+                entry["dropped"] = sorted(set(entry.get("dropped", [])) | set(refused))
+                if not entry["alsoAnswers"]:
+                    del entry["alsoAnswers"]
+            tx.append_event("hub.send-failed", ref=entry["item"], actor="hub", data={"id": out_id, "reason": reason})
         tx.write_state(DOMAIN, doc)
     # Body files stay: nothing in a group is ever deleted (spec/group-store.md 关键决策 5).
     for out_id, entry in recorded:
         if entry["kind"] == "answer":
             items.record_sent(g, entry["item"], to=entry["to"], relay_id=entry["relayId"], at=at)
     return tickets.close_answered(g, at)
+
+
+_KIND_NAMES = {"answer": "答复", "notice": "答复告知", "return": "退回", "receipt": "登记回执"}
+
+
+def sent_show(g: store.Group, ids) -> str:
+    """What the user reads after 「inbox sent」: each answer forwarded, or which one failed and why (DI-6)."""
+    doc = store.read_state(g, DOMAIN).get("outgoing", {})
+    rows = []
+    for out_id in ids:
+        entry = doc.get(out_id)
+        if entry is None:
+            continue
+        to, item = _short(g, entry["to"]), entry["item"]
+        what = f"#{item} 的{_KIND_NAMES.get(entry['kind'], '消息')}" if item is not None else \
+            f"给 {to} 的{_KIND_NAMES.get(entry['kind'], '消息')}"
+        if entry["relayId"] is not None:
+            if entry["kind"] == "answer":
+                rows.append(f"已转达：#{item} → {to}")
+            if entry.get("skipped"):
+                rows.append(f"#{item} 顺带要关的 " + "、".join(f"#{i}" for i in entry["skipped"]) + " 已关闭，被跳过")
+        elif entry.get("failed"):
+            again = f"「重发 {item}」" if item is not None else "「重发」"
+            row = f"⚠ {what}没发出去（发给 {to}）：{entry.get('error') or '原因未记录'}。"
+            if entry.get("dropped"):
+                row += "已去掉 " + "、".join(f"#{i}" for i in entry["dropped"]) + f"（提出方已撤回），说{again}即可"
+            else:
+                row += f"处理好后说{again}"
+            rows.append(row)
+    return "\n".join(rows)
+
+
+def unsent_rows(g: store.Group, exclude=()) -> list[str]:
+    """Main view: each message not sent yet, by item, recipient and reason (decision-cards DI-6, I-3)."""
+    doc = store.read_state(g, DOMAIN).get("outgoing", {})
+    rows = []
+    for s in outgoing(g):
+        if s["id"] in exclude:
+            continue
+        entry = doc[s["id"]]
+        to, item = _short(g, entry["to"]), entry["item"]
+        reason = f"：{entry.get('error') or '原因未记录'}" if entry.get("failed") else ""
+        unsent = "" if entry.get("failed") else "，还没发"
+        if entry["kind"] == "answer":
+            rows.append(f"⚠ #{item} 已答复，待发送（发给 {to}{unsent}）{reason}；说「重发 {item}」")
+        else:
+            rows.append(f"⚠ 给 {to} 的{_KIND_NAMES.get(entry['kind'], '消息')}没发出去（{unsent[1:] or '发送失败'}）"
+                        f"{reason}；说「重发」")
+    return rows
 
 
 @dataclass
@@ -351,19 +422,21 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None,
-              loop_facts=None) -> str:
+              loop_facts=None, sessions=None, sessions_status: str | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
     head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
+    # decision-cards DI-9: prompts nobody reported, from agent-relay's bridge_sessions
+    head += [desktop.card(s, view.waited(m)) for s, m, _ in desktop.stuck(g, now, sessions)]
     head += view.loop_rows(g, loop_facts)    # loop-detection: R21 DI-6
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
-    unsent = [s for s in outgoing(g) if s["id"] not in exclude]
-    if unsent:
-        head.append(f"⚠ 有 {len(unsent)} 条消息没发出去，说「重发」再试")
+    head += unsent_rows(g, exclude)
     if relay is None and relay_status == "unreadable":
         head.append(deps.sourced(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全", "agent-relay"))
     elif relay is None:
         head.append("⚠ 本次没带 agent-relay 状态，各线状态不全")
+    if sessions_status in ("absent", "unreadable"):
+        head.append("本次没带会话状态，看不到停在弹窗上的会话")
     previous = store.read_state(g, "patrol").get("snapshot")
     assessment = health.assess(g, now=now, relay=relay, maps=maps or {}, previous=previous, crews=crews)
     return "\n".join([*head, view.render(g, now, assessment, relay, extra=returned_today(g, now),
@@ -376,6 +449,13 @@ _LOOK_RE = re.compile(r"^看\s*([#WwＷ]?)\s*(\d+)$")
 _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:[#WwＷ]?\s*\d+[\s、，,]*)+)(.*)$", re.S)
+_RESEND_RE = re.compile(r"^重发\s*#?(\d+)$")
+_FULL_RE = re.compile(r"^看\s*#?(\d+)\s*全文$")
+# decision-cards DI-7 (I-5): a sentence shaped like a command is never parsed as an answer.
+_COMMAND_LIKE_RE = re.compile(r"^(看|关掉)|重发|alsoAnswers")
+COMMANDS = ("这是操作指令，写法是：「重发」或「重发 N」（重发没发出去的消息）；「看 N」看卡片、「看 N 全文」看原文、"
+            "「N 详情」；「看等待」「看已关闭」「看失效」「看模块 <模块>」；「关掉 W编号 原因」。"
+            "答复待决事项请以编号开头，例如「12 B」。")
 
 
 def today(now: str) -> str:
@@ -441,8 +521,17 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
+    if m := _RESEND_RE.match(said):
+        no = int(m.group(1))
+        again = [s for s in outgoing(g) if _item_of(g, s) == no]
+        return Reply(f"重新列出 #{no} 的 {len(again)} 条没发出去的消息" if again
+                     else f"没有和 #{no} 有关的没发出去的消息", again)
+    if m := _FULL_RE.match(said):
+        return Reply(view.render_full(g, int(m.group(1)), now))
     if m := _MODULE_RE.match(said):
         return Reply(view.render_module(g, m.group(1), now, loop_facts))
+    if _COMMAND_LIKE_RE.search(said):
+        return Reply(COMMANDS)
     looping = loops.looping_items(loop_facts or [])
     parsed = items.interpret_reply(g, text, looping)
     if parsed.question == items.NO_ITEM_QUESTION and not items.pending(g):
@@ -461,7 +550,9 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
             loops.quiet(g, looping[a.item].key, now, quiet_hours)
     told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews, loop_facts=loop_facts)
-    return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
+    # decision-cards DI-6 (I-2): forwarded only once agent-relay took it, which 「inbox sent」 reports
+    return Reply(f"{notes}{f'已收下你的答复：{told}（发送结果见下一步）' if answers else ''}\n\n{body}".lstrip("\n"),
+                 sends)
 
 
 def _told(g: store.Group, item: int, sends: list[dict]) -> str:
@@ -486,19 +577,19 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 1. 用 `bridge_inbox` 读自己的收件箱，把返回的 JSON 原样写入 {io}/inbox.json。
 2. 运行 `{cli} inbox receive {group} --inbox {io}/inbox.json`。
 3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填，没有就不填；有 `alsoAnswers` 就照填（一次关掉这个会话已被取代或撤回、还没回复过的旧请求）；有 `wake` 就照填（false 是静默送达，例如【登记回执】）；不要求回复。
-4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N …`，发成的写在 --done 后，失败的写在 --failed 后。
+4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N=报错原文 …`，发成的写在 --done 后；失败的写在 --failed 后，等号后面原样填 `bridge_send` 的报错（含空格就整个加引号）；发送结果里有 `skipped` 时加 `--skipped out:N=编号,编号`。把输出的 `show` 逐字贴给用户：答复要到这一步才算「已转达」，失败时它会写明是哪一项、什么原因。
 5. 对输出 `ack` 里的每个编号调用 `bridge_ack`。`unread` 里的消息正文没读全：用 `bridge_inbox` 把 maxChars 调大（最多 400000）重读，再从第 1 步做。
 6. 输出 `more` 为真时，从第 1 步再读一页。
-7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
-   `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
-   把输出的主视图和第 2 步输出的 `notes` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对。按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
+7. 用 `bridge_agents`、`bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）和 `bridge_sessions`（不带参数）读状态，分别原样写入 {io}/agents.json、{io}/outbox.json 和 {io}/sessions.json，运行
+   `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json --sessions {io}/sessions.json`，
+   把输出的主视图和第 2 步输出的 `notes` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对。按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。每轮结束时停止钩子会对照命令输出检查：卡片抬头和复制块少一个、改一个字，或者没有待答的待决事项却出现代码块，都会被拦下来要你重贴。
 
 ### 顺带巡视
 
 定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
 
-1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json。
-2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给邮箱名 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json；再用 `bridge_sessions` 读本机各 Claude 会话的状态，原样写入 {io}/patrol-sessions.json。
+2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --sessions {io}/patrol-sessions.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给邮箱名 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
 3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
 
 只做计划里的动作，不读也不转述别的消息正文。
@@ -514,7 +605,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 2. 用写文件工具把用户这句话一字不改地写入 {io}/said.txt。
 3. 运行 `{cli} inbox reply {group} --text-file {io}/said.txt --agents {io}/agents.json`。
 4. 输出有 `sends` 就按上面第 3、4 步发出并记账。
-5. 把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
+5. 用户说的是「看 N」「看 N 全文」「重发」「重发 N」这类指令时，命令会照做；答复写「N 原话：…」表示不选选项、原话转过去。把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
 
 ### 改规则
 

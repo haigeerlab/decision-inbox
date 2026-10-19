@@ -16,7 +16,7 @@ import shlex
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from decision_inbox import crew, deps, hostperm, hub, install, onboard, protocol, store, view
+from decision_inbox import crew, deps, hostperm, hub, install, onboard, protocol, stophook, store, view
 
 MARKS = {"ok": "✔", "bad": "✘", "unknown": "？"}
 
@@ -145,6 +145,35 @@ def _patrol(g: store.Group, now: str) -> Check:
                      hub.patrol_session_fix(session) if session else hub.patrol_fix(task))
     last = store.read_state(g, "patrol").get("lastRunAt")
     return Check("巡视", "ok", "本插件", f"最近一轮 {view._minutes(now, last)} 分钟前" if last else "刚登记，还没到第一轮")
+
+
+TRANSCRIPT_SCAN = 50  # most recent session records looked at for a hub turn
+
+
+def transcripts_dir() -> Path:
+    return Path(os.environ.get("DECISION_INBOX_TRANSCRIPTS") or Path.home() / ".claude" / "projects")
+
+
+def _hub_transcript() -> Check:
+    """decision-cards DI-4: the hub's stop check reads Claude Code session records; can it read this host's?"""
+    name = "收件箱停止检查"
+    try:
+        records = sorted(transcripts_dir().glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        records = []
+    for path in records[:TRANSCRIPT_SCAN]:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not stophook._HUB_COMMAND_RE.search(text):
+            continue
+        problem = stophook.transcript_readable(str(path))
+        if problem:
+            return Check(name, "bad", "Claude Code", f"会话记录读不懂：{path.name}（{problem}）；停止检查会一律放行",
+                         "把这一项报给 decision-inbox 维护者（会话记录格式可能变了）")
+        return Check(name, "ok", "Claude Code", f"读得懂收件箱的会话记录（{path.name}）")
+    return Check(name, "unknown", "Claude Code", f"最近 {TRANSCRIPT_SCAN} 份会话记录里还没有收件箱出过主视图的")
 
 
 def codex_config() -> Path:
@@ -335,6 +364,8 @@ def run(groups=None, now: str | None = None) -> list[Check]:
         codex |= any(e.get("host") == "codex-desktop" and e["relayName"] not in left for e in store.roster(g))
     if codex:
         out.append(_codex_trust())
+    if any(e["role"] == "hub" for group in _groups(groups) for e in store.roster(store.open_group(group))):
+        out.append(_hub_transcript())
     out.append(_host_versions())
     out += [_dependency(n) for n in ("agent-relay", "spec-guard", "delegate")]
     out.append(_dependency("module-crew", required=bool(coordinators)))
