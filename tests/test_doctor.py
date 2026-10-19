@@ -158,6 +158,52 @@ class TornDownTest(DoctorCase):
         self.assertEqual(self.check("巡视", doctor.run(["solo"], NOW)).state, "bad")
 
 
+class HostPermissionTest(DoctorCase):
+    """host-permission-check (R21 DI-4): each dev line's host permissions against its Plan's needs."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        self.module = mock.patch.object(doctor, "_active_module", return_value="m")
+        self.module.start()
+        self.addCleanup(self.module.stop)
+        self.codex.write_text('sandbox_mode = "workspace-write"\n', encoding="utf-8")
+
+    def plan(self, needs):
+        d = self.work / "dev" / "tasks" / "m"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "plan.md").write_text(f"# Plan\n\n需要的外部条件：{needs}\n\n## Overview\n", encoding="utf-8")
+
+    def test_bad_lists_both_options_and_writes_nothing(self):
+        self.plan("从官方源装 vitest")
+        before = (self.codex.read_bytes(), sorted(p.name for p in (self.work / "dev").rglob("*")))
+        c = self.check("宿主权限：开发")
+        self.assertEqual((c.state, c.source), ("bad", "Codex"))
+        self.assertIn("不能联网", c.evidence)
+        for words in ("A 你自己改", "先在 Codex 里信任这个项目", "network_access = true", "没实测", "B 不改"):
+            self.assertIn(words, c.fix)
+        self.assertEqual((self.codex.read_bytes(), sorted(p.name for p in (self.work / "dev").rglob("*"))), before)
+
+    def test_ok_when_nothing_needed_or_no_plan(self):
+        self.plan("无")
+        self.assertEqual(self.check("宿主权限：开发").state, "ok")
+        (self.work / "dev" / "tasks" / "m" / "plan.md").unlink()
+        c = self.check("宿主权限：开发")
+        self.assertEqual(c.state, "ok")
+        self.assertIn("没法对照", c.evidence)
+        self.assertIn("异常 0", doctor.render([c]))
+
+    def test_unknown_when_config_unreadable(self):
+        self.plan("装依赖")
+        self.codex.unlink()
+        c = self.check("宿主权限：开发")
+        self.assertEqual(c.state, "unknown")
+        self.assertIn("读不到", c.evidence)
+
+    def test_only_dev_lines(self):
+        self.assertFalse([c for c in doctor.run(["g"], NOW) if c.name.startswith("宿主权限：") and "开发" not in c.name])
+
+
 class HookTrustTest(DoctorCase):
     def test_codex_trust_states(self):
         self.assertEqual(self.check("Codex 钩子信任").state, "unknown")

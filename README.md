@@ -108,6 +108,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 体检与统计（命令行，只读）：
 
 - `~/.decision-inbox/bin/decision-inbox doctor [--group <协作组>]`：逐项核对协作规则段是不是当前版本、转发脚本指向、巡视、Codex 能否加载协作规则段、Codex 钩子信任、依赖插件版本与接口（module-crew 另写契约版本；名册里有模块协调时，还实际读一次它的只读出口，报读到几个模块或读不到的原因）；每项写来源和怎么做，有异常时退出码 3。`--json` 给程序读（`schemaVersion` 1，字段 `name`、`state`、`source`、`evidence`、`fix`），`--report` 出一份可以直接转给负责方的异常报告（不含消息正文）。
+  - 「宿主权限：<线名>」（每条开发线一项，只读）：读这条线宿主的实际权限（Codex：沙箱模式、能不能联网、项目受不受信任、仓库里的 `.codex/config.toml`；Claude：有没有放行按锁文件或清单装依赖的规则），和当前模块 Plan 里写的「需要的外部条件」对照。Plan 写了要装依赖或联网、宿主却不让时报 ✘，给两个选项：A 你自己改（Codex 在受信任项目的 `.codex/config.toml` 写 `[sandbox_workspace_write]` 和 `network_access = true`，不改 `~/.codex/config.toml`；依据 openai/codex 源码，Codex 桌面应用没实测，改完在开发会话里试一次。Claude 重跑接入）；B 不改，开发线碰到时按「去会话操作」上报，到时去那个会话点。Plan 没写这一项时只列宿主事实，不算异常。决策收件箱不改任何宿主配置。开发线接入时，预览里也会对照一次。
 - `… query stats <协作组> [--since 2026-10-17] [--json]`：待决事项数、绕过决策收件箱结束的待决事项、抛出→答复与答复→恢复的耗时（中位、最长）、被取代／退回／追问被退回／拒收转述次数、开着的等待记录、巡视实际跑了几轮和相邻两轮的最长间隔。
 - `… query events <协作组> --json [--since <日期>]`：事件日志，每条固定为 `at`、`kind`、`actor`、`item`、`data`。
 

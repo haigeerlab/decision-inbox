@@ -16,7 +16,7 @@ import shlex
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from decision_inbox import crew, deps, hub, install, onboard, protocol, store, view
+from decision_inbox import crew, deps, hostperm, hub, install, onboard, protocol, specguard, store, view
 
 MARKS = {"ok": "✔", "bad": "✘", "unknown": "？"}
 
@@ -302,6 +302,22 @@ def _crew_output(entry: dict) -> Check:
                  f"按原因处理；处理好之前，主视图里这条线显示「模块状态未知」（在 {entry['repo']} 运行 sessions --json）")
 
 
+def _active_module(repo: str) -> str | None:
+    """The module spec-guard says this repo is on; None when spec-guard cannot be read."""
+    read = specguard.read_line(repo)
+    return read.map.active_module if read.status == "ok" else None
+
+
+def _host_permission(entry: dict) -> Check:
+    """host-permission-check (R21 DI-4): read-only, the user changes the host or clicks in the session."""
+    repo, host = entry["repo"], entry.get("host")
+    codex = hostperm.codex_facts(repo, codex_config()) if host == "codex-desktop" else None
+    claude = hostperm.claude_facts(repo) if host != "codex-desktop" else None
+    r = hostperm.compare(host, repo, codex, claude, hostperm.plan_needs(repo, _active_module(repo)))
+    return Check(f"宿主权限：{entry['shortName']}", r.state, "Codex" if host == "codex-desktop" else "Claude Code",
+                 r.evidence, r.fix)
+
+
 def _groups(names) -> list[str]:
     if names:
         return list(names)
@@ -320,6 +336,8 @@ def run(groups=None, now: str | None = None) -> list[Check]:
         out.append(_patrol(g, now))
         coordinators += crew.coordinators(g)
         left = store.read_state(g, onboard.DOMAIN).get("left", {})
+        out += [_host_permission(e) for e in store.roster(g)
+                if e["role"] == "dev" and e.get("repo") and e["relayName"] not in left]
         codex |= any(e.get("host") == "codex-desktop" and e["relayName"] not in left for e in store.roster(g))
     if codex:
         out.append(_codex_trust())
