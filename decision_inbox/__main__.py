@@ -82,6 +82,24 @@ def _notify(argv: list[str]) -> int:
     return 0
 
 
+def _patrol_watch(argv: list[str]) -> int:
+    """stage-c-fixes DI-11: run by launchd every few minutes; always exits 0 so launchd keeps it."""
+    from datetime import datetime, timezone
+    from decision_inbox import watch
+    if len(argv) != 1:
+        print("用法：decision-inbox patrol-watch <组>", file=sys.stderr)
+        return 0
+    try:
+        g = store.open_group(argv[0])
+        text = watch.check(g, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    except Exception as e:  # noqa: BLE001 - a broken run must not stop the next one
+        print(f"巡视提醒没跑成（{argv[0]}）：{e}".replace("\n", " "), file=sys.stderr)
+        return 0
+    if text:
+        print(f"已提醒：{text}")
+    return 0
+
+
 def _disposable_roots() -> list[Path]:
     """Where the hub and patrol drop their input files: the temp dirs and each group's io/."""
     import tempfile
@@ -723,6 +741,8 @@ def main(argv: list[str]) -> int:
         return _patrol(argv[1:])
     if argv[:1] == ["notify"]:
         return _notify(argv[1:])
+    if argv[:1] == ["patrol-watch"]:
+        return _patrol_watch(argv[1:])
     if argv[:1] == ["hook"]:
         return _hook(argv[1:])
     if argv[:1] == ["query"]:

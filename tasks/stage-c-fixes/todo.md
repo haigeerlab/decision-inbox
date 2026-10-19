@@ -10,8 +10,9 @@
   - 验证：epsilon 重放与三种扣除用例先失败后通过
   - 结果：`StallClockTest` 5 条在 1c2d3c9 上全部失败，改后通过。起点取最后提交、startedAt、最近一次答复送达（module-crew answers 与收件箱发送记录）三者最晚，停滞说明对应写「你的答复 … 送达后 N 小时没有新提交」；等待算到答复发送成功；几个模块的交审编号同在一项里的不归任何模块（不猜），对涉及的每个模块都扣；模块协调的等待记录点名的只扣那个模块，不点名的扣全部
   - 改写的旧测试：`test_loops` 的 `LoopsCase.item` 给已答事项补一条发送记录（口径改为「等到发送成功」，不改被测行为）
-- [ ] Task 4：patrol-watch 命令（DI-11；验收 4）
+- [x] Task 4：patrol-watch 命令（DI-11；验收 4）
   - 验证：通知节奏四种情况用例先失败后通过
+  - 结果：新 `watch.py` 与 `decision-inbox patrol-watch <组>`；判据直接用 `hub.patrol_alarm`；通知标题「决策收件箱：巡视停了」，正文去掉「⚠ 」和来源尾巴，含巡视会话链接与修法；30 分钟内不重发，发送失败下一轮再试，恢复后清掉记录；命令总是退出 0（组不存在只写 stderr），避免 launchd 停掉任务。`tests/test_watch.py` 4 条（在 1c2d3c9 上没有这个模块，全失败），改后通过；状态放在 `state/patrol-watch.json`
 - [ ] Task 5：装、卸与体检（DI-11；验收 5）
   - 验证：假 launchctl 用例先失败后通过
 - [ ] Task 6：文档、版本 0.0.31 与实跑（验收 8）
