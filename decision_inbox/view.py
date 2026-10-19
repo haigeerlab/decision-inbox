@@ -144,10 +144,10 @@ def _anomaly_section(g: store.Group, assessment, extra=()) -> str | None:
 
 
 def _overview(g: store.Group, now: str, assessment, extra=()) -> str:
-    decide = len(items.pending(g)) + len(_needs_user(g, assessment))
+    decide = len([it for it in items.pending(g) if not items.is_go_to_session(it)]) + len(_needs_user(g, assessment))
     text = f"等你决定 {decide} 项 · 异常 {len(_anomalies(assessment)) + len(extra)}"
-    recent = [it for it in items.by_status(g, *FORWARDED)
-              if _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES]
+    recent = [it for it in items.by_status(g, *FORWARDED)  # a go-to-session item is closed without forwarding
+              if "forwarded" in it["statusAt"] and _minutes(now, it["statusAt"]["forwarded"]) <= RECENT_MINUTES]
     if recent:
         recent.sort(key=lambda it: _instant(it["statusAt"]["forwarded"]))
         text += " · 刚转达：" + "、".join(
@@ -237,7 +237,7 @@ def _item_card(g: store.Group, now: str, it: dict) -> str:
 
 def _combined(g: store.Group) -> str | None:
     """One copy block answering every recommended card at once (relay-checkpoint-authority R4)."""
-    pending = items.pending(g)
+    pending = [it for it in items.pending(g) if not items.is_go_to_session(it)]  # nothing to answer
     asks = [it for it in pending if it.get("decisions")]  # answered on their own (review-nearby R2)
     pending = [it for it in pending if not it.get("decisions") and not approval.is_approval(it)]
     picks = [f"{it['no']} {it['recommended']}" for it in pending if it["recommended"]]
@@ -363,10 +363,48 @@ def render_look(g: store.Group, no: int, now: str) -> str:
     return render_approval(g, it, now) if approval.is_approval(it) else _item_card(g, now, it)
 
 
+GO_TO_SESSION_REMIND_MINUTES = 30
+_LINK = "claude://claude.ai/epitaxy/{}"
+
+
+def _go_to_where(it: dict) -> str:
+    gts = it["goToSession"]
+    link = gts.get("link") or ""
+    if link.startswith("claude://"):
+        return f"去：{gts['session']}（{link}）"
+    if link.startswith("local_"):
+        return f"去：{gts['session']}（{_LINK.format(link)}）"
+    return f"去：在 Codex 应用里打开 {gts['session']} 对应的任务"
+
+
+def go_to_session_rows(g: store.Group, now: str) -> list[str]:
+    """go-to-session (R21 DI-7): what the user must click in another session, on top of the main view."""
+    rows = []
+    for it in items.pending(g):
+        if not items.is_go_to_session(it):
+            continue
+        gts, waited = it["goToSession"], _minutes(now, it["receivedAt"])
+        title = f"#{it['no']} · {_short(g, it['sender'])} · 去会话操作"
+        if waited >= GO_TO_SESSION_REMIND_MINUTES:
+            title += f"（已等 {waited} 分钟，再提醒一次）"
+        lines = [title, f"  {_go_to_where(it)}", f"  被拦的操作：{gts['blockedAction']}", f"  点：{gts['button']}",
+                 f"  为什么这里批不了：{gts['reason']}"]
+        if gts.get("hostText"):
+            lines.append(f"  宿主原文：{gts['hostText']}")
+        if gts.get("relatedItem"):
+            lines.append(f"  你在 #{gts['relatedItem']} 已同意，只差宿主这一下")
+        lines.append("  点完不用回复，对方会发【已恢复】自动结项")
+        rows.append("\n".join(lines))
+    return ["⚠ 要你去会话里操作：\n" + "\n".join(rows)] if rows else []
+
+
 def _cards(g: store.Group, now: str, assessment, relay) -> list[str]:
-    confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment)]
+    reported = {it["sender"] for it in items.pending(g) if items.is_go_to_session(it)}
+    confirms = [_confirm_card(g, now, name, relay) for name in _needs_user(g, assessment) if name not in reported]
     cards, opened = [], False
     for it in items.pending(g):
+        if items.is_go_to_session(it):
+            continue  # shown on top by go_to_session_rows
         if not approval.is_approval(it):
             cards.append(_item_card(g, now, it))
         elif not opened:  # only the first approval opens in full (approval-display decision 1)

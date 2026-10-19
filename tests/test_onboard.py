@@ -515,11 +515,12 @@ class CodexLoadsTest(OnboardCase):
 
 
 DEFAULT_NOTE = "默认打开了「检查点答复即授权」"
+GO_NOTE = "要你去会话里操作"
 
 
 def others(warnings):
-    """Warnings other than the scope-authority-defaults note that the authority is on by default."""
-    return [w for w in warnings if DEFAULT_NOTE not in w]
+    """Warnings other than the notes every join now carries (scope-authority-defaults, go-to-session)."""
+    return [w for w in warnings if DEFAULT_NOTE not in w and GO_NOTE not in w]
 
 
 AUTHORITY = """### 检查点答复即授权（接入时默认打开，可以关掉）
@@ -584,8 +585,8 @@ class CheckpointAuthorityTest(OnboardCase):
         repo = self.dir("fe")
         (repo / ".git").mkdir()
         out = self.join_fe(True, project=repo, cwd=self.dir("scratch"))
-        self.assertEqual(len(out.warnings), 3)
-        self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[2])
+        self.assertEqual(len(others(out.warnings)), 2)
+        self.assertIn("当前目录下这份授权不会被守卫看到", out.warnings[-1])
 
 
 class CrewCoordinatorTest(OnboardCase):

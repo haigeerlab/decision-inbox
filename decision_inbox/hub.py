@@ -353,6 +353,7 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
               relay_status: str | None = None, relay_error: str | None = None, crews: dict | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
+    head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
     head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
     unsent = [s for s in outgoing(g) if s["id"] not in exclude]
     if unsent:
@@ -440,10 +441,14 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
         return Reply(f"{parsed.question}\n\n{main_view(g, now, relay, maps, crews=crews)}")
     if parsed.question:
         return Reply(parsed.question)
-    sends = _queue_answers(g, items.answer(g, parsed.answers, answered_at=now), now)
-    told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in parsed.answers)
+    # go-to-session: nothing to forward, its sender closes it with 【已恢复】 (session-protocol v2.2 section 8)
+    skipped = [a.item for a in parsed.answers if items.is_go_to_session(items.get(g, a.item))]
+    answers = [a for a in parsed.answers if a.item not in skipped]
+    notes = "".join(f"#{n} 是去会话操作，不需要回复；点完对方会发【已恢复】自动结项。\n" for n in skipped)
+    sends = _queue_answers(g, items.answer(g, answers, answered_at=now), now) if answers else []
+    told = "；".join(_told(g, a.item, [s for s in sends if _item_of(g, s) == a.item]) for a in answers)
     body = main_view(g, now, relay, maps, exclude={s["id"] for s in sends}, crews=crews)
-    return Reply(f"已转达：{told}\n\n{body}", sends)
+    return Reply(f"{notes}{f'已转达：{told}' if answers else ''}\n\n{body}".lstrip("\n"), sends)
 
 
 def _told(g: store.Group, item: int, sends: list[dict]) -> str:
