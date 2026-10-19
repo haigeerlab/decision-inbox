@@ -215,7 +215,7 @@ def _recommend_line(it: dict) -> str | None:
 
 def _topic(it: dict, k: str) -> str:
     if k in APPROVALS and it.get("approvalModule"):
-        return f"{it['approvalModule']} 的{KIND_NAMES[k]}，批不批"
+        return f"{it['approvalModule']} 的 {KIND_NAMES[k]}，批不批"
     return _clip((it.get("decide") or "").split("\n")[0], 40)
 
 

@@ -221,7 +221,7 @@ class ReadmeTest(unittest.TestCase):
                        # host-permission-check
                        "宿主权限", ".codex/config.toml", "network_access = true", "没实测",
                        # go-to-session
-                       "session-protocol` v2.2", "要你去会话里操作", "去会话操作", "0.0.28 改了协作规则段",
+                       "session-protocol` v2.3", "要你去会话里操作", "去会话操作", "0.0.28 改了协作规则段",
                        # scope-authority-defaults
                        "--no-checkpoint-authority", "默认打开", "npm ci", "旧版本写的", "0.0.28 改了协作规则段",
                        # permission-closeout
@@ -229,7 +229,9 @@ class ReadmeTest(unittest.TestCase):
                        # stall-and-patrol
                        "/loop 5m", "### 常规授权（Claude 线）", "io/snapshots/",
                        # approval-display
-                       "### 提请批准怎么读", "回「看 N」展开", "原文取不到", "⚠ 缺证据",
+                       "### 卡片怎么读", "回「看 N 全文」", "原文取不到", "⚠ 缺证据",
+                       # decision-cards
+                       "复制块", "已答复，待发送", "bridge_sessions", "12 原话：", "重发 12", "收件箱停止检查",
                        # review-nearby
                        "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",

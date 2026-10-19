@@ -577,19 +577,19 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 1. 用 `bridge_inbox` 读自己的收件箱，把返回的 JSON 原样写入 {io}/inbox.json。
 2. 运行 `{cli} inbox receive {group} --inbox {io}/inbox.json`。
 3. 输出的 `sends` 逐条用 `bridge_send` 发出：`to` 照填，正文用 `bodyFile` 指向给出的文件（不要自己抄写正文），有 `replyTo` 就照填，没有就不填；有 `alsoAnswers` 就照填（一次关掉这个会话已被取代或撤回、还没回复过的旧请求）；有 `wake` 就照填（false 是静默送达，例如【登记回执】）；不要求回复。
-4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N …`，发成的写在 --done 后，失败的写在 --failed 后。
+4. 运行 `{cli} inbox sent {group} --done out:N=发出的消息编号 … --failed out:N=报错原文 …`，发成的写在 --done 后；失败的写在 --failed 后，等号后面原样填 `bridge_send` 的报错（含空格就整个加引号）；发送结果里有 `skipped` 时加 `--skipped out:N=编号,编号`。把输出的 `show` 逐字贴给用户：答复要到这一步才算「已转达」，失败时它会写明是哪一项、什么原因。
 5. 对输出 `ack` 里的每个编号调用 `bridge_ack`。`unread` 里的消息正文没读全：用 `bridge_inbox` 把 maxChars 调大（最多 400000）重读，再从第 1 步做。
 6. 输出 `more` 为真时，从第 1 步再读一页。
-7. 用 `bridge_agents` 和 `bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）读状态，分别原样写入 {io}/agents.json 和 {io}/outbox.json，运行
-   `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json`，
-   把输出的主视图和第 2 步输出的 `notes` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对。按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。
+7. 用 `bridge_agents`、`bridge_outbox`（带 `includeAcknowledged: true`，否则对方已确认的消息不会列出）和 `bridge_sessions`（不带参数）读状态，分别原样写入 {io}/agents.json、{io}/outbox.json 和 {io}/sessions.json，运行
+   `{cli} view {group} --agents {io}/agents.json --outbox {io}/outbox.json --sessions {io}/sessions.json`，
+   把输出的主视图和第 2 步输出的 `notes` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对。按 Markdown 直接显示，不要套进代码块，否则卡片里的复制块会失效。每轮结束时停止钩子会对照命令输出检查：卡片抬头和复制块少一个、改一个字，或者没有待答的待决事项却出现代码块，都会被拦下来要你重贴。
 
 ### 顺带巡视
 
 定时巡视在有些机器上很少按时触发（宿主），所以由你补上：`inbox receive` 或 `inbox reply` 的输出里 `patrolDue` 为真时，先把用户的事处理完，在本轮最后做一遍巡视：
 
-1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json。
-2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给邮箱名 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
+1. 用 `bridge_agents`（不带参数）重新读一次状态，原样写入 {io}/patrol-agents.json（不要复用上面第 7 步的 agents.json，它已被 view 用掉删除）；再用 `bridge_outbox`（带 `includeAcknowledged: false`）读你发出、对方还没确认的消息，原样写入 {io}/patrol-outbox.json；再用 `bridge_sessions` 读本机各 Claude 会话的状态，原样写入 {io}/patrol-sessions.json。
+2. 运行 `{cli} patrol plan {group} --agents {io}/patrol-agents.json --outbox {io}/patrol-outbox.json --sessions {io}/patrol-sessions.json --out {io}/plan.json --from-hub`，按输出的 `actions` 逐条做：wake 用 `send_message` 把 text 原样发给会话 target；owner-alert 用 `bridge_send` 把 text 原样发给邮箱名 target，不要求回复；notify 不发桌面通知，把 text 原样显示给用户。
 3. 运行 `{cli} patrol record {group} --plan {io}/plan.json --done <做成的动作 id…> --failed <失败的动作 id…>`。
 
 只做计划里的动作，不读也不转述别的消息正文。
@@ -605,7 +605,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 2. 用写文件工具把用户这句话一字不改地写入 {io}/said.txt。
 3. 运行 `{cli} inbox reply {group} --text-file {io}/said.txt --agents {io}/agents.json`。
 4. 输出有 `sends` 就按上面第 3、4 步发出并记账。
-5. 把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
+5. 用户说的是「看 N」「看 N 全文」「重发」「重发 N」这类指令时，命令会照做；答复写「N 原话：…」表示不选选项、原话转过去。把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
 
 ### 改规则
 

@@ -79,7 +79,7 @@ class ApprovalCardTest(CardCase):
         no = self.ask()
         text = self.card(no)
         lines = [x for x in text.split("\n") if x.strip()]
-        self.assertTrue(lines[0].startswith(f"**#{no} · alpha 的Spec，批不批** · 等了 "), lines[0])
+        self.assertTrue(lines[0].startswith(f"**#{no} · alpha 的 Spec，批不批** · 等了 "), lines[0])
         self.assertEqual(lines[1], "crew-rehearsal · 门店 · 模块 alpha · Spec（第 1 次交审）")
         order = [next(i for i, x in enumerate(lines) if x.startswith(p))
                  for p in ("**内容要点**", "**结论**", "**A 批准**", "**B 先不批**", "**推荐 A**", "```")]
