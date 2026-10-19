@@ -295,3 +295,14 @@ class V23CardTest(CardCase):
         full = hub.reply(self.g, f"看 {no} 全文", now=NOW).show
         self.assertIn("| package.json | 加 is-plain-obj 4.1.0（你在 #44 批过） |", full)
         self.assertNotIn("```", full)
+
+
+class NoteSourceTest(CardCase):
+    """decision-cards D1 B (final acceptance): writing hints are the proposer's, never a card's 注意."""
+
+    def test_writing_hint_not_shown_as_note(self):
+        no = self.ask()
+        self.set(no, writingNotes=["「你该回」只写了选项字母，没写完整回复原文"])
+        self.assertNotIn("**注意**", self.card(no))
+        self.set(no, note="无")
+        self.assertIn("**注意**：无", self.card(no))

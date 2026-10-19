@@ -663,7 +663,7 @@ class WritingNotesTest(TempHomeTestCase):
             "要点：Mock 已就绪，两种方式工作量差一倍。", "要点：\n- #4 做什么\n- #4 不做什么\n- #5 步骤\n- #5 风险")
         self.assertNotIn("brief-thin-batch", self.notes(text))
 
-    def test_notes_kept_on_item_and_shown_on_card(self):
+    def test_notes_kept_on_item_not_on_card(self):
         from decision_inbox import view
         g, _ = store.init_group("demo")
         with g.transaction() as tx:
@@ -674,6 +674,7 @@ class WritingNotesTest(TempHomeTestCase):
         self.assertTrue(r.accepted)
         self.assertEqual(r.return_text, None)
         it = next(x for x in items.pending(g))
+        self.assertTrue(any("「你该回」只写了选项字母" in n for n in it["writingNotes"]))  # kept for the 回执
         card = view._item_card(g, "2026-10-18T19:45:00+08:00", it)
-        self.assertIn("写法提示：缺「项目：」", card)
-        self.assertIn("「你该回」只写了选项字母", card)
+        # decision-cards D1 B: writing hints are the proposer's business, not the user's card
+        self.assertNotIn("写法提示", card)

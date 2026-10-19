@@ -139,12 +139,14 @@ def conclusion(it: dict) -> str:
 
 
 def notes(it: dict) -> list[str]:
-    """「注意」 as the proposer wrote it (v2.3, 「无」 included), else only from a source (assumption 3)."""
+    """「注意」 as the proposer wrote it (v2.3, 「无」 included), else what the review label found (assumption 3).
+
+    Writing hints go back to the proposer in its 【登记回执】; they are not the user's business (D1 B).
+    """
     if it.get("note"):
         return [it["note"]]
     review = it.get("review") or {}
-    found = [f"正文提到：{m}" for m in review.get("mentions") or ()] if review.get("warn") else []
-    return found + [f"写法提示：{n}" for n in it.get("writingNotes") or ()]
+    return [f"正文提到：{m}" for m in review.get("mentions") or ()] if review.get("warn") else []
 
 
 # ── copy block ────────────────────────────────────────────────────────────────
