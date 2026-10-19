@@ -658,6 +658,11 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     if checkpoint_authority:  # scope-authority-defaults DI-1: on by default, say so and how to turn it off
         out.warnings.append("默认打开了「检查点答复即授权」：决策收件箱转来的检查点答复，算作你对 Plan 范围内操作"
                             "（含 Plan 列出的依赖安装、官方源下载）的授权；不要的话加 --no-checkpoint-authority 重跑")
+    if role == "dev":  # host-permission-check (R21 DI-4): same read-only comparison as doctor
+        from decision_inbox import doctor
+        check = doctor._host_permission(entry)
+        if check.state == "bad":
+            out.warnings.append(f"宿主权限：{check.evidence}。{check.fix}（之后用 doctor 再核对）")
     if (word := stricter_rule(before)) is not None:
         out.warnings.append(f"项目规则比协作规则段默认值更严格，以项目规则为准（规则文件里有「{word}」）")
     if host == "codex-desktop":

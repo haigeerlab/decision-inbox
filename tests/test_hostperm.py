@@ -171,3 +171,46 @@ class CompareTest(HostCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JoinPreviewTest(unittest.TestCase):
+    """host-permission-check: a Codex dev line whose Plan needs network but cannot have it gets a ⚠ at join."""
+
+    def setUp(self):
+        import os
+        from helpers import TempHomeTestCase  # noqa: F401  (same isolation as the other onboard tests)
+        self.tmp = Path(tempfile.mkdtemp(prefix="di-host-join-"))
+        self._env = {k: os.environ.get(k) for k in ("DECISION_INBOX_HOME", "DECISION_INBOX_CODEX_CONFIG")}
+        os.environ["DECISION_INBOX_HOME"] = str(self.tmp / "home")
+        os.environ["DECISION_INBOX_CODEX_CONFIG"] = str(self.tmp / "codex.toml")
+        (self.tmp / "codex.toml").write_text('sandbox_mode = "workspace-write"\n', encoding="utf-8")
+        from decision_inbox import onboard
+        (self.tmp / "hub").mkdir()
+        onboard.hub("demo", "di-hub", "local_00000000-0000-0000-0000-000000000001", self.tmp / "hub", True,
+                    "2026-10-19T12:00:00+08:00")
+        self.repo = self.tmp / "app"
+        (self.repo / "tasks" / "m").mkdir(parents=True)
+
+    def tearDown(self):
+        import os
+        for k, v in self._env.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def join(self, needs):
+        from unittest import mock
+        from decision_inbox import doctor, onboard
+        (self.repo / "tasks" / "m" / "plan.md").write_text(f"需要的外部条件：{needs}\n", encoding="utf-8")
+        with mock.patch.object(doctor, "_active_module", return_value="m"):
+            return onboard.join("demo", role="dev", relay_name="app", short_name="应用", host="codex-desktop",
+                                lines=["应用"], desktop_session=None, project=self.repo, reviewer=None, nodes=[],
+                                confirm=False, now="2026-10-19T12:00:00+08:00", session_cwd=str(self.repo))
+
+    def test_warns_with_both_options(self):
+        notes = [w for w in self.join("装 vitest").warnings if "宿主权限" in w]
+        self.assertEqual(len(notes), 1)
+        for words in ("不能联网", "A 你自己改", "B 不改", "doctor"):
+            self.assertIn(words, notes[0])
+
+    def test_quiet_when_matched(self):
+        self.assertFalse([w for w in self.join("无").warnings if "宿主权限" in w])
