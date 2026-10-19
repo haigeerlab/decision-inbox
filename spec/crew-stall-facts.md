@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved ecd0cda24417 -->
 
 # Spec: crew-stall-facts
 
