@@ -20,6 +20,19 @@ _NUM_RE = re.compile(r"#\s*(\d+)")
 WAITED_MINUTES = 15
 STUCK_MINUTES = 60
 OFFLINE = ("offline", "unreachable")
+_NOTE_RE = re.compile(r"\s*[（(][^（）()]*[）)]\s*$")
+
+
+def waits_on_user(g: store.Group, target: str) -> bool:
+    """Whether 「在等谁」 names the user (wait-closed-item, I-11).
+
+    Besides the user's own names, the hub's short and agent-relay names count, and a trailing note in
+    brackets is dropped first, as in 「决策收件箱（di-p0-hub）」. A dev line is never the user.
+    """
+    hub = next((e for e in store.roster(g) if e["role"] == "hub"), None)
+    names = set(USER_TARGETS) | ({hub["shortName"], hub["relayName"]} if hub else set())
+    target = (target or "").strip()
+    return target in names or _NOTE_RE.sub("", target).strip() in names
 
 
 @dataclass(frozen=True)
@@ -103,7 +116,7 @@ def receive(g: store.Group, text: str, sender: str, relay_id, sent_at: str) -> R
             # Short name first; lines also write the agent-relay name (e2e-round1-fixes F5).
             entry = None if target in USER_TARGETS else (store.find_session(g, short_name=target)
                                                          or store.find_session(g, relay_name=target))
-            if entry is None and target not in USER_TARGETS:
+            if entry is None and not waits_on_user(g, target):  # wait-closed-item: 「决策收件箱（…）」 is known
                 hints.append(Issue("unknown-target", f"「在等谁」里的 {target} 不在会话名册里，不判断它是否在线"))
             opened = tx.allocate_number()
             doc["tickets"][str(opened)] = {
@@ -127,7 +140,7 @@ def close_answered(g: store.Group, at: str) -> tuple[int, ...]:
     with g.transaction() as tx:
         doc = _doc(tx)
         for key, t in doc["tickets"].items():
-            if t["status"] != "open" or t["target"] not in USER_TARGETS:
+            if t["status"] != "open" or not waits_on_user(g, t["target"]):
                 continue
             for no in _NUM_RE.findall(t["what"]):
                 it = item_doc.get(no)

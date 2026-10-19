@@ -71,7 +71,7 @@ def _push_line(g: store.Group, now: str, assessment) -> str | None:
     open_ = [t for t in tickets.open_tickets(g, now) if t.maybe_stale is None]
     if not open_:
         return None
-    on_sessions = [t for t in open_ if t.target not in tickets.USER_TARGETS]
+    on_sessions = [t for t in open_ if not tickets.waits_on_user(g, t.target)]
     waiting = {_short(g, t.waiter) for t in on_sessions}
     counts = Counter(t.target for t in on_sessions if t.target not in waiting)
     ranked = counts.most_common(2)

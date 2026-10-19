@@ -1,6 +1,6 @@
 # Todo: wait-closed-item
 
-- [ ] Task 1：统一「在等用户」（Spec 要做的 1；验收 1、2、5）
+- [x] Task 1：统一「在等用户」（Spec 要做的 1；验收 1、2、5）
   - 验证：`tests/test_tickets.py` 新用例先失败后通过
 - [ ] Task 2：可能已失效——所等的 #N 已结项（Spec 要做的 2、3、4；验收 3、4）
   - 验证：新用例先失败后通过；README 两行

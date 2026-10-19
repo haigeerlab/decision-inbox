@@ -261,3 +261,25 @@ class ClosedTodayTest(TicketsCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaitsOnUserTest(TicketsCase):
+    """wait-closed-item Task 1 (I-11): 「决策收件箱（邮箱名）」 is the user too."""
+
+    def test_forms(self):
+        for target in ("用户", "决策收件箱", "收件枢纽", "决策收件箱（hub）", "决策收件箱(hub)", " 收件枢纽（hub） ", "hub"):
+            with self.subTest(target=target):
+                self.assertTrue(tickets.waits_on_user(self.g, target))
+        for target in ("前端", "前端（fe）", "API", "某个新线（x）"):
+            with self.subTest(target=target):
+                self.assertFalse(tickets.waits_on_user(self.g, target))
+
+    def test_no_unknown_target_hint_and_auto_close(self):
+        item = items.receive(self.g, SINGLE, sender="fe-codex", relay_id=1, received_at=SENT).item
+        r = self.receive(wait_session(target="决策收件箱（hub）", what=f"#{item}（C128）的【用户答复】转达"))
+        self.assertNotIn("unknown-target", [h.code for h in r.hints])
+        items.answer(self.g, items.interpret_reply(self.g, f"{item} A").answers, answered_at=SENT)
+        self.assertEqual(tickets.close_answered(self.g, at=SENT), ())  # not sent yet
+        items.record_sent(self.g, item=item, to="fe-codex", relay_id=8787, at=SENT)
+        self.assertEqual(tickets.close_answered(self.g, at=SENT), (r.opened,))
+        self.assertEqual(self.ticket(r.opened)["close"]["basis"], "已转发 #8787")

@@ -65,7 +65,7 @@ def _clock(value: str) -> str:
 def external_waits(g: store.Group, now: str, session: str) -> list[str]:
     """Open tickets of this line that wait on someone other than the user (spec 已定事项 3)."""
     return [f"外部等待：等 {t.target} 交付「{''.join(x.strip() for x in t.what.splitlines())}」（已等 {waited(t.minutes)}）"
-            for t in tickets.open_tickets(g, now) if t.waiter == session and t.target not in tickets.USER_TARGETS]
+            for t in tickets.open_tickets(g, now) if t.waiter == session and not tickets.waits_on_user(g, t.target)]
 
 
 def _asks(g: store.Group, entry: dict) -> list[int]:
