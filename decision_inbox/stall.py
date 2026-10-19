@@ -140,7 +140,8 @@ def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
     cfg = settings(g)
     rows = []
     for key, at in sorted(state.get("stallAsks", {}).items()):
-        name = key.partition("|")[0]
+        name, _, reason = key.partition("|")
+        module = reason.partition(":")[2]
         entry = store.find_session(g, relay_name=name)
         if entry is None or _hours(now, at) * 60 < cfg["answerWaitMinutes"]:
             continue
@@ -152,6 +153,7 @@ def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
             continue
         where = (f"打开 {DESKTOP_LINK.format(session=entry['desktopSession'])}" if entry.get("desktopSession")
                  else "去 Codex 打开它的任务")
-        rows.append(f"⚠ 停滞：{entry['shortName']} 被问了 {int(_hours(now, at) * 60)} 分钟还没抛待决事项。"
-                    f"请去「{entry['shortName']}」处理（{where}）：A 挂起当前模块，先开可开工的模块；B 换做法；C 继续等")
+        who = f"{entry['shortName']}（模块 {module}）" if module else entry["shortName"]
+        rows.append(f"⚠ 停滞：{who} 被问了 {int(_hours(now, at) * 60)} 分钟还没抛待决事项。"
+                    f"请去「{entry['shortName']}」处理（{where}）：A 挂起{f'模块 {module}' if module else '当前模块'}，先开可开工的模块；B 换做法；C 继续等")
     return rows

@@ -181,3 +181,13 @@ class ModuleStallTest(StallCase):
         p = patrol.plan(self.g, now=NOW, relay=snapshot(agent("coord")), crews=crews)
         ask = next(a for a in p.actions if a.id == "stall:coord|stalled:alpha")
         self.assertIn("模块 alpha", ask.text)
+
+    def test_overdue_row_names_the_module(self):
+        asked = hours(1)
+        rows = stall.overdue_rows(self.g, NOW, {"stallAsks": {"coord|stalled:alpha": asked}})
+        self.assertEqual(len(rows), 1)
+        for words in ("⚠ 停滞：排练协调（模块 alpha）", "A 挂起", "B 换做法", "C 继续等",
+                      f"claude://claude.ai/epitaxy/{CREW_DESKTOP}"):
+            self.assertIn(words, rows[0])
+        items.receive(self.g, WAIT_USER, sender="coord", relay_id=9, received_at=NOW)
+        self.assertEqual(stall.overdue_rows(self.g, NOW, {"stallAsks": {"coord|stalled:alpha": asked}}), [])
