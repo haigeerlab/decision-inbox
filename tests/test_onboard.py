@@ -1444,3 +1444,33 @@ class HubDirGuardTest(RulesDirGuardCase):
                          "--project", str(self.project)])
         self.assertEqual(code, 2)
         self.assertIn("不能把协作规则段写进", err.getvalue())
+
+
+class JoinDirGuardTest(RulesDirGuardCase):
+    def join_dev(self, project, confirm=False):
+        return onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                            lines=["前端"], desktop_session=None, project=project, reviewer=None, nodes=[],
+                            confirm=confirm, now=NOW)
+
+    def test_join_above_other_members_is_blocked(self):
+        for confirm in (False, True):
+            with self.subTest(confirm=confirm):
+                before = self.snapshot()
+                with self.assertRaises(onboard.JoinError) as caught:
+                    self.join_dev(self.project, confirm=confirm)
+                message = str(caught.exception)
+                for needle in (str(self.project / "AGENTS.md"), "决策收件箱", "审查者", str(self.project / "owner"),
+                               str(self.project / "hub")):
+                    self.assertIn(needle, message)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_join_below_hub_rules_warns(self):
+        below = self.dir("hub") / "fe"
+        below.mkdir()
+        out = self.join_dev(below)
+        hub_rules = str(self.project / "hub" / "CLAUDE.md")
+        self.assertTrue(any(hub_rules in w and "决策收件箱" in w and "上级" in w for w in out.warnings), out.warnings)
+
+    def test_rerun_in_own_directory_passes(self):
+        out = self.join_owner(confirm=False)
+        self.assertFalse(any("上级" in w for w in out.warnings), out.warnings)

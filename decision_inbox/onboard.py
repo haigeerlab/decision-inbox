@@ -722,6 +722,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     _check_entry(group, entry)
     _check_reviewer(g, role, reviewer, nodes)
     rules = rules_path(entry, home)
+    dir_warnings = _dir_guard(g, relay_name, rules, "本会话自己的项目目录（不包含其他成员目录的那一层）")
     before = _read(rules)
     after = place(before, role, block(role, group, hub_relay, checkpoint_authority, crew_coordinator))
     steps = [_register_step(relay_name)]
@@ -741,7 +742,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     steps.append(RELOAD_STEP)
     if host == "codex-desktop":
         steps.insert(0, CODEX_TRUST_STEP)
-    out = Outcome(rules, before, after, after != before, entry, steps)
+    out = Outcome(rules, before, after, after != before, entry, steps, warnings=dir_warnings)
     settings_doc = None
     if host == "claude-desktop":
         out.permissions_file = Path(home) / ".claude" / "settings.local.json"
