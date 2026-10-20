@@ -698,3 +698,61 @@ class ModuleFieldTest(ItemsCase):
     def test_without_field_no_key(self):
         r = self.receive(SINGLE)
         self.assertNotIn("module", self.item(r.item))
+
+
+D1_ONLY = DECISIONS.replace("D2：错误日志保留多久？\n  A. 7 天\n  B. 30 天\n  倾向：A\n", "").replace("；D2 A", "")
+# What the hub wrote to said.txt for #69–#72 on 2026-10-20 (I-16): three items on one line, then one per line.
+SAID_9430 = ("69 A；D1 A   70 A；D1 A  71 A；D1 A\n\n72 A 批准能力图及 README 文档范围\n"
+             "69 A；D1 A\n70 A；D1 A\n71 A；D1 A\n")
+
+
+class InlineSplitTest(ItemsCase):
+    """stage-c2-fixes I-16: several items on one line are split per item; each keeps only its own words."""
+
+    def setUp(self):
+        super().setUp()
+        store.set_start_number(self.g, 69)
+        # different senders: a sender's new item supersedes its pending one
+        for n, sender in ((69, "coord"), (70, "fe-owner"), (71, "api-codex")):
+            self.assertEqual(self.receive(D1_ONLY, sender=sender, relay_id=n).item, n)
+        self.assertEqual(self.receive(SINGLE, relay_id=72, at=T2).item, 72)
+
+    def parse(self, text):
+        return items.interpret_reply(self.g, text)
+
+    def test_replay_9430(self):
+        p = self.parse(SAID_9430)
+        self.assertIsNone(p.question)
+        got = {a.item: a.original for a in p.answers}
+        self.assertEqual(got, {69: "69 A；D1 A", 70: "70 A；D1 A", 71: "71 A；D1 A",
+                               72: "72 A 批准能力图及 README 文档范围"})
+        out = items.answer(self.g, p.answers, answered_at=T3)
+        to_69 = next(o.text for o in out if o.item == 69)
+        self.assertNotIn("70 A", to_69)
+        self.assertNotIn("71 A", to_69)
+
+    def test_one_line_two_items(self):
+        p = self.parse("69 A；D1 A 72 B")
+        self.assertIsNone(p.question)
+        self.assertEqual({a.item: (a.letter, a.original) for a in p.answers},
+                         {69: ("A", "69 A；D1 A"), 72: ("B", "72 B")})
+
+    def test_numbers_in_the_words_are_not_split(self):
+        for text in ("72 A 提交 3f2a1b9", "72 A 第 70 步先做", "72 原话：验收 69、70 都要补"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual([(a.item, a.original) for a in p.answers], [(72, text)])
+
+    def test_letter_must_be_that_items_option(self):
+        p = self.parse("72 A 改成 69 Z，再看")
+        self.assertIsNone(p.question)
+        self.assertEqual([a.item for a in p.answers], [72])
+
+    def test_mixed_in_without_split_asks(self):
+        p = self.parse("72 A，顺便69 A；D1 A")
+        self.assertEqual(p.answers, ())
+        q = p.question
+        self.assertIsNotNone(q)
+        self.assertIn("#69", q)
+        self.assertIn("#72", q)
