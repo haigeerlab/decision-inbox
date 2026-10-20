@@ -28,7 +28,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.33")
+        self.assertEqual(claude["version"], "0.0.34")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -175,6 +175,9 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("--crew-coordinator", self.read("commands/join.md"))
         self.assertIn("--local-rules", self.read("commands/join.md"))
         self.assertIn("--start-number", self.read("commands/hub-setup.md"))
+        for path in ("commands/hub-setup.md", "commands/join.md", "skills/decision-inbox-join/SKILL.md"):
+            self.assertIn("--drop-old", self.read(path))  # rules-dir-guard
+            self.assertIn("不能把协作规则段写进", self.read(path))
         self.assertIn("delete_scheduled_task", self.read("commands/teardown.md"))
         # teardown-patrol-session: the patrol session is archived, old scheduled tasks still deleted
         meta, body = frontmatter(self.read("commands/teardown.md"))
@@ -251,7 +254,7 @@ class ReadmeTest(unittest.TestCase):
                        # decision-cards
                        "复制块", "已答复，待发送", "bridge_sessions", "12 原话：", "重发 12", "收件箱停止检查",
                        # review-nearby
-                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "0.0.30 改了协作规则段", "0.0.31 没改协作规则段", "0.0.32 没改协作规则段", "0.0.33 没改协作规则段", "/decision-inbox:waits", "上次运行退出 N", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
+                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "0.0.30 改了协作规则段", "0.0.31 没改协作规则段", "0.0.32 没改协作规则段", "0.0.33 没改协作规则段", "0.0.34 没改协作规则段", "/decision-inbox:waits", "上次运行退出 N", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
                        # patrol-cadence
                        "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
