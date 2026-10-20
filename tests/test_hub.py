@@ -1225,3 +1225,46 @@ class NarrowNoticeTest(HubCase):
         crews = {"fe-tester": NS(status="ok", modules=(NS(module="theta"),))}
         r = hub.reply(self.g, "1 A", now=NOW, crews=crews)
         self.assertEqual(self.kinds(r), [("fe-owner", "answer"), ("fe-tester", "notice")])
+
+
+class UnsentAnswerTest(HubCase):
+    """I-20 (0.0.36 short check): a misread answer withdrawn before it went out locked its item for good."""
+
+    def answer_then_fail(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        out_id = r.sends[0]["id"]
+        hub.sent(self.g, {}, [out_id], at=NOW, reasons={out_id: "用户说这句不是答 #1，不发"})
+        return out_id
+
+    def test_unnumbered_chat_is_not_an_answer(self):
+        """Root cause: the only pending item took a sentence with no number and no option letter."""
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "dev codex 应该在线了", now=NOW)
+        self.assertEqual(r.sends, [])
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
+
+    def test_reanswer_replaces_an_answer_that_never_went_out(self):
+        old = self.answer_then_fail()
+        r = hub.reply(self.g, "1 B", now=NOW)
+        self.assertEqual([(s["to"], s["kind"]) for s in r.sends], [("fe-codex", "answer")])
+        self.assertEqual(items.get(self.g, 1)["answers"][-1]["letter"], "B")
+        self.assertNotIn(old, [s["id"] for s in hub.outgoing(self.g)])
+        self.assertNotIn("重发 1", hub.main_view(self.g, now=NOW))
+
+    def test_withdraw_puts_the_item_back(self):
+        old = self.answer_then_fail()
+        hub.reply(self.g, "撤下 1", now=NOW)
+        it = items.get(self.g, 1)
+        self.assertEqual((it["status"], it["answers"]), ("pending", []))
+        self.assertNotIn("forwarded", it["statusAt"])
+        self.assertNotIn(old, [s["id"] for s in hub.outgoing(self.g)])
+        self.assertNotIn("重发 1", hub.main_view(self.g, now=NOW))
+
+    def test_sent_answer_still_cannot_be_withdrawn(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 1601}, [], at=NOW)
+        show = hub.reply(self.g, "撤下 1", now=NOW).show
+        self.assertEqual(items.get(self.g, 1)["status"], "forwarded")
+        self.assertIn("已经发出", show)
