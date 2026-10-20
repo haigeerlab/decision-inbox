@@ -12,8 +12,9 @@
 - [x] Task 4：I-19 收窄【答复告知】（要做的 4；验收 7）
   - 验证：`AnswerNoticeTest` 新用例改前失败、改后通过；全量测试通过
   - 结果：新类 NarrowNoticeTest 5 项（认不出不发、审查编号认提交方、能力图里唯一一条有该模块、两条都有就不发、模块协调的模块也算），改前全部失败（同线开发线和测试身份都收到）；按 Spec 改了 3 条旧测试的前提（AnswerNoticeTest 的 test_owner_item_copies_its_dev_lines、test_notice_sent_does_not_move_the_item，QuestionReturnTest 的 test_notice_reply_names_the_notice）：加 trace_to_fe 让事项带审查编号 R-1 追到前端，断言本身未改；命令行 inbox reply 已传 maps、crews；全量 1185 项通过
-- [ ] Task 5：版本 0.0.36 与 README
+- [x] Task 5：版本 0.0.36 与 README
   - 验证：`tests/test_packaging.py` 通过；README 写清升级步骤
+  - 结果：两个 plugin.json 改为 0.0.36；README：开巡视会话和 onboard allow 两段改写巡视目录、【答复告知】的发送范围改写，加 0.0.36 说明与 3 步升级（开新会话、重跑 hub-setup 换掉旧巡视会话、重跑 onboard allow），排查表加「巡视会话开在决策收件箱目录里」；test_packaging 版本与必含短语跟着改；按术语表把「待答事项」「测试身份」改成「待决事项」「用来测试的邮箱名」；全量通过
 
 ## 检查点
 
