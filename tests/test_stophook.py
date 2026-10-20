@@ -526,3 +526,45 @@ class PatrolDirHookTest(HookCase):
 
     def test_in_patrol_folder_it_passes(self):
         self.assertEqual(self.run_hook(self.patrol_dir).strip(), "")
+
+
+class InheritedItemTest(AnsweredNotResumedTest):
+    """stage-c2-fixes I-18: an answered item a previous session under the same mailbox name raised."""
+
+    def transcript(self, first_at):
+        import json
+        path = self.repos / "session.jsonl"
+        path.write_text("\n".join([json.dumps({"type": "summary", "summary": "x"}),
+                                   json.dumps({"type": "user", "timestamp": first_at}),
+                                   json.dumps({"type": "assistant", "timestamp": "2099-01-01T00:00:00Z"})]) + "\n",
+                        encoding="utf-8")
+        return str(path)
+
+    def decide_with(self, transcript):
+        payload = dict(self.payload(), transcript_path=transcript)
+        return stophook.decide(self.g, payload=payload, session=None, now=NOW)
+
+    def test_session_start_read_from_transcript(self):
+        self.assertEqual(stophook.session_start({"transcript_path": self.transcript(at(10))}), at(10))
+        self.assertIsNone(stophook.session_start({}))
+        self.assertIsNone(stophook.session_start({"transcript_path": str(self.repos / "nope.jsonl")}))
+
+    def test_item_from_before_this_session_says_so(self):
+        no = self.answered()  # raised 30 minutes ago, answered 3 minutes ago
+        d = self.decide_with(self.transcript(at(1)))
+        self.assertTrue(d.block)
+        raised, answered = stophook._local(at(30)), stophook._local(at(3))
+        self.assertIn(f"- #{no} 是这个邮箱名之前的会话在 {raised} 抛出的，用户 {answered} 答复：「{no} A」", d.reason)
+        self.assertIn(f"已经处理完就发【已恢复】结项（结束行写 #{no}）", d.reason)
+        self.assertIn(f"不归你处理就发【撤回】，写「事项：#{no}」", d.reason)
+
+    def test_own_item_unchanged(self):
+        no = self.answered()
+        d = self.decide_with(self.transcript(at(60)))
+        self.assertIn(f"- #{no} 用户已答复：「{no} A」（3 分钟前）", d.reason)
+        self.assertNotIn("之前的会话", d.reason)
+
+    def test_unreadable_transcript_unchanged(self):
+        no = self.answered()
+        d = self.decide_with(str(self.repos / "nope.jsonl"))
+        self.assertIn(f"- #{no} 用户已答复：「{no} A」（3 分钟前）", d.reason)

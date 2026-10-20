@@ -71,7 +71,7 @@ def decide(g: store.Group, payload: dict, session: str | None = None, now: str |
     if any(it["sender"] == me and it["fullyStopped"] for it in items.pending(g)):
         return _pass("本会话有完全停住的待决事项，已报阻塞")
     waiting = sorted((t for t in open_ if t.target == short), key=lambda t: t.no)
-    answered = _answered(g, me, now)
+    answered = _answered(g, me, now, session_start(payload))
     if not waiting and not answered:
         silent = _silent_stop(g, entry, read_map or specguard.read_line)
         if silent is not None:
@@ -124,8 +124,35 @@ ANSWERED = ("forwarded", "picked", "acknowledged")
 ORIGINAL_CHARS = 40
 
 
-def _answered(g: store.Group, me: str, now: str) -> list[str]:
-    """Items this session raised that the user answered and it has not ended with 【已恢复】 (H17)."""
+def session_start(payload: dict) -> str | None:
+    """stage-c2-fixes I-18: when this session began, from the first timestamped record of its transcript."""
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    at = json.loads(line).get("timestamp")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(at, str) and at:
+                    _instant(at)
+                    return at
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _local(at: str) -> str:
+    return _instant(at).astimezone().strftime("%m-%d %H:%M")
+
+
+def _answered(g: store.Group, me: str, now: str, started: str | None = None) -> list[str]:
+    """Items this session raised that the user answered and it has not ended with 【已恢复】 (H17).
+
+    stage-c2-fixes I-18: one raised before this session began came with the mailbox name; say so.
+    """
     rows = []
     for it in items.by_status(g, *ANSWERED):
         if it["sender"] != me or not it["answers"] or not items.delivered(it):
@@ -134,6 +161,12 @@ def _answered(g: store.Group, me: str, now: str) -> list[str]:
         original = "".join(x.strip() for x in last["original"].splitlines())
         if len(original) > ORIGINAL_CHARS:
             original = original[:ORIGINAL_CHARS] + "…"
+        if started and _instant(it["receivedAt"]) < _instant(started):
+            no = it["no"]
+            rows.append(f"- #{no} 是这个邮箱名之前的会话在 {_local(it['receivedAt'])} 抛出的，用户 {_local(last['at'])} "
+                        f"答复：「{original}」。你接手了这个邮箱名：已经处理完就发【已恢复】结项（结束行写 #{no}）；"
+                        f"不归你处理就发【撤回】，写「事项：#{no}」")
+            continue
         minutes = max(0, int((_instant(now) - _instant(last["at"])).total_seconds() // 60))
         rows.append(f"- #{it['no']} 用户已答复：「{original}」（{waited(minutes)}前）")
     return rows

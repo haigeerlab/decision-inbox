@@ -6,8 +6,9 @@
 - [x] Task 2：I-17 巡视换到自己的目录（要做的 2；验收 4、5）
   - 验证：test_onboard、test_stophook 新用例改前失败、改后通过；teardown 步骤不变
   - 结果：PatrolDirTest 3 项、PatrolDirAllowTest 2 项、PatrolDirHookTest 2 项；改前 6 项失败（没有 patrol_dir、步骤仍写「在决策收件箱目录开巡视会话」、旧巡视会话不先退场、放行规则只写一份），teardown 步骤不变一项改前就通过；停止钩子重放：收件箱目录出 block（复现实测），巡视目录不出；commands/hub-setup.md 写明巡视目录；全量通过
-- [ ] Task 3：I-18 旧事项写明来历（要做的 3；验收 6）
+- [x] Task 3：I-18 旧事项写明来历（要做的 3；验收 6）
   - 验证：`AnsweredNotResumedTest` 新用例改前失败、改后通过；本会话自己的事项和没有记录时提示不变
+  - 结果：InheritedItemTest（继承 AnsweredNotResumedTest，原有 8 项照跑）新增 4 项，改前 2 项失败（没有 session_start、旧事项照旧写「用户已答复」），本会话自己的事项、读不到记录 2 项改前就通过；开始时间由 decide 从 payload 自己读，不经 _hook 传（入口不用改，和 Plan 写法略有出入，效果相同）；【撤回】写法引用契约字段「事项：#N」以过术语检查；全量 1180 项通过
 - [ ] Task 4：I-19 收窄【答复告知】（要做的 4；验收 7）
   - 验证：`AnswerNoticeTest` 新用例改前失败、改后通过；全量测试通过
 - [ ] Task 5：版本 0.0.36 与 README
