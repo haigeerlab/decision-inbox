@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 from helpers import TempHomeTestCase
@@ -464,12 +465,29 @@ class HostVersionsTest(DoctorCase):
 
 
 class HubTranscriptTest(DoctorCase):
-    """decision-cards Task 6: whether the hub's stop check can read this host's session records."""
+    """decision-cards Task 6: whether the hub's stop check can read this host's session records.
+
+    hub-stop-scope: only the hub's own records count, found under its rules file's folder.
+    """
 
     NAME = "收件箱停止检查"
+    VIEWED = [{"type": "user", "message": {"content": "看"}},
+              {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t", "name": "Bash",
+                                                             "input": {"command": "decision-inbox view g"}}]}},
+              {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t",
+                                                        "content": "等你决定 0 项"}]}}]
 
-    def record(self, rows, name="a.jsonl"):
-        folder = self.transcripts / "-hub"
+    @staticmethod
+    def folder_name(path):
+        return re.sub(r"[^A-Za-z0-9]", "-", str(path))
+
+    def hub_folder(self, real=False):
+        rules = store.read_state(store.open_group("g"), "onboarding")["files"]["g-hub"]
+        folder = os.path.dirname(rules)
+        return self.transcripts / self.folder_name(os.path.realpath(folder) if real else folder)
+
+    def record(self, rows, name="a.jsonl", folder=None):
+        folder = folder or self.hub_folder()
         folder.mkdir(parents=True, exist_ok=True)
         (folder / name).write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
 
@@ -477,17 +495,37 @@ class HubTranscriptTest(DoctorCase):
         self.assertEqual(self.check(self.NAME).state, "unknown")
 
     def test_readable_record_is_ok(self):
-        self.record([{"type": "user", "message": {"content": "看"}},
-                     {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t", "name": "Bash",
-                                                                    "input": {"command": "decision-inbox view g"}}]}},
-                     {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t",
-                                                               "content": "等你决定 0 项"}]}}])
-        self.assertEqual(self.check(self.NAME).state, "ok")
+        self.record(self.VIEWED)
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "ok")
+        self.assertIn("g 的收件箱", c.evidence)
 
     def test_unreadable_record_is_bad(self):
-        folder = self.transcripts / "-hub"
+        folder = self.hub_folder()
         folder.mkdir(parents=True)
         (folder / "a.jsonl").write_text('{"x": "decision-inbox view g"\n', encoding="utf-8")
         c = self.check(self.NAME)
         self.assertEqual(c.state, "bad")
         self.assertIn("读不懂", c.evidence)
+
+    def test_other_sessions_records_do_not_count(self):
+        other = self.transcripts / "-elsewhere"
+        other.mkdir(parents=True)
+        (other / "b.jsonl").write_text('{"x": "decision-inbox view g"\n', encoding="utf-8")
+        self.assertEqual(self.check(self.NAME).state, "unknown")
+        self.record(self.VIEWED)
+        self.assertEqual(self.check(self.NAME).state, "ok")
+
+    def test_realpath_folder_is_found(self):
+        self.record(self.VIEWED, folder=self.hub_folder(real=True))
+        self.assertEqual(self.check(self.NAME).state, "ok")
+
+    def test_hub_without_rules_file_is_unknown(self):
+        g = store.open_group("g")
+        with g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc["files"].pop("g-hub")
+            tx.write_state("onboarding", doc)
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "unknown")
+        self.assertIn("没有记下规则文件", c.evidence)

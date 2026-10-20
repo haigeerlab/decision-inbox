@@ -432,10 +432,61 @@ class HubTurnCheckTest(unittest.TestCase):
         self.assertTrue(self.check(self.transcript(output, "摘要")).block)
         self.assertFalse(self.check(self.transcript(output, self.VIEW)).block)
 
-    def test_hook_entry_blocks_outside_any_group(self):
+    def test_hook_entry_passes_outside_any_group(self):
+        """hub-stop-scope: only the hub's own session gets the card check (was: blocked wherever it ran)."""
         import json, subprocess, sys
         payload = self.transcript(self.VIEW, "摘要")
+        env = dict(os.environ, DECISION_INBOX_HOME=str(self.dir / "home"))
         done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop"], input=json.dumps(payload),
-                              capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent))
+                              capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent), env=env)
         self.assertEqual(done.returncode, 0)
-        self.assertEqual(json.loads(done.stdout)["decision"], "block")
+        self.assertEqual(done.stdout, "")
+
+
+class HubScopeHookTest(HookCase):
+    """hub-stop-scope: the hub's card check runs only for the roster's hub session."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub_dir = self.repos / "hub"
+        self.hub_dir.mkdir()
+        with self.g.transaction() as tx:
+            tx.write_state("onboarding", {"files": {"hub": str(self.hub_dir / "CLAUDE.md")}})
+        self.outside = self.repos / "elsewhere"
+        self.outside.mkdir()
+
+    def run_hook(self, cwd, *args):
+        import json, subprocess, sys
+        rows = [{"type": "user", "message": {"role": "user", "content": "看一下"}},
+                {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash",
+                                                               "input": {"command": "decision-inbox view demo"}}]}},
+                {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1",
+                                                          "content": HubTurnCheckTest.VIEW}]}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "有两项等你，我看过了。"}]}}]
+        path = self.repos / "t.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+        payload = {"transcript_path": str(path), "stop_hook_active": False, "hook_event_name": "Stop"}
+        if cwd is not None:
+            payload["cwd"] = str(cwd)
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop", *args],
+                              input=json.dumps(payload), capture_output=True, text=True,
+                              cwd=str(Path(__file__).resolve().parent.parent))
+        self.assertEqual(done.returncode, 0)
+        return (json.loads(done.stdout).get("decision") if done.stdout.strip() else None), done.stderr
+
+    def test_other_sessions_running_view_pass(self):
+        for cwd in (self.repos / "api", self.repos / "api" / "src", self.outside):
+            with self.subTest(cwd=cwd.name):
+                self.assertIsNone(self.run_hook(cwd)[0])
+
+    def test_hub_session_still_blocks(self):
+        self.assertEqual(self.run_hook(self.hub_dir)[0], "block")
+
+    def test_no_cwd_passes_with_reason(self):
+        decision, err = self.run_hook(None)
+        self.assertIsNone(decision)
+        self.assertIn("收件箱停止检查放行", err)
+
+    def test_session_flag_decides_role(self):
+        self.assertIsNone(self.run_hook(self.outside, "--group", "demo", "--session", "api-codex")[0])
+        self.assertEqual(self.run_hook(self.outside, "--group", "demo", "--session", "hub")[0], "block")
