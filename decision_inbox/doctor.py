@@ -204,14 +204,35 @@ def transcripts_dir() -> Path:
     return Path(os.environ.get("DECISION_INBOX_TRANSCRIPTS") or Path.home() / ".claude" / "projects")
 
 
-def _hub_transcript() -> Check:
-    """decision-cards DI-4: the hub's stop check reads Claude Code session records; can it read this host's?"""
+def _project_folder(path: str) -> str:
+    """Claude Code keeps a directory's session records under its path with every non-alphanumeric made '-'."""
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
+def _hub_transcript(groups) -> Check:
+    """decision-cards DI-4: can the hub's stop check read the hub's own session records? (hub-stop-scope)"""
     name = "收件箱停止检查"
-    try:
-        records = sorted(transcripts_dir().glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    except OSError:
-        records = []
-    for path in records[:TRANSCRIPT_SCAN]:
+    folders, missing = [], []
+    for group in _groups(groups):
+        g = store.open_group(group)
+        state = store.read_state(g, onboard.DOMAIN)
+        for e in store.roster(g):
+            if e["role"] != "hub" or e["relayName"] in state.get("left", {}):
+                continue
+            rules = state.get("files", {}).get(e["relayName"])
+            if not rules:
+                missing.append(group)
+                continue
+            folder = os.path.dirname(rules)
+            for path in dict.fromkeys((folder, os.path.realpath(folder))):
+                folders.append((group, transcripts_dir() / _project_folder(path)))
+    records = []
+    for group, folder in folders:
+        try:
+            records += [(p.stat().st_mtime, group, p) for p in folder.glob("*.jsonl")]
+        except OSError:
+            continue
+    for _, group, path in sorted(records, key=lambda r: r[0], reverse=True)[:TRANSCRIPT_SCAN]:
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -220,10 +241,14 @@ def _hub_transcript() -> Check:
             continue
         problem = stophook.transcript_readable(str(path))
         if problem:
-            return Check(name, "bad", "Claude Code", f"会话记录读不懂：{path.name}（{problem}）；停止检查会一律放行",
+            return Check(name, "bad", "Claude Code",
+                         f"{group} 的收件箱会话记录读不懂：{path.name}（{problem}）；停止检查会一律放行",
                          "把这一项报给 decision-inbox 维护者（会话记录格式可能变了）")
-        return Check(name, "ok", "Claude Code", f"读得懂收件箱的会话记录（{path.name}）")
-    return Check(name, "unknown", "Claude Code", f"最近 {TRANSCRIPT_SCAN} 份会话记录里还没有收件箱出过主视图的")
+        return Check(name, "ok", "Claude Code", f"读得懂 {group} 的收件箱的会话记录（{path.name}）")
+    if missing and not folders:
+        return Check(name, "unknown", "本插件", "、".join(missing) + " 的收件箱没有记下规则文件，认不出它的会话记录",
+                     "在收件箱目录重跑 hub-setup")
+    return Check(name, "unknown", "Claude Code", f"收件箱最近 {TRANSCRIPT_SCAN} 份会话记录里还没有出过主视图的")
 
 
 def codex_config() -> Path:
@@ -443,7 +468,7 @@ def run(groups=None, now: str | None = None) -> list[Check]:
     if codex:
         out.append(_codex_trust())
     if any(e["role"] == "hub" for group in _groups(groups) for e in store.roster(store.open_group(group))):
-        out.append(_hub_transcript())
+        out.append(_hub_transcript(groups))
     out.append(_host_versions())
     out += [_dependency(n) for n in ("agent-relay", "spec-guard", "delegate")]
     out.append(_dependency("module-crew", required=bool(coordinators)))
