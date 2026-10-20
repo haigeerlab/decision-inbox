@@ -199,7 +199,7 @@ class UnknownOutgoing(ValueError):
     """A send id that is not waiting to be sent."""
 
 
-def _queue_answers(g: store.Group, outgoing, now: str) -> list[dict]:
+def _queue_answers(g: store.Group, outgoing, now: str, crews=None, maps=None) -> list[dict]:
     """Queue decision-queue's 【用户答复】 texts; only the proposer's copy replies to the item."""
     sends = []
     with g.transaction() as tx:
@@ -213,7 +213,7 @@ def _queue_answers(g: store.Group, outgoing, now: str) -> list[dict]:
                 doc["outgoing"][sends[-1]["id"]]["alsoAnswers"] = also
                 doc.setdefault("alsoClosed", []).extend(also)
             if o.to == it["sender"]:
-                for to, text in _notices(g, it, now):
+                for to, text in _notices(g, it, now, crews, maps):
                     sends.append(_queue(g, tx, doc, to, text, None, "notice", o.item, now))
         tx.write_state(DOMAIN, doc)
     return sends
@@ -232,8 +232,11 @@ def _also_answers(g: store.Group, doc: dict, it: dict) -> list[int]:
                   and x["relayId"] != it["relayId"])
 
 
-def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
-    """A single-line item raised by an owner: tell the dev lines it owns (answer-handoff-gaps 已定事项 3)."""
+def _notices(g: store.Group, it: dict, now: str, crews=None, maps=None) -> list[tuple[str, str]]:
+    """A single-line item raised by an owner: tell the dev line doing it (answer-handoff-gaps 已定事项 3).
+
+    stage-c2-fixes I-19: only the one line the item can be traced to; none when it cannot be told.
+    """
     owner = store.find_session(g, relay_name=it["sender"])
     if it["multi"] or owner is None or owner["role"] != "owner" or not it["answers"]:
         return []
@@ -242,9 +245,34 @@ def _notices(g: store.Group, it: dict, now: str) -> list[tuple[str, str]]:
                                          source_relay_id=it["relayId"])
     left = store.left_relays(g)
     # transition-compat: the old rules never had 【答复告知】, and a left session gets nothing
-    return [(e["relayName"], text) for e in store.roster(g)
-            if e["role"] == "dev" and set(e["line"]) & set(owner["line"])
-            and not e.get("legacyFormat") and e["relayName"] not in left]
+    lines = [e for e in store.roster(g)
+             if e["role"] == "dev" and set(e["line"]) & set(owner["line"])
+             and not e.get("legacyFormat") and e["relayName"] not in left]
+    doing = _doing(g, it, lines, crews or {}, maps or {})
+    return [(doing, text)] if doing else []
+
+
+def _doing(g: store.Group, it: dict, lines: list[dict], crews: dict, maps: dict) -> str | None:
+    """The dev line an owner's item is about: its review's submitter, else the one line holding its module."""
+    names = {e["relayName"] for e in lines}
+    ref = (it.get("review") or {}).get("ref")
+    if ref:
+        submitter = store.read_state(g, "reviews").get("reviews", {}).get(ref, {}).get("submitter")
+        if submitter in names:
+            return submitter
+    module = it.get("module") or it.get("approvalModule")
+    if not module or module == "无":
+        return None
+
+    def has(name: str) -> bool:
+        crew = crews.get(name)
+        read = maps.get(name)
+        line_map = getattr(read, "map", None) if getattr(read, "status", None) == "ok" else None
+        return (getattr(crew, "status", None) == "ok" and any(m.module == module for m in crew.modules)) \
+            or (line_map is not None and any(m.id == module for m in line_map.modules))
+
+    found = [n for n in sorted(names) if has(n)]
+    return found[0] if len(found) == 1 else None
 
 
 def outgoing(g: store.Group) -> list[dict]:
@@ -548,7 +576,7 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     answers = [a for a in parsed.answers if a.item not in skipped]
     notes = "".join(f"#{n} 是去会话操作，不需要回复；点完对方会发【已恢复】自动结项。\n" for n in skipped)
     quiet_hours = stall.settings(g)["loopQuietHours"]
-    sends = _queue_answers(g, items.answer(g, answers, answered_at=now), now) if answers else []
+    sends = _queue_answers(g, items.answer(g, answers, answered_at=now), now, crews, maps) if answers else []
     for a in answers:  # 「继续等」 under a loop hint: no hint for that module for a while (DI-6 C)
         if a.loop_option == "继续等" and a.item in looping:
             loops.quiet(g, looping[a.item].key, now, quiet_hours)

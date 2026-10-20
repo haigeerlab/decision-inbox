@@ -9,8 +9,9 @@
 - [x] Task 3：I-18 旧事项写明来历（要做的 3；验收 6）
   - 验证：`AnsweredNotResumedTest` 新用例改前失败、改后通过；本会话自己的事项和没有记录时提示不变
   - 结果：InheritedItemTest（继承 AnsweredNotResumedTest，原有 8 项照跑）新增 4 项，改前 2 项失败（没有 session_start、旧事项照旧写「用户已答复」），本会话自己的事项、读不到记录 2 项改前就通过；开始时间由 decide 从 payload 自己读，不经 _hook 传（入口不用改，和 Plan 写法略有出入，效果相同）；【撤回】写法引用契约字段「事项：#N」以过术语检查；全量 1180 项通过
-- [ ] Task 4：I-19 收窄【答复告知】（要做的 4；验收 7）
+- [x] Task 4：I-19 收窄【答复告知】（要做的 4；验收 7）
   - 验证：`AnswerNoticeTest` 新用例改前失败、改后通过；全量测试通过
+  - 结果：新类 NarrowNoticeTest 5 项（认不出不发、审查编号认提交方、能力图里唯一一条有该模块、两条都有就不发、模块协调的模块也算），改前全部失败（同线开发线和测试身份都收到）；按 Spec 改了 3 条旧测试的前提（AnswerNoticeTest 的 test_owner_item_copies_its_dev_lines、test_notice_sent_does_not_move_the_item，QuestionReturnTest 的 test_notice_reply_names_the_notice）：加 trace_to_fe 让事项带审查编号 R-1 追到前端，断言本身未改；命令行 inbox reply 已传 maps、crews；全量 1185 项通过
 - [ ] Task 5：版本 0.0.36 与 README
   - 验证：`tests/test_packaging.py` 通过；README 写清升级步骤
 

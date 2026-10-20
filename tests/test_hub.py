@@ -61,6 +61,17 @@ class HubCase(TempHomeTestCase):
         time.tzset()
         super().tearDown()
 
+    def trace_to_fe(self, no=1):
+        """stage-c2-fixes I-19: 【答复告知】 needs the item traced to its dev line, here by a review ref."""
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["review"]["ref"] = "R-1"
+            tx.write_state("items", doc)
+            doc = tx.read_state("reviews")
+            doc.setdefault("reviews", {})["R-1"] = {"submitter": "fe-codex", "reviewer": "fe-owner", "node": "spec",
+                                                     "rounds": [], "closed": False}
+            tx.write_state("reviews", doc)
+
     def receive(self, *messages, more=False):
         """Receive like the hub, then send its 【登记回执】s (review-nearby) so they never sit as unsent."""
         r = hub.receive(self.g, inbox(*messages, more=more), now=NOW)
@@ -530,6 +541,7 @@ class AnswerNoticeTest(HubCase):
 
     def test_owner_item_copies_its_dev_lines(self):
         self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.trace_to_fe()
         r = hub.reply(self.g, "1 A", now=NOW)
         self.assertEqual([(s["to"], s["kind"], s["replyTo"]) for s in r.sends],
                          [("fe-owner", "answer", 1501), ("fe-codex", "notice", None)])
@@ -575,6 +587,7 @@ class AnswerNoticeTest(HubCase):
 
     def test_notice_sent_does_not_move_the_item(self):
         self.receive(message(1504, "fe-owner", WAIT_USER))
+        self.trace_to_fe()
         sends = {s["kind"]: s["id"] for s in hub.reply(self.g, "1 A", now=NOW).sends}
         closed = hub.sent(self.g, done={sends["notice"]: 3990}, failed=[], at=NOW)
         it = items.get(self.g, 1)
@@ -615,6 +628,7 @@ class QuestionReturnTest(HubCase):
 
     def test_notice_reply_names_the_notice(self):
         self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.trace_to_fe()
         r = hub.reply(self.g, "1 A", now=NOW)
         hub.sent(self.g, {r.sends[0]["id"]: 1601, r.sends[1]["id"]: 1602}, [], at=NOW)
         r = self.receive(asking(1603, "fe-codex", "回复：#1602\n这条要我做什么？", reply_to=1602))
@@ -1151,3 +1165,63 @@ class RosterStaleViewTest(TempHomeTestCase):
 
     def test_in_step_has_no_row(self):
         self.assertNotIn("名册过期", self.view([{"sessionId": "NEW-ID", "hostSessionId": self.OLD}]))
+
+
+class NarrowNoticeTest(HubCase):
+    """stage-c2-fixes I-19: 【答复告知】 goes only to the dev line doing the item; a tester on the line gets none."""
+
+    def setUp(self):
+        super().setUp()
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "fe-tester", "shortName": "测试", "role": "dev", "line": ["前端"],
+                            "host": "claude-desktop", "repo": "/tmp/fe-tester"})
+
+    def maps(self, **modules):
+        from test_health import line_map, module
+        return {name: line_map([module(m, i + 1) for i, m in enumerate(ids)], active=ids[0])
+                for name, ids in modules.items()}
+
+    def kinds(self, r):
+        return [(s["to"], s["kind"]) for s in r.sends]
+
+    def set_item(self, **fields):
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"]["1"].update(fields)
+            tx.write_state("items", doc)
+
+    def test_unknown_line_gets_no_notice(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual(self.kinds(r), [("fe-owner", "answer")])
+
+    def test_review_ref_names_the_submitter(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.set_item(review={"text": "审查中", "warn": False, "highlight": True, "ref": "R-7", "mentions": []})
+        with self.g.transaction() as tx:
+            doc = tx.read_state("reviews")
+            doc.setdefault("reviews", {})["R-7"] = {"submitter": "fe-codex", "reviewer": "fe-owner", "node": "spec",
+                                                     "rounds": [], "closed": False}
+            tx.write_state("reviews", doc)
+        r = hub.reply(self.g, "1 A", now=NOW)
+        self.assertEqual(self.kinds(r), [("fe-owner", "answer"), ("fe-codex", "notice")])
+
+    def test_module_names_the_one_line_that_has_it(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.set_item(module="pay")
+        r = hub.reply(self.g, "1 A", now=NOW, maps=self.maps(**{"fe-codex": ["pay"], "fe-tester": ["probe"]}))
+        self.assertEqual(self.kinds(r), [("fe-owner", "answer"), ("fe-codex", "notice")])
+
+    def test_module_on_two_lines_or_none_sends_nothing(self):
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.set_item(module="pay")
+        r = hub.reply(self.g, "1 A", now=NOW, maps=self.maps(**{"fe-codex": ["pay"], "fe-tester": ["pay"]}))
+        self.assertEqual(self.kinds(r), [("fe-owner", "answer")])
+
+    def test_crew_modules_count_too(self):
+        from types import SimpleNamespace as NS
+        self.receive(message(1501, "fe-owner", WAIT_USER))
+        self.set_item(approvalModule="theta")
+        crews = {"fe-tester": NS(status="ok", modules=(NS(module="theta"),))}
+        r = hub.reply(self.g, "1 A", now=NOW, crews=crews)
+        self.assertEqual(self.kinds(r), [("fe-owner", "answer"), ("fe-tester", "notice")])
