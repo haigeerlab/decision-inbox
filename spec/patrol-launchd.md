@@ -1,8 +1,8 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved cf2d8087bfc8 -->
 
 # Spec: patrol-launchd
 
-> 能力图模块 `patrol-launchd`（插入待用户经统筹确认，排在 stage-c2-fixes 之后）。来源：统筹派活，`livesaas-integration/REQ-R22-STAGE-C-FIXES.md` 的 DI-11 前半句。用户已定：短验证结束前只写 Spec，不写 Plan、不写代码。
+> 能力图模块 `patrol-launchd`（2026-10-20 用户经统筹确认插入，排在 stage-c2-fixes 之后）。来源：统筹派活，`livesaas-integration/REQ-R22-STAGE-C-FIXES.md` 的 DI-11 前半句。用户已定：短验证结束前只写 Spec，不写 Plan、不写代码。
 
 ## 目标
 
@@ -41,7 +41,7 @@ DI-11 的验收：「人为停掉巡视后，在设定时间内用户收到提�
    - `notify`：和巡视提醒现在一样，直接弹 macOS 通知。
    - 收件箱顺带跑的那一轮（`--from-hub`）不变，仍用桌面版 `send_message` 叫醒；它能叫醒被桌面版停掉的会话，正好补上脚本做不到的那部分。
 3. **脚本身份**：
-   - 默认名 `<收件箱邮箱名>-patrol`，比如 `di-p0-hub-patrol`。agent-relay 不允许会话接管脚本身份，所以不能和任何会话的邮箱名相同。
+   - 默认名 `<收件箱邮箱名>-patrol`（用户 2026-10-20 定：用默认名）。di-p0 的脚本身份是 `di-p0-hub-patrol`。agent-relay 不允许会话接管脚本身份，所以不能和任何会话的邮箱名相同。
    - hub-setup 的后续步骤写出让用户在终端运行的登记命令：`~/.agent-relay/bin/agent-relay register-script-identity <名> --confirm`。用户登记后，运行 `decision-inbox onboard patrol-identity <组> --name <名>`，把这个名字记进协作组。
    - 还没登记或发信被拒时，这一轮的发信动作记为失败，并弹一次通知：「巡视发不出信：请在终端登记脚本身份 <名>」。
 4. **跑不成就通知用户**：
@@ -100,7 +100,7 @@ DI-11 的验收：「人为停掉巡视后，在设定时间内用户收到提�
 ## 未决的小问题
 
 - 版本号：等短验证结束、排期时再定。
-- 默认脚本身份名是否接受 `<收件箱邮箱名>-patrol`。
+- 默认脚本身份名：已定，用 `<收件箱邮箱名>-patrol`，di-p0 用 `di-p0-hub-patrol`（用户 2026-10-20）。
 
 ## 文档建议
 
