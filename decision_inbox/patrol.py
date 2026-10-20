@@ -69,6 +69,7 @@ class _Context:
     plan: Plan
     from_hub: bool = False
     outbox: object | None = None
+    holders: dict = field(default_factory=dict)   # roster-stale-wake: desktop.holders for this round
 
     def notify(self, key: str, text: str) -> None:
         """Queue a user notice once per live episode of `key`."""
@@ -90,12 +91,15 @@ def _wake(ctx: _Context, entry: dict, text: str, stopped: bool = True) -> None:
     if not entry.get("desktopSession"):
         ctx.notify(f"unwakeable:{name}", f"{short} 停着，名册里没登记它的桌面版会话，叫不醒，请手动打开")
         return
+    session = desktop.link(entry, ctx.holders)
+    if session is None:
+        return  # roster-stale-wake: the holder is unknown; never wake the old session (the stale notice says why)
     tried = ctx.state.get("wakes", {}).get(name)
     if tried is None:
-        ctx.plan.actions.append(Action(f"wake:{name}", "wake", entry["desktopSession"], text))
+        ctx.plan.actions.append(Action(f"wake:{name}", "wake", session, text))
     elif (_instant(ctx.now) - _instant(tried["at"])).total_seconds() >= WAKE_GRACE_MINUTES * 60:
         still = "它还停着" if stopped else "它的消息还没读"
-        link = DESKTOP_LINK.format(session=entry["desktopSession"])
+        link = DESKTOP_LINK.format(session=session)
         ctx.notify(f"unwakeable:{name}", f"叫不醒 {short}，{still}，请手动打开 {link}（来源：Claude 桌面版）")
 
 
@@ -173,8 +177,9 @@ def _wake_hub(ctx: _Context) -> None:
     if not any(a.kind == "notify" for a in ctx.plan.actions) and hub["relayName"] not in ctx.state.get("wakes", {}):
         return
     ctx.plan.live["wakes"].append(hub["relayName"])
-    if hub.get("desktopSession") and hub["relayName"] not in ctx.state.get("wakes", {}):
-        ctx.plan.actions.append(Action(f"wake:{hub['relayName']}", "wake", hub["desktopSession"],
+    session = desktop.link(hub, ctx.holders) if hub.get("desktopSession") else None
+    if session and hub["relayName"] not in ctx.state.get("wakes", {}):
+        ctx.plan.actions.append(Action(f"wake:{hub['relayName']}", "wake", session,
                                        "【decision-inbox 巡视】有新的事要告诉用户，请刷新决策收件箱主视图。"))
 
 
@@ -239,6 +244,16 @@ def _user_notices(ctx: _Context, signals, relay_error: str | None) -> None:
         ctx.notify("relay-unreadable", "巡视读不到 agent-relay 的状态（来源：agent-relay）")
 
 
+def _stale_notices(ctx: _Context) -> None:
+    """roster-stale-wake: tell the user once per holder that a mailbox name moved to a session the roster lacks."""
+    for name, h in ctx.holders.items():
+        if h.state != "stale":
+            continue
+        entry = store.find_session(ctx.g, relay_name=name)
+        where = f"：{DESKTOP_LINK.format(session=h.session)}" if h.session else ""
+        ctx.notify(f"stale:{name}|{h.session or '?'}", desktop.stale_text(entry) + where)
+
+
 def _cap(ctx: _Context) -> None:
     """At most NOTICES_PER_ROUND notices; the rest fold into one, recorded as told when it is sent."""
     notices = [a for a in ctx.plan.actions if a.kind == "notify"]
@@ -259,7 +274,8 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
                                crews=crews)
     result = Plan(now=now, snapshot=assessment.snapshot, by="hub" if from_hub else "schedule")
     result.live["signals"] = sorted({signal_key(s) for s in assessment.signals})
-    ctx = _Context(g, now, relay, state, result, from_hub, outbox)
+    ctx = _Context(g, now, relay, state, result, from_hub, outbox, desktop.holders(g, relay, sessions))
+    _stale_notices(ctx)  # roster-stale-wake: before the wakes it redirects, so it survives the cap
     _handoffs(ctx)  # first, so its notices lead the round and survive the cap
     _user_notices(ctx, assessment.signals, relay_error)
     _wakes(ctx)

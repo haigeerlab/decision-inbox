@@ -574,3 +574,100 @@ class SnapshotTest(TempHomeTestCase):
         self.assertEqual(len(agents), patrol.SNAPSHOTS)
         self.assertEqual(agents[-1].read_text(encoding="utf-8"), "a29")
         self.assertEqual(len(list(folder.glob("*-outbox.json"))), patrol.SNAPSHOTS)
+
+
+OLD, NEW = "local_00000000-0000-0000-0000-000000000old", "local_00000000-0000-0000-0000-000000000new"
+STALE_TEXT = "名册过期：并行协调2 的邮箱名已由新会话持有，请在新会话重跑 join"
+
+
+def held(a, session_id):
+    a["host"]["sessionId"] = session_id
+    return a
+
+
+def bridge_sessions(*pairs):
+    import json
+    return json.dumps({"claude": [{"sessionId": sid, "hostSessionId": host, "name": sid, "status": "idle"}
+                                  for sid, host in pairs]})
+
+
+class RosterStaleTest(PatrolCase):
+    """roster-stale-wake: replay of di-p0 on 2026-10-20 — rh2-coord was taken over by a new session over
+    bridge_register, the roster still named the old one, and patrol woke and linked the old session."""
+
+    def setUp(self):
+        super().setUp()
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "rh2-coord", "shortName": "并行协调2", "role": "dev", "line": ["前端"],
+                            "host": "claude-desktop", "repo": "/tmp/crew-rehearsal", "desktopSession": OLD,
+                            "crewCoordinator": True})
+
+    def round(self, minutes, agents, sessions):
+        from decision_inbox import desktop
+        now = later(minutes)
+        p = patrol.plan(self.g, now=now, relay=snapshot(*agents),
+                        sessions=desktop.parse_sessions(bridge_sessions(*sessions)))
+        ids = [a.id for a in p.actions]
+        patrol.record(self.g, p.to_json(), done=ids, now=now)
+        return p
+
+    def coord(self):
+        return held(idle("rh2-coord", (3, ["hub"], 6)), "NEW-ID")
+
+    def assert_never_old(self, p):
+        for a in p.actions:
+            self.assertNotIn(OLD, f"{a.target} {a.text}", a.id)
+
+    def test_answers_wake_the_new_holder_and_user_is_told_roster_is_stale(self):
+        p = self.round(0, [self.coord()], [("NEW-ID", NEW), ("OLD-ID", OLD)])
+        wake = next(a for a in p.actions if a.id == "wake:rh2-coord")
+        self.assertEqual(wake.target, NEW)
+        stale = [a for a in p.actions if a.id.startswith("notify:stale:rh2-coord")]
+        self.assertEqual(len(stale), 1)
+        self.assertIn(STALE_TEXT, stale[0].text)
+        self.assert_never_old(p)
+        again = self.round(5, [self.coord()], [("NEW-ID", NEW)])
+        self.assertNotIn("notify:stale:rh2-coord|" + NEW, [a.id for a in again.actions])  # told once
+        told = next(a for a in again.actions if a.id == "notify:unwakeable:rh2-coord")
+        self.assertIn(NEW, told.text)
+        self.assert_never_old(again)
+
+    def test_holder_unknown_old_running_no_wake_to_old(self):
+        p = self.round(0, [self.coord()], [("OLD-ID", OLD)])
+        self.assertNotIn("wake:rh2-coord", self.ids(p))
+        self.assertTrue(any(a.id.startswith("notify:stale:rh2-coord") and STALE_TEXT in a.text for a in p.actions))
+        self.assert_never_old(p)
+        later_round = self.round(5, [self.coord()], [("OLD-ID", OLD)])
+        self.assert_never_old(later_round)
+
+    def test_stale_hub_is_woken_in_its_new_session(self):
+        hub = held(agent("hub", state="stopped"), "HUB-NEW")
+        p = self.round(0, [hub, agent("api-owner", **STOPPED_OWNER)], [("HUB-NEW", NEW)])
+        wake = next(a for a in p.actions if a.id == "wake:hub")
+        self.assertEqual(wake.target, NEW)
+        self.assertNotIn(HUB_DESKTOP, " ".join(f"{a.target} {a.text}" for a in p.actions))
+
+    def test_roster_in_step_or_unknown_is_unchanged(self):
+        same = self.round(0, [held(idle("rh2-coord", (3, ["hub"], 6)), "OLD-ID")], [("OLD-ID", OLD)])
+        self.assertEqual(next(a for a in same.actions if a.id == "wake:rh2-coord").target, OLD)
+        self.assertFalse([a for a in same.actions if a.id.startswith("notify:stale")])
+
+    def test_neither_running_keeps_roster(self):
+        p = self.round(0, [self.coord()], [("OTHER", "local_other")])
+        self.assertEqual(next(a for a in p.actions if a.id == "wake:rh2-coord").target, OLD)
+        self.assertFalse([a for a in p.actions if a.id.startswith("notify:stale")])
+
+    def test_command_line_reads_sessions(self):
+        import contextlib
+        import io
+        import json
+        from decision_inbox.__main__ import main
+        agents_file, sessions_file, plan_file = (self.home / n for n in ("a.json", "s.json", "p.json"))
+        agents_file.write_text(json.dumps({"agents": [self.coord()]}), encoding="utf-8")
+        sessions_file.write_text(bridge_sessions(("NEW-ID", NEW)), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = main(["patrol", "plan", "demo", "--agents", str(agents_file), "--sessions", str(sessions_file),
+                         "--out", str(plan_file)])
+        self.assertEqual(code, 0)
+        actions = json.loads(plan_file.read_text(encoding="utf-8"))["actions"]
+        self.assertEqual(next(a for a in actions if a["id"] == "wake:rh2-coord")["target"], NEW)
