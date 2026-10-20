@@ -246,6 +246,26 @@ def _map(argv: list[str]) -> int:
     return 0
 
 
+def _hub_scope(args, payload: dict) -> tuple[bool, list | None, str | None]:
+    """(is the roster's hub session, locate() result or None, why the hub check could not tell).
+
+    hub-stop-scope: the hub's card check runs only for the hub; --group/--session win, else cwd via locate.
+    """
+    if args.group and args.session:
+        try:
+            entry = store.find_session(store.open_group(args.group), relay_name=args.session)
+        except store.StoreError as e:
+            return False, None, f"读不到名册：{e}"
+        return bool(entry and entry["role"] == "hub"), None, None
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        return False, None, "输入里没有 cwd"
+    found = install.locate(cwd)
+    if len(found) > 1 and any(e["role"] == "hub" for _, e in found):
+        return False, found, "工作目录同时属于 " + "、".join(f"{n}/{e['relayName']}" for n, e in found)
+    return len(found) == 1 and found[0][1]["role"] == "hub", found, None
+
+
 def _hook(argv: list[str]) -> int:
     """Stop hook entry: never fails the host; any problem means "let it stop" (spec 关键决策 6)."""
     try:
@@ -257,15 +277,20 @@ def _hook(argv: list[str]) -> int:
         payload = json.loads(sys.stdin.read())
         if not isinstance(payload, dict):
             raise ValueError("钩子输入不是 JSON 对象")
-        hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4: the hub's own reply, wherever it runs
-        if hub_turn.block:
-            print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
-            return 0
+        is_hub, found, unsure = _hub_scope(args, payload)
+        if unsure:
+            print(f"decision-inbox 停止钩子：收件箱停止检查放行：{unsure}", file=sys.stderr)
+        if is_hub:
+            hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4, for the hub session only
+            if hub_turn.block:
+                print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
+                return 0
         session = args.session
         if args.group:
             g = store.open_group(args.group)
         else:
-            found = install.locate(str(payload.get("cwd") or ""))
+            if found is None:
+                found = install.locate(str(payload.get("cwd") or ""))
             if not found:
                 return 0  # this project has not joined any group
             if len(found) > 1:
