@@ -360,3 +360,21 @@ class OwesRepliesIgnoredTest(unittest.TestCase):
         self.assertEqual(plain, loaded)
         fields = {f.name for f in dataclasses.fields(type(loaded.agents["arch-review"]))}
         self.assertFalse([f for f in fields if "owe" in f.lower()], fields)
+
+
+class HolderSessionIdTest(unittest.TestCase):
+    """roster-stale-wake: the host-internal session id that holds a mailbox name."""
+
+    def parse(self, **fields):
+        row = {"name": "x", "unread": 0, "presence": {"state": "running"}, **fields}
+        return relay.parse_agents(json.dumps({"agents": [row]}), relay_version="0.9.0").agents["x"]
+
+    def test_host_session_id_first(self):
+        fact = self.parse(host={"app": "claude", "sessionId": "H"}, wake={"app": "claude", "sessionId": "W"})
+        self.assertEqual(fact.session_id, "H")
+
+    def test_wake_session_id_when_host_has_none(self):
+        self.assertEqual(self.parse(host={"app": "claude"}, wake={"app": "claude", "sessionId": "W"}).session_id, "W")
+
+    def test_none_when_neither(self):
+        self.assertIsNone(self.parse(host=None, wake=None).session_id)

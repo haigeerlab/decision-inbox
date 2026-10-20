@@ -1,7 +1,8 @@
 # Todo: roster-stale-wake
 
-- [ ] Task 1：读出持有者并核对名册（Spec 要做的 1、2；验收 6）
+- [x] Task 1：读出持有者并核对名册（Spec 要做的 1、2；验收 6）
   - 验证：`tests/test_relay.py`、`tests/test_desktop.py` 新用例在 6511882 上失败、改后通过；重新 join 回归测试通过
+  - 结果：RosterHolderTest 9 项、HolderSessionIdTest 3 项改前全部失败（没有 holders／session_id／claude_id）；重新 join 回归测试改前也报错，原因是调到了还不存在的 desktop.holders，名册更新这一半本来就成立；改后全部通过
 - [ ] Task 2：巡视唤醒实际持有者（要做的 3；验收 1～3）
   - 验证：`tests/test_patrol.py` 的 `RosterStaleTest` 在 6511882 上失败、改后通过；现有巡视测试不改、全部通过
 - [ ] Task 3：停滞询问与主视图（要做的 3、4；验收 4、5）

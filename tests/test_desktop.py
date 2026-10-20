@@ -156,3 +156,72 @@ class CommandLineTest(DesktopCase):
         self.assertIn("本次没带会话状态", out.getvalue())
         self.assertIn("--sessions", patrol.prompt("demo"))
         self.assertIn("bridge_sessions", patrol.prompt("demo"))
+
+
+def holder_agent(name, host_id=None, wake_id=None):
+    a = {"name": name, "host": {"app": "claude"}, "unread": 0, "presence": {"state": "running"}, "wake": None}
+    if host_id:
+        a["host"]["sessionId"] = host_id
+    if wake_id:
+        a["wake"] = {"app": "claude", "sessionId": wake_id}
+    return a
+
+
+def agents(*rows):
+    from decision_inbox import relay
+    return relay.parse_agents(json.dumps({"count": len(rows), "agents": list(rows)}), relay_version="0.9.0")
+
+
+def running(claude_id, host):
+    row = session(claude_id, "/tmp/x", host, status="idle")
+    row["sessionId"] = claude_id
+    return row
+
+
+class RosterHolderTest(DesktopCase):
+    """roster-stale-wake: who holds a mailbox name now, checked against the roster's desktopSession."""
+
+    def holders(self, agent_rows, session_rows):
+        return desktop.holders(self.g, agents(*agent_rows), desktop.parse_sessions(bridge(*session_rows)))
+
+    def test_session_id_read(self):
+        s = desktop.parse_sessions(bridge(running("NEW-ID", "local_new")))[0]
+        self.assertEqual(s.claude_id, "NEW-ID")
+
+    def test_same_session_is_ok(self):
+        got = self.holders([holder_agent("coord", "C-ID")], [running("C-ID", "local_coord")])
+        self.assertEqual(got["coord"], desktop.Holder("ok", "local_coord"))
+
+    def test_taken_over_by_a_running_session_is_stale_with_holder(self):
+        got = self.holders([holder_agent("coord", "NEW-ID")], [running("NEW-ID", "local_new")])
+        self.assertEqual(got["coord"], desktop.Holder("stale", "local_new"))
+        entry = store.find_session(self.g, relay_name="coord")
+        self.assertEqual(desktop.link(entry, got), "local_new")
+
+    def test_wake_session_id_used_when_host_has_none(self):
+        got = self.holders([holder_agent("coord", wake_id="NEW-ID")], [running("NEW-ID", "local_new")])
+        self.assertEqual(got["coord"], desktop.Holder("stale", "local_new"))
+
+    def test_only_old_session_running_is_stale_without_holder(self):
+        got = self.holders([holder_agent("coord", "NEW-ID")], [running("OLD-ID", "local_coord")])
+        self.assertEqual(got["coord"], desktop.Holder("stale", None))
+        self.assertIsNone(desktop.link(store.find_session(self.g, relay_name="coord"), got))
+
+    def test_neither_running_is_unknown_and_keeps_roster(self):
+        got = self.holders([holder_agent("coord", "NEW-ID")], [running("OTHER", "local_other")])
+        self.assertEqual(got["coord"].state, "unknown")
+        self.assertEqual(desktop.link(store.find_session(self.g, relay_name="coord"), got), "local_coord")
+
+    def test_no_holder_id_is_unknown(self):
+        got = self.holders([holder_agent("coord")], [running("NEW-ID", "local_new")])
+        self.assertEqual(got["coord"].state, "unknown")
+
+    def test_without_relay_or_sessions_nothing_is_judged(self):
+        self.assertEqual(desktop.holders(self.g, None, ()), {})
+        self.assertEqual(desktop.holders(self.g, agents(holder_agent("coord", "NEW-ID")), None), {})
+        self.assertEqual(desktop.link(store.find_session(self.g, relay_name="coord"), {}), "local_coord")
+
+    def test_stale_text(self):
+        entry = store.find_session(self.g, relay_name="coord")
+        self.assertEqual(desktop.stale_text(entry),
+                         "名册过期：协调 的邮箱名已由新会话持有，请在新会话重跑 join")

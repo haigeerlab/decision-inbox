@@ -244,6 +244,21 @@ class JoinTest(OnboardCase):
         return self.join(role="owner", relay_name="fe-owner", short_name="前端负责人", host="claude-desktop",
                          desktop_session="local_00000000-0000-0000-0000-0000000own1", project="owner")
 
+    def test_rejoin_moves_roster_to_new_session(self):
+        """roster-stale-wake: a new session rejoining under the same mailbox name replaces desktopSession."""
+        from decision_inbox import desktop, relay
+        self.owner()
+        new = "local_00000000-0000-0000-0000-0000000own2"
+        self.join(role="owner", relay_name="fe-owner", short_name="前端负责人", host="claude-desktop",
+                  desktop_session=new, project="owner")
+        g = store.open_group("demo")
+        entry = store.find_session(g, relay_name="fe-owner")
+        self.assertEqual(entry["desktopSession"], new)
+        agents = relay.parse_agents(json.dumps({"agents": [{"name": "fe-owner", "host": {"app": "claude", "sessionId": "N"},
+                                                            "presence": {"state": "running"}}]}), relay_version="0.9.0")
+        sessions = desktop.parse_sessions(json.dumps({"claude": [{"sessionId": "N", "hostSessionId": new}]}))
+        self.assertEqual(desktop.holders(g, agents, sessions)["fe-owner"].state, "ok")
+
     def test_preview_changes_nothing(self):
         before = self.files()
         out = self.join(confirm=False)
