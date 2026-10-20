@@ -3,8 +3,9 @@
 - [x] Task 1：I-16 答复按项切开（Spec 要做的 1；验收 1～3）
   - 验证：`tests/test_items.py` 的 `InlineSplitTest` 和 test_hub 重放用例在 06739cc 上失败、改后通过
   - 结果：InlineSplitTest 5 项，改前 3 项失败（重放 said.txt 时 #69 原话是整个第一行、#70/#71 取的是后面的单独行；单行两项不切；夹带别的项不问），「正文数字不切」「字母不是该项选项不切」2 项改前就通过（回归保护）；转达正文的检查在 test_items 里用 items.answer 做（与 hub 发出的正文同源），没另加 test_hub 用例；全量 1161 项通过
-- [ ] Task 2：I-17 巡视换到自己的目录（要做的 2；验收 4、5）
+- [x] Task 2：I-17 巡视换到自己的目录（要做的 2；验收 4、5）
   - 验证：test_onboard、test_stophook 新用例改前失败、改后通过；teardown 步骤不变
+  - 结果：PatrolDirTest 3 项、PatrolDirAllowTest 2 项、PatrolDirHookTest 2 项；改前 6 项失败（没有 patrol_dir、步骤仍写「在决策收件箱目录开巡视会话」、旧巡视会话不先退场、放行规则只写一份），teardown 步骤不变一项改前就通过；停止钩子重放：收件箱目录出 block（复现实测），巡视目录不出；commands/hub-setup.md 写明巡视目录；全量通过
 - [ ] Task 3：I-18 旧事项写明来历（要做的 3；验收 6）
   - 验证：`AnsweredNotResumedTest` 新用例改前失败、改后通过；本会话自己的事项和没有记录时提示不变
 - [ ] Task 4：I-19 收窄【答复告知】（要做的 4；验收 7）

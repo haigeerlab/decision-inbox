@@ -556,15 +556,23 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         old_task = store.read_state(store.open_group(group), DOMAIN).get("patrolTask")
     except store.GroupNotFound:
         old_task = None
+    try:
+        old_patrol = store.read_state(store.open_group(group), DOMAIN).get("patrolSession")
+    except store.GroupNotFound:
+        old_patrol = None
     steps = [
         _register_step(relay_name),
-        # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead
-        f"用桌面版的开会话工具 start_session 在决策收件箱目录开巡视会话：标题「decision-inbox 巡视 {group}」，"
+        # stage-c2-fixes I-17: an old patrol session still runs in the hub's folder; retire it first
+        *(_retire_patrol_steps(old_patrol) if old_patrol else []),
+        # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead;
+        # stage-c2-fixes I-17: in its own folder, so it never loads the hub's rules nor passes for the hub
+        f"用 mkdir -p 建好巡视目录 {patrol_dir(group)}，再用桌面版的开会话工具 start_session 在这个目录开巡视会话"
+        f"（不要开在决策收件箱目录或它的子目录里）：标题「decision-inbox 巡视 {group}」，"
         f"权限模式与本会话相同，提示词写「{hub_loop.PATROL_LOOP}」，"
         "后面接下面打印的巡视提示词原文",
         f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
-        f"运行 {cli} onboard allow {group} --project <决策收件箱目录> 预览一次性权限放行，用户确认后加 --confirm 写入，"
-        "之后巡视和决策收件箱不再为这些工具停下来问",
+        f"运行 {cli} onboard allow {group} --project <决策收件箱目录> 预览一次性权限放行（决策收件箱目录和巡视目录各一份），"
+        "用户确认后加 --confirm 写入，之后巡视和决策收件箱不再为这些工具停下来问",
         # stage-c-fixes DI-11: tells the user when the patrol goes quiet, even with the hub idle
         f"运行 {cli} onboard watch {group} 预览巡视提醒（本机 launchd 每 5 分钟检查一次巡视，停了就弹系统通知，"
         "写明去哪个会话做什么），用户确认后加 --confirm 装上",
@@ -999,6 +1007,18 @@ def leave(group: str, relay_name: str, project, confirm: bool, now: str) -> Outc
     return _leave(g, entry, project, confirm, now)
 
 
+def patrol_dir(group: str) -> Path:
+    """stage-c2-fixes I-17: the patrol session's own folder; no member's rules above it, so none load."""
+    return store.root_dir() / group / "patrol"
+
+
+def _retire_patrol_steps(session: str) -> list[str]:
+    """patrol-stop-fixes: its /loop task must go before the host lets it be archived."""
+    return [f"用会话消息工具 send_message 给巡视会话 {session} 发「停止巡视」，等它回「已停」",
+            f"用会话管理工具 archive_session 归档巡视会话 {session}；它不认这句话（旧版巡视会话）或归档仍被拒时，"
+            "请用户在那个会话里停掉循环，或从侧边栏归档"]
+
+
 def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     """The hub leaves; the patrol task is deleted by the session with the scheduled-task tool."""
     g = store.open_group(group)
@@ -1007,10 +1027,7 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     state = store.read_state(g, DOMAIN)
     task_id = state.get("patrolTask")
     if state.get("patrolSession"):
-        session = state["patrolSession"]  # patrol-stop-fixes: its /loop task must go before the host lets it be archived
-        out.steps.append(f"用会话消息工具 send_message 给巡视会话 {session} 发「停止巡视」，等它回「已停」")
-        out.steps.append(f"用会话管理工具 archive_session 归档巡视会话 {session}；它不认这句话（旧版巡视会话）或归档仍被拒时，"
-                         "请用户在那个会话里停掉循环，或从侧边栏归档")
+        out.steps += _retire_patrol_steps(state["patrolSession"])
     if task_id:
         out.steps.append(f"用定时任务工具 delete_scheduled_task 删除巡视任务 {task_id}")
     elif not state.get("patrolSession"):
@@ -1038,6 +1055,7 @@ class Allow:
     path: Path
     added: tuple[str, ...]
     present: tuple[str, ...]
+    also: tuple["Allow", ...] = ()   # stage-c2-fixes I-17: the patrol folder's copy
 
 
 def allow_entries(group: str) -> list[str]:
@@ -1047,9 +1065,15 @@ def allow_entries(group: str) -> list[str]:
 
 
 def allow(group: str, project, confirm: bool) -> Allow:
-    """Preview, and with confirm write, the allowlist into <hub dir>/.claude/settings.local.json only."""
+    """Preview, and with confirm write, the allowlist into the hub's and the patrol folder's
+    .claude/settings.local.json (stage-c2-fixes I-17)."""
     store.open_group(group)
-    path = Path(os.path.abspath(project)) / ".claude" / "settings.local.json"
+    hub_out = _allow_file(group, Path(os.path.abspath(project)) / ".claude" / "settings.local.json", confirm)
+    hub_out.also = (_allow_file(group, patrol_dir(group) / ".claude" / "settings.local.json", confirm),)
+    return hub_out
+
+
+def _allow_file(group: str, path: Path, confirm: bool) -> Allow:
     try:
         doc = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except (OSError, json.JSONDecodeError) as e:

@@ -12,7 +12,8 @@ allowed-tools: Bash, mcp__ccd_session_mgmt__get_session, mcp__agent-relay__bridg
 4. 按输出的「后续步骤」做：
    - 调用 `bridge_register`（`agent` 为邮箱名，`wake` 为 `"auto"`）；
    - 后续步骤里有「删除旧巡视任务」时，先给用户看任务编号，确认后调用 `delete_scheduled_task`（它建过的会话会一起归档）；
-   - 调用 `start_session` 开巡视会话：标题、权限模式、提示词照后续步骤写（提示词是「用 /loop 5m 执行下面的巡视提示词……」加输出的巡视提示词原文），开之前给用户看一遍；
+   - 后续步骤里有「停止并归档旧巡视会话」时（以前的巡视会话开在本目录里），先照做，再开新的；
+   - 调用 `start_session` 开巡视会话：目录用后续步骤写的巡视目录 `~/.decision-inbox/<协作组>/patrol`（先 `mkdir -p` 建好），不要开在本目录或它的子目录里，否则巡视会加载本目录的协作规则段、被当成决策收件箱；标题、权限模式、提示词照后续步骤写（提示词是「用 /loop 5m 执行下面的巡视提示词……」加输出的巡视提示词原文），开之前给用户看一遍；
    - 运行 `"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox" onboard patrol-session <协作组> --session <巡视会话编号>`；
    - 请用户打开巡视会话看第一轮，把弹出的权限确认都批完；等用户说做完后，按本目录 CLAUDE.md 协作规则段的第 7 步读状态并运行 `"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox" view …`，核对主视图第一行没有「巡视还没跑完过」；
    - 巡视提醒：运行 `"${CLAUDE_PLUGIN_ROOT}/bin/decision-inbox" onboard watch <协作组>`，把预览（launchd 任务和 plist 全文）给用户看；用户确认后加 `--confirm` 再运行。它在本机每 5 分钟检查一次巡视，停了就弹系统通知，写明去哪个会话做什么；用户不要就跳过；

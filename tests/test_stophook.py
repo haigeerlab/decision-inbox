@@ -490,3 +490,39 @@ class HubScopeHookTest(HookCase):
     def test_session_flag_decides_role(self):
         self.assertIsNone(self.run_hook(self.outside, "--group", "demo", "--session", "api-codex")[0])
         self.assertEqual(self.run_hook(self.outside, "--group", "demo", "--session", "hub")[0], "block")
+
+
+class PatrolDirHookTest(HookCase):
+    """stage-c2-fixes I-17, replaying the 2026-10-20 probe: a line waits on the hub; the patrol session stops."""
+
+    def setUp(self):
+        super().setUp()
+        from decision_inbox import onboard
+        self.hub_dir = self.repos / "hub"
+        self.hub_dir.mkdir()
+        (self.hub_dir / "CLAUDE.md").write_text("x", encoding="utf-8")
+        with self.g.transaction() as tx:
+            doc = tx.read_state("onboarding")
+            doc.setdefault("files", {})["hub"] = str(self.hub_dir / "CLAUDE.md")
+            tx.write_state("onboarding", doc)
+        self.patrol_dir = onboard.patrol_dir("demo")
+        self.patrol_dir.mkdir(parents=True, exist_ok=True)
+        self.wait("fe-codex", "决策收件箱", 5, what="转达答复")
+
+    def run_hook(self, cwd):
+        import contextlib
+        import io
+        import json
+        from unittest import mock
+        from decision_inbox.__main__ import main
+        out = io.StringIO()
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(self.payload(cwd)))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            main(["hook", "stop"])
+        return out.getvalue()
+
+    def test_in_hub_folder_it_is_taken_for_the_hub(self):
+        self.assertIn('"block"', self.run_hook(self.hub_dir))
+
+    def test_in_patrol_folder_it_passes(self):
+        self.assertEqual(self.run_hook(self.patrol_dir).strip(), "")
