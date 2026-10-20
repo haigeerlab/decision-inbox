@@ -314,6 +314,23 @@ _ORIGINAL_RE = re.compile(r"^原话\s*[：:]\s*\S", re.S)
 # session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
 _PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
 ANSWERED = ("forwarded", "picked", "acknowledged")
+# stage-c2-fixes I-16: "<item> <one option letter>" followed by a separator or the end, e.g. 「70 A；D1 A」.
+_INLINE_RE = re.compile(r"#?(\d+)\s+([A-Z])(?=[；;，,\s]|$)")
+
+
+def _answer_at(m, known: dict) -> bool:
+    """A pending item's number with one of its own option letters (I-16), not a number inside the words."""
+    it = known.get(m.group(1))
+    return (it is not None and it["status"] == "pending"
+            and m.group(2) in {o["letter"] for o in it["options"]})
+
+
+def _split_inline(line: str, known: dict) -> list[str]:
+    """Split one line where whitespace is followed by another pending item and its option letter (I-16)."""
+    cuts = [m.start() for m in _INLINE_RE.finditer(line)
+            if m.start() > 0 and line[m.start() - 1].isspace() and _answer_at(m, known)]
+    bounds = [0, *cuts, len(line)]
+    return [line[a:b].strip() for a, b in zip(bounds, bounds[1:]) if line[a:b].strip()]
 
 
 def _segments(text: str, known: dict) -> list[str]:
@@ -335,8 +352,9 @@ def _segments(text: str, known: dict) -> list[str]:
         return out
 
     lines = [line.strip() for line in text.split("\n") if line.strip()]
-    if len(lines) > 1:
-        return grouped(lines, ["\n"] * len(lines)) or [text]
+    units = [piece for line in lines for piece in _split_inline(line, known)]  # stage-c2-fixes I-16
+    if len(units) > 1:
+        return grouped(units, ["\n"] * len(units)) or [text]
     pieces = [x.strip() for x in _SPLIT_RE.split(text)]
     if len(pieces) > 1 and all(pieces):
         out = grouped(pieces, _SPLIT_RE.findall(text))
@@ -410,6 +428,12 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
         it = known.get(key)
         if it is None:
             return ReplyParse(question=f"#{key} 不在待答表里，请确认编号。")
+        other = next((x.group(1) for x in _INLINE_RE.finditer(rest) if x.group(1) != key
+                      and (x.start() == 0 or not (rest[x.start() - 1].isascii() and rest[x.start() - 1].isalnum()))
+                      and _answer_at(x, known)), None)
+        if m and other:  # stage-c2-fixes I-16: never forward another item's answer inside this one
+            return ReplyParse(question=f"「{segment}」里像是同时答了 #{key} 和 #{other}，请分开写，每项一段，"
+                                       f"例如第一行「{key} …」、第二行「{other} …」。")
         if it["status"] in ANSWERED:
             return ReplyParse(question=f"#{key} 已经转达过，要改答复请先说明以哪次为准。")
         if it["status"] != "pending":

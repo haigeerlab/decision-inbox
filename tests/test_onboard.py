@@ -1569,3 +1569,58 @@ class DropOldTest(RulesDirGuardCase):
                          "--drop-old"])
         self.assertEqual(code, 0, buf.getvalue())
         self.assertIn("旧规则文件：确认后删掉", buf.getvalue())
+
+
+class PatrolDirTest(OnboardCase):
+    """stage-c2-fixes I-17: the patrol session runs in its own folder, not the hub's, so it never loads the
+    hub's rules and the stop hook never takes it for the hub."""
+
+    def test_hub_steps_open_patrol_in_its_own_folder(self):
+        out = self.hub()
+        patrol_dir = store.root_dir() / "demo" / "patrol"
+        self.assertEqual(onboard.patrol_dir("demo"), patrol_dir)
+        start = next(s for s in out.steps if "start_session" in s)
+        self.assertIn(str(patrol_dir), start)
+        self.assertNotIn("在决策收件箱目录开巡视会话", start)
+        self.assertFalse(any("archive_session" in s for s in out.steps))  # no old patrol session yet
+
+    def test_rerun_retires_old_patrol_session_first(self):
+        self.hub()
+        onboard.record_patrol_session("demo", "local_oldpatrol", NOW)
+        steps = self.hub().steps
+        stop = next(i for i, s in enumerate(steps) if "停止巡视" in s and "local_oldpatrol" in s)
+        archive = next(i for i, s in enumerate(steps) if "archive_session" in s and "local_oldpatrol" in s)
+        start = next(i for i, s in enumerate(steps) if "start_session" in s)
+        self.assertLess(stop, archive)
+        self.assertLess(archive, start)
+
+    def test_teardown_steps_unchanged(self):
+        self.hub()
+        onboard.record_patrol_session("demo", "local_oldpatrol", NOW)
+        steps = onboard.teardown("demo", self.dir("hub"), False, NOW).steps
+        self.assertTrue(any("send_message" in s and "停止巡视" in s for s in steps))
+        self.assertTrue(any("archive_session" in s for s in steps))
+
+
+class PatrolDirAllowTest(TempHomeTestCase):
+    """stage-c2-fixes I-17: the one-time allowlist goes to the patrol folder too."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub_dir = self.home / "hubdir"
+        self.hub_dir.mkdir()
+        onboard.hub("g", "g-hub", "local_1", self.hub_dir, True, "2026-10-17T22:00:00+08:00")
+        self.patrol_settings = store.root_dir() / "g" / "patrol" / ".claude" / "settings.local.json"
+
+    def test_preview_lists_both_and_writes_nothing(self):
+        out = onboard.allow("g", self.hub_dir, confirm=False)
+        self.assertEqual([a.path for a in out.also], [self.patrol_settings])
+        self.assertIn("mcp__agent-relay__bridge_agents", out.also[0].added)
+        self.assertFalse(self.patrol_settings.exists())
+
+    def test_confirm_writes_both(self):
+        onboard.allow("g", self.hub_dir, confirm=True)
+        for path in (self.hub_dir / ".claude" / "settings.local.json", self.patrol_settings):
+            allow = json.loads(path.read_text(encoding="utf-8"))["permissions"]["allow"]
+            self.assertIn(f"Bash({onboard.install.cli()}:*)", allow, path)
+        self.assertEqual(onboard.allow("g", self.hub_dir, confirm=False).also[0].added, ())

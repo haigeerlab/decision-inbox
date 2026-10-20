@@ -694,12 +694,14 @@ def _onboard(argv: list[str]) -> int:
                                  args.desktop_session, args.confirm, now)
         elif args.command == "allow":
             out = onboard.allow(args.group, args.project, args.confirm)
-            print(f"设置文件：{out.path}")
-            for e in out.present:
-                print(f"  已有：{e}")
-            for e in out.added:
-                print(f"  {'已加' if args.confirm else '要加'}：{e}")
-            if not out.added:
+            files = (out, *out.also)  # stage-c2-fixes I-17: the hub's folder and the patrol folder
+            for f in files:
+                print(f"设置文件：{f.path}")
+                for e in f.present:
+                    print(f"  已有：{e}")
+                for e in f.added:
+                    print(f"  {'已加' if args.confirm else '要加'}：{e}")
+            if not any(f.added for f in files):
                 print("都已放行，没有要改的")
             elif not args.confirm:
                 print("这是预览，没有写入；用户确认后加 --confirm 再运行一次")
