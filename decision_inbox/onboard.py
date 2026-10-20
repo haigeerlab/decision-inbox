@@ -372,6 +372,7 @@ class Outcome:
     permissions: list = field(default_factory=list)  # (allow|ask, rule) to merge into settings (stall-and-patrol R16)
     permissions_file: Path | None = None
     permissions_removed: list = field(default_factory=list)  # retired (ask, rule) to drop (scope-authority-defaults)
+    old_rules: str | None = None  # what --drop-old does to the previously recorded rules file (rules-dir-guard)
 
 
 def _read(path: Path) -> str:
@@ -387,8 +388,11 @@ def _check_entry(group: str, entry: dict) -> None:
     store._validate_session(entry, [e for e in roster if e["relayName"] != entry["relayName"]])
 
 
-def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> None:
-    """Roster and records first, then the rules file (a rerun repairs a half-done join)."""
+def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str, old=None) -> None:
+    """Roster and records first, then the rules file (a rerun repairs a half-done join).
+
+    `old` is (path, text after, drops) from _old_block: the previous rules file to clean up.
+    """
     with g.transaction() as tx:
         if store.find_session(g, relay_name=entry["relayName"]) is None:
             tx.add_session(entry)
@@ -399,11 +403,118 @@ def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> N
         if not rules.is_file():
             doc.setdefault("created", {})[str(rules)] = now
         doc.get("left", {}).pop(entry["relayName"], None)
+        data = {"role": entry["role"], "file": str(rules), "at": now}
+        if old is not None:
+            if old[2]:
+                doc.get("created", {}).pop(str(old[0]), None)
+            data["droppedOld"] = str(old[0])
         tx.write_state(DOMAIN, doc)
-        tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"],
-                        data={"role": entry["role"], "file": str(rules), "at": now})
+        tx.append_event("onboarding.joined", ref=None, actor=entry["relayName"], data=data)
     if not rules.is_file() or rules.read_text(encoding="utf-8") != after:  # unchanged: leave it be (rehearsal2-fixes)
         store._atomic_write_bytes(rules, after.encode("utf-8"))
+    if old is not None:
+        if old[2]:
+            _drop_created_rules(old[0])
+        else:
+            store._atomic_write_bytes(old[0], old[1].encode("utf-8"))
+
+
+def _member_dirs(g: store.Group | None, skip_relay: str) -> list[tuple[dict, str, bool]]:
+    """(entry, directory, is its rules file's directory) for every other member still in the group.
+
+    rules-dir-guard 假设 1: a dev's repo and the directory of each recorded rules file both count;
+    left and legacy-format entries do not.
+    """
+    if g is None:
+        return []
+    state = store.read_state(g, DOMAIN)
+    files, left = state.get("files", {}), state.get("left", {})
+    out = []
+    for e in store.roster(g):
+        if e["relayName"] == skip_relay or e["relayName"] in left or e.get("legacyFormat"):
+            continue
+        if e.get("repo"):
+            out.append((e, str(e["repo"]), False))
+        if files.get(e["relayName"]):
+            out.append((e, str(Path(files[e["relayName"]]).parent), True))
+    return out
+
+
+def _real(path) -> Path:
+    return Path(os.path.realpath(path))
+
+
+def _covers(top, path) -> bool:
+    """`top` is `path` itself or one of its parents (aliases such as /var and /private/var resolved)."""
+    top, path = _real(top), _real(path)
+    return top == path or top in path.parents
+
+
+def _blocked_by(g: store.Group | None, relay_name: str, target_dir) -> list[tuple[dict, str]]:
+    seen, out = set(), []
+    for e, d, _ in _member_dirs(g, relay_name):
+        if _covers(target_dir, d) and (e["relayName"], str(_real(d))) not in seen:
+            seen.add((e["relayName"], str(_real(d))))
+            out.append((e, d))
+    return out
+
+
+def _dir_guard(g: store.Group | None, relay_name: str, rules: Path, fallback: str) -> list[str]:
+    """rules-dir-guard 要做的 1: refuse a rules file other members would load from a parent directory.
+
+    Raises JoinError (nothing written) when the rules file's directory is another member's directory
+    or above it; returns the warnings for the other way round (someone else's block above this one).
+    """
+    target = rules.parent
+    hits = _blocked_by(g, relay_name, target)
+    if hits:
+        recorded = store.read_state(g, DOMAIN).get("files", {}).get(relay_name)
+        suggest = fallback
+        if recorded and _real(Path(recorded).parent) != _real(target) \
+                and not _blocked_by(g, relay_name, Path(recorded).parent):
+            suggest = str(Path(recorded).parent)
+        why = "；".join(
+            f"{target} 就是 {e['shortName']}（{ROLE_NAMES.get(e['role'], store.HUB_NAME)}）的目录" if _real(d) == _real(target)
+            else f"{target} 是 {e['shortName']}（{ROLE_NAMES.get(e['role'], store.HUB_NAME)}）的目录 {d} 的上级"
+            for e, d in hits)
+        raise JoinError(f"不能把协作规则段写进 {rules}：{why}，在那里开的会话会一起加载这个规则段。请到 {suggest} 重跑。")
+    files = store.read_state(g, DOMAIN).get("files", {}) if g is not None else {}
+    return [f"{files[e['relayName']]} 在本目录的上级，里面是 {e['shortName']} 的协作规则段，本会话会一起加载它；"
+            "请让那个成员换到它自己的目录重跑接入（加 --drop-old 删掉这里的旧段）"
+            for e, d, is_rules in _member_dirs(g, relay_name)
+            if is_rules and _real(d) != _real(target) and _covers(d, target)]
+
+
+def _old_block(g: store.Group | None, entry: dict, rules: Path, drop_old: bool, confirm: bool):
+    """rules-dir-guard 要做的 2: the block a rerun elsewhere would leave in the previously recorded file.
+
+    Returns (plan, note, warnings): plan is (path, text after, drops) when --drop-old removes it.
+    """
+    state = store.read_state(g, DOMAIN) if g is not None else {}
+    recorded = state.get("files", {}).get(entry["relayName"])
+    nothing = (None, "没有旧规则段要删" if drop_old else None, [])
+    if not recorded or _real(recorded) == _real(rules) or not Path(recorded).is_file():
+        return nothing
+    old = Path(recorded)
+    text = _read(old)
+    try:
+        found = _find(text.splitlines(keepends=True))
+    except BlockConflict:
+        found = (0, 0, None)
+    if found is None:
+        return nothing
+    if found[2] != entry["role"]:
+        return None, None, [f"{old} 里的 decision-inbox 标记不是本会话的，没动它"]
+    if not drop_old:
+        return None, None, [f"旧规则文件 {old} 里还留着本会话的协作规则段：在那个目录开的会话还会按它工作。"
+                            "要一并删掉，加 --drop-old 重跑（只删这一段，文件里别的内容不动）"]
+    after, _ = strip(text)
+    drops = str(old) in state.get("created", {}) and not after.strip()
+    if drops:
+        note = f"{'已删掉' if confirm else '确认后删掉'} {old}（接入时新建，删掉协作规则段后为空）"
+    else:
+        note = f"{'已从' if confirm else '确认后从'} {old} 删掉旧协作规则段"
+    return (old, after, drops), note, []
 
 
 def _register_step(relay_name: str) -> str:
@@ -416,7 +527,7 @@ HOOK_STEP = ("在 Claude Code 和 Codex 里各信任一次 decision-inbox 插件
 
 
 def hub(group: str, relay_name: str, desktop_session: str, project, confirm: bool, now: str,
-        start_number: int | None = None) -> Outcome:
+        start_number: int | None = None, drop_old: bool = False) -> Outcome:
     """The hub joins first: group, roster entry, its own block, and the patrol task to create."""
     store.validate_name(group)
     entry = {"relayName": relay_name, "shortName": store.HUB_NAME, "role": "hub", "line": [],
@@ -432,6 +543,12 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         if problem:
             raise JoinError(problem)
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
+    try:
+        current = store.open_group(group)
+    except store.GroupNotFound:
+        current = None
+    warnings = _dir_guard(current, relay_name, rules, str(rules.parent / "hub"))
+    old, old_note, old_warnings = _old_block(current, entry, rules, drop_old, confirm)
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
     cli = install.cli()
@@ -460,13 +577,14 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
         steps.insert(0, f"待决事项和等待记录从 {start_number} 开始编号（待决事项写 #{start_number}、等待记录写 W{start_number}；替换旧的决策收件箱时避免和旧编号混淆）")
-    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
+    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name),
+                  warnings=old_warnings + warnings, old_rules=old_note)
     if confirm:
         g, _ = store.init_group(group)
         if start_number is not None:
             store.set_start_number(g, start_number)
         (g.path / "io").mkdir(mode=0o700, exist_ok=True)
-        _commit(g, entry, rules, after, now)
+        _commit(g, entry, rules, after, now, old)
         _backfill_patrol_time(g, now)
         install.write_shim(install.plugin_root())
     return out
@@ -625,7 +743,7 @@ def _merge_rules(path: Path, doc: dict, missing, retired=()) -> None:
 def join(group: str, role: str, relay_name: str, short_name: str, host: str, lines, desktop_session,
          project, reviewer, nodes, confirm: bool, now: str, session_cwd=None,
          checkpoint_authority: bool = True, crew_coordinator: bool = False,
-         local_rules: bool = False, test_command: str | None = None) -> Outcome:
+         local_rules: bool = False, test_command: str | None = None, drop_old: bool = False) -> Outcome:
     """A working session joins: roster entry, its role's block, optionally its reviewer."""
     if role not in ROLE_NAMES:
         raise JoinError(f"onboard join 的角色只能是 {'／'.join(ROLE_NAMES)}；决策收件箱用 onboard hub")
@@ -650,6 +768,8 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     _check_entry(group, entry)
     _check_reviewer(g, role, reviewer, nodes)
     rules = rules_path(entry, home)
+    dir_warnings = _dir_guard(g, relay_name, rules, "本会话自己的项目目录（不包含其他成员目录的那一层）")
+    old, old_note, old_warnings = _old_block(g, entry, rules, drop_old, confirm)
     before = _read(rules)
     after = place(before, role, block(role, group, hub_relay, checkpoint_authority, crew_coordinator))
     steps = [_register_step(relay_name)]
@@ -669,7 +789,8 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
     steps.append(RELOAD_STEP)
     if host == "codex-desktop":
         steps.insert(0, CODEX_TRUST_STEP)
-    out = Outcome(rules, before, after, after != before, entry, steps)
+    out = Outcome(rules, before, after, after != before, entry, steps, warnings=old_warnings + dir_warnings,
+                  old_rules=old_note)
     settings_doc = None
     if host == "claude-desktop":
         out.permissions_file = Path(home) / ".claude" / "settings.local.json"
@@ -707,7 +828,7 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         if unseen and checkpoint_authority:
             out.warnings.append("当前目录下这份授权不会被守卫看到：「检查点答复即授权」写在协作规则段里，协作规则段加载不到就不起作用")
     if confirm:
-        _commit(g, entry, rules, after, now)
+        _commit(g, entry, rules, after, now, old)
         install.write_shim(install.plugin_root())
         out.written.append(f"已写入：名册（{short_name}，{role}）")
         if out.permissions or out.permissions_removed:

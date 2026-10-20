@@ -100,6 +100,56 @@ def _conventions(g: store.Group, group: str) -> list[Check]:
     return out
 
 
+STRAY = "上级目录的协作规则段"
+STRAY_FILES = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md")
+
+
+def _marked_role(path: Path) -> str | None:
+    """The role on the first decision-inbox marker line in `path`, or None."""
+    try:
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except (OSError, UnicodeDecodeError):
+        return None
+    return next((m.group(2) for line in text.splitlines() if (m := onboard._MARK_RE.match(line))), None)
+
+
+def _stray_blocks(g: store.Group) -> list[Check]:
+    """rules-dir-guard 要做的 3: a block in a member directory or above it, other than the member's own
+    recorded rules file, is loaded by that member too. Read-only."""
+    files = store.read_state(g, onboard.DOMAIN).get("files", {})
+    recorded = {onboard._real(p): relay for relay, p in files.items()}
+    names = {e["relayName"]: e["shortName"] for e in store.roster(g)}
+    found: dict = {}  # real path -> [shown path, role, affected short names]
+    for e, d, _ in onboard._member_dirs(g, None):
+        own = files.get(e["relayName"])
+        here = Path(os.path.abspath(d))
+        for level in (here, *here.parents):
+            for name in STRAY_FILES:
+                path = level / name
+                real = onboard._real(path)
+                if own and real == onboard._real(own):
+                    continue
+                if real not in found:
+                    role = _marked_role(path)
+                    if role is None:
+                        continue
+                    found[real] = [path, role, []]
+                if e["shortName"] not in found[real][2]:
+                    found[real][2].append(e["shortName"])
+    if not found:
+        return [Check(STRAY, "ok", "本插件", "各成员目录及其上级目录里没有别的协作规则段")]
+    out = []
+    for real, (path, role, affected) in found.items():
+        role_name = onboard.ROLE_NAMES.get(role, store.HUB_NAME if role == "hub" else role)
+        owner = recorded.get(real)
+        fix = (f"让 {names.get(owner, owner)} 到不包含其他成员目录的目录重跑接入，加 --drop-old" if owner
+               else f"手动删掉 {path} 里 BEGIN 到 END 这一段，或在那个目录运行 {install.cli()} onboard leave")
+        out.append(Check(f"{STRAY}：{path}", "bad", "本插件",
+                         f"{path} 里有 decision-inbox {role_name}协作规则段，{'、'.join(affected)} 在这个目录或下面的目录里"
+                         "会一起加载", fix))
+    return out
+
+
 def _shim() -> Check:
     path = install.shim_path()
     here = install.plugin_root()
@@ -381,6 +431,7 @@ def run(groups=None, now: str | None = None) -> list[Check]:
     for group in _groups(groups):
         g = store.open_group(group)
         out += _conventions(g, group)
+        out += _stray_blocks(g)
         out.append(_patrol(g, now))
         if any(e["role"] == "hub" for e in store.roster(g)):
             out.append(_patrol_watch(group))

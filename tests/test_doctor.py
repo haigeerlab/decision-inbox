@@ -91,6 +91,52 @@ class ConventionTest(DoctorCase):
         self.assertIn("没有 decision-inbox 协作规则段", c.evidence)
 
 
+class StrayBlockTest(DoctorCase):
+    """rules-dir-guard 要做的 3: a block in a member directory's parent is loaded by that member too."""
+
+    NAME = "上级目录的协作规则段"
+
+    def stray(self, path):
+        return self.check(f"{self.NAME}：{path}")
+
+    def test_none_is_ok(self):
+        c = self.check(self.NAME)
+        self.assertEqual(c.state, "ok")
+        self.assertFalse(any(x.name.startswith(self.NAME + "：") for x in doctor.run(["g"], NOW)))
+
+    def test_unrecorded_block_in_group_directory_is_bad_once(self):
+        stray = self.work / "CLAUDE.md"
+        stray.write_text("# 组目录\n\n" + onboard.block("hub", "g", "g-hub"), encoding="utf-8")
+        c = self.stray(stray)
+        self.assertEqual((c.state, c.source), ("bad", "本插件"))
+        for needle in (str(stray), "决策收件箱", "开发", "一起加载"):
+            self.assertIn(needle, c.evidence)
+        self.assertIn("手动删掉", c.fix)
+        stray.write_text("# 组目录\n", encoding="utf-8")
+        self.assertEqual(self.check(self.NAME).state, "ok")
+
+    def test_recorded_block_names_its_owner(self):
+        """The 2026-10-20 field case: the roster points at the group directory's CLAUDE.md."""
+        stray = self.work / "CLAUDE.md"
+        stray.write_text(onboard.block("hub", "g", "g-hub"), encoding="utf-8")
+        g = store.open_group("g")
+        with g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc["files"]["g-hub"] = str(stray)
+            tx.write_state(onboard.DOMAIN, doc)
+        c = self.stray(stray)
+        self.assertEqual(c.state, "bad")
+        self.assertIn("开发", c.evidence)
+        self.assertIn("让 决策收件箱 到不包含其他成员目录的目录重跑接入，加 --drop-old", c.fix)
+
+    def test_same_directory_counts_and_left_member_does_not(self):
+        stray = self.work / "dev" / "CLAUDE.md"
+        stray.write_text(onboard.block("hub", "g", "g-hub"), encoding="utf-8")
+        self.assertEqual(self.stray(stray).state, "bad")
+        onboard.leave("g", "g-dev", None, True, NOW)
+        self.assertEqual(self.check(self.NAME).state, "ok")
+
+
 class ShimTest(DoctorCase):
     def test_points_here(self):
         self.assertEqual(self.check("转发脚本").state, "ok")

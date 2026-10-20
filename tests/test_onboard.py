@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import unittest
@@ -1373,3 +1374,183 @@ class PermissionLabelTest(RoutinePermissionsTest):
         self.assertIn(("禁止", "Bash(npm * -g)"), written)
         self.assertIn(("禁止", "Bash(sh)"), written)
         self.assertIn(("先问", "Bash(git push *)"), written)
+
+
+class RulesDirGuardCase(OnboardCase):
+    """rules-dir-guard: the 2026-10-20 field case, a group directory holding the members' directories."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+        self.join_owner()
+
+    def join_owner(self, confirm=True, project=None):
+        return onboard.join("demo", role="owner", relay_name="di-owner", short_name="审查者", host="claude-desktop",
+                            lines=["前端"], desktop_session=None, project=project or self.dir("owner"), reviewer=None,
+                            nodes=[], confirm=confirm, now=NOW)
+
+    def snapshot(self):
+        return {str(f.relative_to(self.home)): f.read_bytes() for f in sorted(self.home.rglob("*")) if f.is_file()}
+
+
+class HubDirGuardTest(RulesDirGuardCase):
+    def test_hub_in_group_directory_is_blocked(self):
+        for confirm in (False, True):
+            with self.subTest(confirm=confirm):
+                before = self.snapshot()
+                with self.assertRaises(onboard.JoinError) as caught:
+                    self.hub(confirm=confirm, project=self.project)
+                message = str(caught.exception)
+                for needle in (str(self.project / "CLAUDE.md"), "审查者", str(self.project / "owner"),
+                               "上级", str(self.project / "hub")):
+                    self.assertIn(needle, message)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_suggests_subdirectory_when_nothing_recorded(self):
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc["files"].pop("di-hub")
+            tx.write_state(onboard.DOMAIN, doc)
+        (self.project / "hub" / "CLAUDE.md").unlink()
+        os.rmdir(self.project / "hub")
+        with self.assertRaises(onboard.JoinError) as caught:
+            self.hub(confirm=False, project=self.project)
+        self.assertIn(f"请到 {self.project / 'hub'} 重跑", str(caught.exception))
+
+    def test_same_directory_as_a_dev_repo_is_blocked(self):
+        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        with self.assertRaises(onboard.JoinError) as caught:
+            self.hub(confirm=False, project=self.dir("fe"))
+        self.assertIn("前端", str(caught.exception))
+
+    def test_left_member_does_not_count(self):
+        onboard.leave("demo", "di-owner", None, True, NOW)
+        out = self.hub(confirm=False, project=self.project)
+        self.assertEqual(out.file, self.project / "CLAUDE.md")
+
+    def test_sibling_directories_pass(self):
+        out = self.hub(confirm=False)
+        self.assertFalse(any("上级" in w for w in out.warnings), out.warnings)
+
+    def test_command_line_exits_2(self):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = main(["onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                         "--project", str(self.project)])
+        self.assertEqual(code, 2)
+        self.assertIn("不能把协作规则段写进", err.getvalue())
+
+
+class JoinDirGuardTest(RulesDirGuardCase):
+    def join_dev(self, project, confirm=False):
+        return onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                            lines=["前端"], desktop_session=None, project=project, reviewer=None, nodes=[],
+                            confirm=confirm, now=NOW)
+
+    def test_join_above_other_members_is_blocked(self):
+        for confirm in (False, True):
+            with self.subTest(confirm=confirm):
+                before = self.snapshot()
+                with self.assertRaises(onboard.JoinError) as caught:
+                    self.join_dev(self.project, confirm=confirm)
+                message = str(caught.exception)
+                for needle in (str(self.project / "AGENTS.md"), "决策收件箱", "审查者", str(self.project / "owner"),
+                               str(self.project / "hub")):
+                    self.assertIn(needle, message)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_join_below_hub_rules_warns(self):
+        below = self.dir("hub") / "fe"
+        below.mkdir()
+        out = self.join_dev(below)
+        hub_rules = str(self.project / "hub" / "CLAUDE.md")
+        self.assertTrue(any(hub_rules in w and "决策收件箱" in w and "上级" in w for w in out.warnings), out.warnings)
+
+    def test_rerun_in_own_directory_passes(self):
+        out = self.join_owner(confirm=False)
+        self.assertFalse(any("上级" in w for w in out.warnings), out.warnings)
+
+
+class DropOldTest(RulesDirGuardCase):
+    """rules-dir-guard 要做的 2: the block left behind when a session reruns its join somewhere else."""
+
+    def old(self):
+        return self.project / "hub" / "CLAUDE.md"
+
+    def test_moving_without_flag_warns_and_keeps_old(self):
+        before = self.old().read_bytes()
+        out = self.hub(project=self.dir("inbox"))
+        self.assertTrue(any(str(self.old()) in w and "--drop-old" in w and "还留着" in w for w in out.warnings),
+                        out.warnings)
+        self.assertEqual(self.old().read_bytes(), before)
+
+    def test_drop_old_keeps_user_content_byte_for_byte(self):
+        self.old().write_text(onboard.place("# 我的规则\n", "hub", hub.convention("demo")), encoding="utf-8")
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc["created"].pop(str(self.old()))
+            tx.write_state(onboard.DOMAIN, doc)
+        preview = self.hub(confirm=False, project=self.dir("inbox"), drop_old=True)
+        self.assertIn(f"确认后从 {self.old()} 删掉旧协作规则段", preview.old_rules)
+        self.assertIn("BEGIN decision-inbox hub", self.old().read_text(encoding="utf-8"))
+        out = self.hub(project=self.dir("inbox"), drop_old=True)
+        self.assertEqual(self.old().read_text(encoding="utf-8"), "# 我的规则\n")
+        self.assertIn(f"已从 {self.old()} 删掉旧协作规则段", out.old_rules)
+
+    def test_drop_old_removes_created_file(self):
+        preview = self.hub(confirm=False, project=self.dir("inbox"), drop_old=True)
+        self.assertIn("确认后删掉", preview.old_rules)
+        self.hub(project=self.dir("inbox"), drop_old=True)
+        self.assertFalse(self.old().exists())
+        g = store.open_group("demo")
+        state = store.read_state(g, onboard.DOMAIN)
+        self.assertNotIn(str(self.old()), state["created"])
+        self.assertEqual(state["files"]["di-hub"], str(self.project / "inbox" / "CLAUDE.md"))
+        joined = [json.loads(line) for line in (g.path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+        joined = [e for e in joined if e["type"] == "onboarding.joined"]
+        self.assertEqual(joined[-1]["data"].get("droppedOld"), str(self.old()))
+
+    def test_other_role_block_is_left_alone(self):
+        self.old().write_text(OWNER, encoding="utf-8")
+        out = self.hub(project=self.dir("inbox"), drop_old=True)
+        self.assertEqual(self.old().read_text(encoding="utf-8"), OWNER)
+        self.assertTrue(any("不是本会话的" in w for w in out.warnings), out.warnings)
+
+    def test_nothing_to_drop(self):
+        out = self.hub(confirm=False, drop_old=True)
+        self.assertIn("没有旧规则段要删", out.old_rules)
+
+    def test_join_moving_drops_old(self):
+        old = self.project / "owner" / "CLAUDE.md"
+        out = self.join_owner(confirm=False, project=self.dir("owner2"))
+        self.assertTrue(any(str(old) in w and "--drop-old" in w for w in out.warnings), out.warnings)
+        onboard.join("demo", role="owner", relay_name="di-owner", short_name="审查者", host="claude-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("owner2"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW, drop_old=True)
+        self.assertFalse(old.exists())
+        self.assertTrue((self.project / "owner2" / "CLAUDE.md").is_file())
+
+    def test_command_line_flag(self):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = main(["onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                         "--project", str(self.dir("inbox")), "--drop-old"])
+        self.assertEqual(code, 0)
+        self.assertIn(f"旧规则文件：确认后删掉 {self.old()}", buf.getvalue())
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = main(["onboard", "join", "demo", "--role", "owner", "--relay-name", "di-owner", "--short-name",
+                         "审查者", "--host", "claude-desktop", "--line", "前端", "--project", str(self.dir("owner2")),
+                         "--drop-old"])
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertIn("旧规则文件：确认后删掉", buf.getvalue())
