@@ -1373,3 +1373,74 @@ class PermissionLabelTest(RoutinePermissionsTest):
         self.assertIn(("禁止", "Bash(npm * -g)"), written)
         self.assertIn(("禁止", "Bash(sh)"), written)
         self.assertIn(("先问", "Bash(git push *)"), written)
+
+
+class RulesDirGuardCase(OnboardCase):
+    """rules-dir-guard: the 2026-10-20 field case, a group directory holding the members' directories."""
+
+    def setUp(self):
+        super().setUp()
+        self.hub()
+        self.join_owner()
+
+    def join_owner(self, confirm=True, project=None):
+        return onboard.join("demo", role="owner", relay_name="di-owner", short_name="审查者", host="claude-desktop",
+                            lines=["前端"], desktop_session=None, project=project or self.dir("owner"), reviewer=None,
+                            nodes=[], confirm=confirm, now=NOW)
+
+    def snapshot(self):
+        return {str(f.relative_to(self.home)): f.read_bytes() for f in sorted(self.home.rglob("*")) if f.is_file()}
+
+
+class HubDirGuardTest(RulesDirGuardCase):
+    def test_hub_in_group_directory_is_blocked(self):
+        for confirm in (False, True):
+            with self.subTest(confirm=confirm):
+                before = self.snapshot()
+                with self.assertRaises(onboard.JoinError) as caught:
+                    self.hub(confirm=confirm, project=self.project)
+                message = str(caught.exception)
+                for needle in (str(self.project / "CLAUDE.md"), "审查者", str(self.project / "owner"),
+                               "上级", str(self.project / "hub")):
+                    self.assertIn(needle, message)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_suggests_subdirectory_when_nothing_recorded(self):
+        g = store.open_group("demo")
+        with g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc["files"].pop("di-hub")
+            tx.write_state(onboard.DOMAIN, doc)
+        (self.project / "hub" / "CLAUDE.md").unlink()
+        os.rmdir(self.project / "hub")
+        with self.assertRaises(onboard.JoinError) as caught:
+            self.hub(confirm=False, project=self.project)
+        self.assertIn(f"请到 {self.project / 'hub'} 重跑", str(caught.exception))
+
+    def test_same_directory_as_a_dev_repo_is_blocked(self):
+        onboard.join("demo", role="dev", relay_name="fe-codex", short_name="前端", host="codex-desktop",
+                     lines=["前端"], desktop_session=None, project=self.dir("fe"), reviewer=None, nodes=[],
+                     confirm=True, now=NOW)
+        with self.assertRaises(onboard.JoinError) as caught:
+            self.hub(confirm=False, project=self.dir("fe"))
+        self.assertIn("前端", str(caught.exception))
+
+    def test_left_member_does_not_count(self):
+        onboard.leave("demo", "di-owner", None, True, NOW)
+        out = self.hub(confirm=False, project=self.project)
+        self.assertEqual(out.file, self.project / "CLAUDE.md")
+
+    def test_sibling_directories_pass(self):
+        out = self.hub(confirm=False)
+        self.assertFalse(any("上级" in w for w in out.warnings), out.warnings)
+
+    def test_command_line_exits_2(self):
+        import contextlib
+        import io
+        from decision_inbox.__main__ import main
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = main(["onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
+                         "--project", str(self.project)])
+        self.assertEqual(code, 2)
+        self.assertIn("不能把协作规则段写进", err.getvalue())

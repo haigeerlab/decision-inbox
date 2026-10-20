@@ -1,7 +1,8 @@
 # Todo: rules-dir-guard
 
-- [ ] Task 1：目录核对与 hub 拦下／提示（Spec 要做的 1；验收 1、2）
+- [x] Task 1：目录核对与 hub 拦下／提示（Spec 要做的 1；验收 1、2）
   - 验证：`tests/test_onboard.py` 新用例在 0714203 上失败、改后通过
+  - 结果：HubDirGuardTest 6 项改前 5 项失败（没拦下、命令行退出 0）、改后通过；全量 1110 项通过，现有用例的目录布局没有要改的
 - [ ] Task 2：join 拦下／提示（要做的 1；验收 3）
   - 验证：同上
 - [ ] Task 3：`--drop-old`（hub 与 join；要做的 2；验收 4）

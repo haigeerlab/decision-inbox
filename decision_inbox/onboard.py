@@ -406,6 +406,72 @@ def _commit(g: store.Group, entry: dict, rules: Path, after: str, now: str) -> N
         store._atomic_write_bytes(rules, after.encode("utf-8"))
 
 
+def _member_dirs(g: store.Group | None, skip_relay: str) -> list[tuple[dict, str, bool]]:
+    """(entry, directory, is its rules file's directory) for every other member still in the group.
+
+    rules-dir-guard 假设 1: a dev's repo and the directory of each recorded rules file both count;
+    left and legacy-format entries do not.
+    """
+    if g is None:
+        return []
+    state = store.read_state(g, DOMAIN)
+    files, left = state.get("files", {}), state.get("left", {})
+    out = []
+    for e in store.roster(g):
+        if e["relayName"] == skip_relay or e["relayName"] in left or e.get("legacyFormat"):
+            continue
+        if e.get("repo"):
+            out.append((e, str(e["repo"]), False))
+        if files.get(e["relayName"]):
+            out.append((e, str(Path(files[e["relayName"]]).parent), True))
+    return out
+
+
+def _real(path) -> Path:
+    return Path(os.path.realpath(path))
+
+
+def _covers(top, path) -> bool:
+    """`top` is `path` itself or one of its parents (aliases such as /var and /private/var resolved)."""
+    top, path = _real(top), _real(path)
+    return top == path or top in path.parents
+
+
+def _blocked_by(g: store.Group | None, relay_name: str, target_dir) -> list[tuple[dict, str]]:
+    seen, out = set(), []
+    for e, d, _ in _member_dirs(g, relay_name):
+        if _covers(target_dir, d) and (e["relayName"], str(_real(d))) not in seen:
+            seen.add((e["relayName"], str(_real(d))))
+            out.append((e, d))
+    return out
+
+
+def _dir_guard(g: store.Group | None, relay_name: str, rules: Path, fallback: str) -> list[str]:
+    """rules-dir-guard 要做的 1: refuse a rules file other members would load from a parent directory.
+
+    Raises JoinError (nothing written) when the rules file's directory is another member's directory
+    or above it; returns the warnings for the other way round (someone else's block above this one).
+    """
+    target = rules.parent
+    hits = _blocked_by(g, relay_name, target)
+    if hits:
+        recorded = store.read_state(g, DOMAIN).get("files", {}).get(relay_name)
+        suggest = fallback
+        if recorded and _real(Path(recorded).parent) != _real(target) \
+                and not _blocked_by(g, relay_name, Path(recorded).parent):
+            suggest = str(Path(recorded).parent)
+        why = "；".join(
+            f"{target} 就是 {e['shortName']}（{ROLE_NAMES.get(e['role'], store.HUB_NAME)}）的目录" if _real(d) == _real(target)
+            else f"{target} 是 {e['shortName']}（{ROLE_NAMES.get(e['role'], store.HUB_NAME)}）的目录 {d} 的上级"
+            for e, d in hits)
+        raise JoinError(f"不能把协作规则段写进 {rules}：{why}，在那里开的会话会一起加载这个规则段。请到 {suggest} 重跑。")
+    files = store.read_state(g, DOMAIN).get("files", {}) if g is not None else {}
+    return [f"{files[e['relayName']]} 在本目录的上级，里面是 {e['shortName']} 的协作规则段，本会话会一起加载它；"
+            "请让那个成员换到它自己的目录重跑接入（加 --drop-old 删掉这里的旧段）"
+            for e, d, is_rules in _member_dirs(g, relay_name)
+            if is_rules and _real(d) != _real(target) and _covers(d, target)]
+
+
 def _register_step(relay_name: str) -> str:
     return f"在 agent-relay 登记本会话：bridge_register，agent 为 {relay_name}，wake: \"auto\"（已登记过也再登记一次，绑定唤醒）"
 
@@ -432,6 +498,11 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         if problem:
             raise JoinError(problem)
     rules = Path(os.path.abspath(project)) / RULES_FILES["claude-desktop"]
+    try:
+        current = store.open_group(group)
+    except store.GroupNotFound:
+        current = None
+    warnings = _dir_guard(current, relay_name, rules, str(rules.parent / "hub"))
     before = _read(rules)
     after = place(before, "hub", block("hub", group, relay_name))
     cli = install.cli()
@@ -460,7 +531,8 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
         steps.insert(0, f"待决事项和等待记录从 {start_number} 开始编号（待决事项写 #{start_number}、等待记录写 W{start_number}；替换旧的决策收件箱时避免和旧编号混淆）")
-    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name))
+    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name),
+                  warnings=warnings)
     if confirm:
         g, _ = store.init_group(group)
         if start_number is not None:
