@@ -568,3 +568,29 @@ class InheritedItemTest(AnsweredNotResumedTest):
         no = self.answered()
         d = self.decide_with(str(self.repos / "nope.jsonl"))
         self.assertIn(f"- #{no} 用户已答复：「{no} A」（3 分钟前）", d.reason)
+
+
+class HubTurnWithoutViewTest(HubTurnCheckTest):
+    """I-22 (0.0.36 short check): woken by the patrol session's turn-end notice, the hub ran no command and wrote
+    「选项在上面那张 #79 卡片里」; the check passed it because the turn printed no main view."""
+
+    def chat_turn(self, final):
+        import json
+        rows = [{"type": "user", "message": {"role": "user", "content": "<system-reminder>巡视会话结束了一轮</system-reminder>"}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": final}]}}]
+        path = self.dir / "chat.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+        return {"transcript_path": str(path), "stop_hook_active": False, "cwd": "/somewhere"}
+
+    REPLAY = ("巡视会话因为 #79 等得久了，发了一条桌面通知提醒你。#79 问的是：要开 kappa，得先挂起 theta 还是挂起 iota；"
+              "选项在上面那张 #79 卡片里。#78 也还在等你回。")
+
+    def test_pending_item_named_without_cards_blocks(self):
+        d = stophook.hub_turn_check(self.chat_turn(self.REPLAY), pending={78, 79})
+        self.assertTrue(d.block)
+        self.assertIn("#79", d.reason)
+        self.assertIn("view", d.reason)
+
+    def test_chat_without_pending_items_passes(self):
+        self.assertFalse(stophook.hub_turn_check(self.chat_turn("好的，巡视这一轮没有动作。"), pending={78}).block)
+        self.assertFalse(stophook.hub_turn_check(self.chat_turn(self.REPLAY), pending=set()).block)
