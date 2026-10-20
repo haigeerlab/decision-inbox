@@ -566,6 +566,8 @@ def _print_outcome(out, confirm: bool) -> None:
         print("规则文件：无（只登记进名册，不写协作规则段）")
     else:
         print(f"规则文件：{out.file}（{state}）")
+    if out.old_rules:
+        print(f"旧规则文件：{out.old_rules}")
     print("名册条目：" + json.dumps(out.entry, ensure_ascii=False))
     if out.permissions or out.permissions_removed:
         verb, drop = ("已加", "已删") if confirm else ("要加", "要删")
@@ -597,6 +599,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--desktop-session", required=True)
     p.add_argument("--project", default=".")
     p.add_argument("--start-number", type=int)
+    p.add_argument("--drop-old", action="store_true")  # rules-dir-guard: strip the block from the old rules file
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("join")
     p.add_argument("group")
@@ -615,6 +618,7 @@ def _onboard(argv: list[str]) -> int:
     p.add_argument("--crew-coordinator", action="store_true")
     p.add_argument("--local-rules", action="store_true")
     p.add_argument("--test-command")
+    p.add_argument("--drop-old", action="store_true")
     p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("enroll")
     p.add_argument("group")
@@ -652,14 +656,14 @@ def _onboard(argv: list[str]) -> int:
     try:
         if args.command == "hub":
             out = onboard.hub(args.group, args.relay_name, args.desktop_session, args.project, args.confirm, now,
-                              start_number=args.start_number)
+                              start_number=args.start_number, drop_old=args.drop_old)
         elif args.command == "join":
             nodes = [n for n in args.nodes.split(",") if n]
             out = onboard.join(args.group, args.role, args.relay_name, args.short_name, args.host, args.line,
                                args.desktop_session, args.project, args.reviewer, nodes, args.confirm, now,
                                session_cwd=args.session_cwd, checkpoint_authority=args.checkpoint_authority,
                                crew_coordinator=args.crew_coordinator, local_rules=args.local_rules,
-                               test_command=args.test_command)
+                               test_command=args.test_command, drop_old=args.drop_old)
         elif args.command == "enroll":
             out = onboard.enroll(args.group, args.relay_name, args.short_name, args.host, args.line,
                                  args.desktop_session, args.confirm, now)
