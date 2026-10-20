@@ -6,8 +6,9 @@
 - [x] Task 2：巡视唤醒实际持有者（要做的 3；验收 1～3）
   - 验证：`tests/test_patrol.py` 的 `RosterStaleTest` 在 6511882 上失败、改后通过；现有巡视测试不改、全部通过
   - 结果：RosterStaleTest 6 项，改前 4 项失败（唤醒发给旧会话、没有名册过期通知、只有旧会话在运行时仍唤醒旧会话、收件箱唤醒旧会话），名册一致和两边都不在运行这 2 项改前就通过（行为不变）；改后全部通过，现有巡视测试未改，全量 1150 项通过
-- [ ] Task 3：停滞询问与主视图（要做的 3、4；验收 4、5）
+- [x] Task 3：停滞询问与主视图（要做的 3、4；验收 4、5）
   - 验证：`tests/test_stall.py`、`tests/test_hub.py` 新用例改前失败、改后通过；全量 `PYTHONPATH=tests:. python3 -m unittest discover -s tests` 通过
+  - 结果：RosterStaleStallTest 4 项、RosterStaleViewTest 的名册过期行 1 项改前失败（asks／overdue_rows 不收 holders，巡视没传，主视图没有过期行）；名册一致时不显示的 1 项改前就通过；改后全部通过，全量 1156 项通过
 - [ ] Task 4：版本 0.0.35 与 README 升级步骤
   - 验证：`tests/test_packaging.py` 通过；README 写清哪些会话要重开、要不要重跑 join 或 hub-setup
 

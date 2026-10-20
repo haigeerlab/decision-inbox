@@ -425,11 +425,15 @@ def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, ex
               loop_facts=None, sessions=None, sessions_status: str | None = None) -> str:
     """hub-view's main view, headed by what the hub itself must fix first."""
     head = [alarm] if (alarm := patrol_alarm(g, now)) else []
+    found = desktop.holders(g, relay, sessions)  # roster-stale-wake
+    head += [f"⚠ {desktop.stale_text(e)}" + (f"：claude://claude.ai/epitaxy/{found[e['relayName']].session}"
+                                             if found[e["relayName"]].session else "")
+             for e in store.roster(g) if found.get(e["relayName"]) and found[e["relayName"]].state == "stale"]
     head += view.go_to_session_rows(g, now)  # go-to-session: R21 DI-7, right after the patrol alarm
     # decision-cards DI-9: prompts nobody reported, from agent-relay's bridge_sessions
     head += [desktop.card(s, view.waited(m)) for s, m, _ in desktop.stuck(g, now, sessions)]
     head += view.loop_rows(g, loop_facts)    # loop-detection: R21 DI-6
-    head += stall.overdue_rows(g, now, store.read_state(g, "patrol"))  # stall-and-patrol R14
+    head += stall.overdue_rows(g, now, store.read_state(g, "patrol"), found)  # stall-and-patrol R14
     head += unsent_rows(g, exclude)
     if relay is None and relay_status == "unreadable":
         head.append(deps.sourced(f"⚠ 读不到 agent-relay（{relay_error or '原因不明'}），各线状态不全", "agent-relay"))

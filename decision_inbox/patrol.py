@@ -283,7 +283,7 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
     _not_loaded(ctx)
     for s, minutes, _ in desktop.stuck(g, now, sessions):  # decision-cards DI-9: once per prompt
         ctx.notify(desktop.notice_key(s), f"{s.name} 停在权限弹窗上 {minutes} 分钟，没人报，详见决策收件箱")
-    for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews, loop_facts):  # R14: the line raises it
+    for ask in stall.asks(g, now, assessment.lines, maps or {}, state, crews, loop_facts, ctx.holders):  # R14: the line raises it
         result.actions.append(Action(f"stall:{ask.key}", ask.kind, ask.target, ask.text))
     _alerts(ctx, assessment.signals)
     _cap(ctx)

@@ -1117,3 +1117,37 @@ class ClosedItemStaleTest(HubCase):
         no = int(next(k for k, t in self.tickets().items() if t["relayId"] == 8801))
         self.receive(message(8802, "fe-codex", "【撤回】\n事项：#3\n原因：不要了\n"))
         self.assertIsNone({t.no: t for t in tickets.open_tickets(self.g, NOW)}[no].stale_item)
+
+
+class RosterStaleViewTest(TempHomeTestCase):
+    """roster-stale-wake: the main view heads with a stale-roster row naming the new holder."""
+    OLD, NEW = "local_00000000-0000-0000-0000-000000000old", "local_00000000-0000-0000-0000-000000000new"
+
+    def setUp(self):
+        super().setUp()
+        self.g, _ = store.init_group("demo")
+        with self.g.transaction() as tx:
+            tx.add_session({"relayName": "hub", "shortName": "收件箱", "role": "hub", "line": [],
+                            "host": "claude-desktop"})
+            tx.add_session({"relayName": "rh2-coord", "shortName": "并行协调2", "role": "dev", "line": ["main"],
+                            "host": "claude-desktop", "repo": "/tmp/crew", "desktopSession": self.OLD})
+
+    def view(self, sessions):
+        import json
+        from decision_inbox import desktop
+        agents = relay.parse_agents(json.dumps({"agents": [{"name": "rh2-coord", "unread": 0,
+                                                            "host": {"app": "claude", "sessionId": "NEW-ID"},
+                                                            "presence": {"state": "running"}}]}),
+                                    relay_version="0.9.0")
+        return hub.main_view(self.g, now=NOW, relay=agents,
+                             sessions=desktop.parse_sessions(json.dumps({"claude": sessions})), sessions_status="ok")
+
+    def test_stale_row_with_new_link(self):
+        text = self.view([{"sessionId": "NEW-ID", "hostSessionId": self.NEW}])
+        head = text.split("\n")[:3]
+        row = next(r for r in head if "名册过期" in r)
+        self.assertIn("⚠ 名册过期：并行协调2 的邮箱名已由新会话持有，请在新会话重跑 join", row)
+        self.assertIn(f"claude://claude.ai/epitaxy/{self.NEW}", row)
+
+    def test_in_step_has_no_row(self):
+        self.assertNotIn("名册过期", self.view([{"sessionId": "NEW-ID", "hostSessionId": self.OLD}]))
