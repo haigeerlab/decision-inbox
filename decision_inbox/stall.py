@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from decision_inbox import items, loops, protocol, reviews, store
+from decision_inbox import desktop, items, loops, protocol, reviews, store
 
 DEFAULTS = {"stalledHours": 12, "reworkRounds": 3, "repeatAsks": 3, "repeatHours": 24,
             "askAgainHours": 12, "answerWaitMinutes": 30,
@@ -160,8 +160,12 @@ def _hushed(key: str, loop_facts) -> bool:
 
 
 def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: dict | None = None,
-         loop_facts=None) -> list[Ask]:
-    """What patrol should ask this round; each key at most once per askAgainHours."""
+         loop_facts=None, holders=None) -> list[Ask]:
+    """What patrol should ask this round; each key at most once per askAgainHours.
+
+    roster-stale-wake: `holders` (desktop.holders) redirects the wake to the mailbox's actual holder, or to
+    agent-relay mail when the holder is unknown.
+    """
     cfg = settings(g)
     asked = state.get("stallAsks", {})
     left = store.left_relays(g)
@@ -178,14 +182,15 @@ def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: 
             continue
         text = (module_ask_text(entry["shortName"], module, where, _ready(maps, name)) if module
                 else ask_text(entry["shortName"], where, _ready(maps, name)))
-        if entry["host"] == "claude-desktop" and entry.get("desktopSession"):
-            out.append(Ask(key, "wake", entry["desktopSession"], text))
+        session = desktop.link(entry, holders or {})
+        if entry["host"] == "claude-desktop" and session:
+            out.append(Ask(key, "wake", session, text))
         else:
             out.append(Ask(key, "owner-alert", name, text))
     return out
 
 
-def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
+def overdue_rows(g: store.Group, now: str, state: dict, holders=None) -> list[str]:
     """Main view: asked, but no new 【等待用户】 from that line within answerWaitMinutes."""
     cfg = settings(g)
     rows = []
@@ -201,7 +206,9 @@ def overdue_rows(g: store.Group, now: str, state: dict) -> list[str]:
                      for it in items.by_status(g, *items.FINAL, "pending", *items.PROGRESS))
         if raised:
             continue
-        where = (f"打开 {DESKTOP_LINK.format(session=entry['desktopSession'])}" if entry.get("desktopSession")
+        session = desktop.link(entry, holders or {})
+        where = (f"打开 {DESKTOP_LINK.format(session=session)}" if session
+                 else "去新会话处理（名册过期，编号未知）" if entry.get("desktopSession")
                  else "去 Codex 打开它的任务")
         who = f"{entry['shortName']}（模块 {module}）" if module else entry["shortName"]
         rows.append(f"⚠ 停滞：{who} 被问了 {int(_hours(now, at) * 60)} 分钟还没抛待决事项。"

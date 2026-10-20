@@ -31,6 +31,7 @@ class Session:
     status: str | None
     waiting_for: str | None
     since: datetime | None    # statusUpdatedAt
+    claude_id: str | None = None  # sessionId, what bridge_agents names as a mailbox's holder (roster-stale-wake)
 
 
 def parse_sessions(text: str) -> tuple[Session, ...]:
@@ -49,8 +50,52 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
         since = datetime.fromtimestamp(at / 1000, tz=timezone.utc) if isinstance(at, (int, float)) else None
         text_or_none = (lambda key: row[key] if isinstance(row.get(key), str) else None)
         out.append(Session(text_or_none("hostSessionId"), text_or_none("name") or text_or_none("sessionId") or "?",
-                           text_or_none("cwd"), text_or_none("status"), text_or_none("waitingFor"), since))
+                           text_or_none("cwd"), text_or_none("status"), text_or_none("waitingFor"), since,
+                           text_or_none("sessionId")))
     return tuple(out)
+
+
+@dataclass(frozen=True)
+class Holder:
+    state: str               # ok | stale | unknown
+    session: str | None      # the holder's local_… id when known
+
+
+def holders(g: store.Group, relay, sessions) -> dict[str, Holder]:
+    """roster-stale-wake: each Claude desktop member's mailbox holder, checked against its roster desktopSession.
+
+    Only running sessions are listed by bridge_sessions; when neither the holder nor the roster's session is
+    running, the roster cannot be judged ("unknown") and callers keep using it.
+    """
+    if relay is None or sessions is None:
+        return {}
+    by_id = {s.claude_id: s.host for s in sessions if s.claude_id and s.host}
+    out = {}
+    for e in store.roster(g):
+        roster_link = e.get("desktopSession")
+        if e["host"] != "claude-desktop" or not roster_link or e["relayName"] in store.left_relays(g):
+            continue
+        fact = relay.agents.get(e["relayName"])
+        holder = getattr(fact, "session_id", None)
+        if not holder:
+            out[e["relayName"]] = Holder("unknown", None)
+        elif holder in by_id:
+            out[e["relayName"]] = Holder("ok" if by_id[holder] == roster_link else "stale", by_id[holder])
+        elif any(s.host == roster_link and s.claude_id and s.claude_id != holder for s in sessions):
+            out[e["relayName"]] = Holder("stale", None)
+        else:
+            out[e["relayName"]] = Holder("unknown", None)
+    return out
+
+
+def link(entry: dict, found: dict[str, Holder]) -> str | None:
+    """The desktop session to wake or link to: the holder when the roster is stale (None if unknown)."""
+    h = found.get(entry["relayName"])
+    return h.session if h is not None and h.state == "stale" else entry.get("desktopSession")
+
+
+def stale_text(entry: dict) -> str:
+    return f"名册过期：{entry['shortName']} 的邮箱名已由新会话持有，请在新会话重跑 join"
 
 
 def _inside(path: str, root: str) -> bool:

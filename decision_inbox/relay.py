@@ -46,6 +46,7 @@ class AgentFact:
     presence_detail: str | None = None
     activity: str | None = None            # "busy" | "idle" while a Claude session runs (0.8.1+)
     doubtful_ids: tuple[int, ...] = ()      # accepted but unread Codex deliveries (0.8.2+)
+    session_id: str | None = None           # host-internal session holding the name (roster-stale-wake)
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,14 @@ def _doubt(wake) -> bool:
     return isinstance(wake, dict) and isinstance(wake.get("doubt"), dict)
 
 
+def _holder_id(host, wake) -> str | None:
+    """roster-stale-wake: host.sessionId, else wake.sessionId (agent-relay 0.9.0)."""
+    for part in (host, wake):
+        if isinstance(part, dict) and isinstance(part.get("sessionId"), str) and part["sessionId"]:
+            return part["sessionId"]
+    return None
+
+
 def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
     raw = _load(text, "agents", "bridge_agents")
     warnings: list[str] = []
@@ -188,6 +197,7 @@ def parse_agents(text: str, relay_version: str | None = None) -> AgentsSnapshot:
             retired=retired,
             activity=presence.get("activity") if presence.get("activity") in ACTIVITIES else None,
             doubtful_ids=tuple(x for x in (waiting or {}).get("doubtfulIds", []) if _int_or_none(x) is not None),
+            session_id=_holder_id(host, a.get("wake")),
         )
     return AgentsSnapshot(relay_status=status, agents=agents, warnings=tuple(warnings))
 

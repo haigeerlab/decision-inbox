@@ -264,3 +264,44 @@ class WorkTimeStallTest(ModuleStallTest):
         self.assertFalse([a for a in quiet.actions if a.id.startswith("stall:")])
         loud = patrol.plan(self.g, now=NOW, relay=snapshot(agent("coord")), crews=crews)
         self.assertTrue([a for a in loud.actions if a.id == "stall:coord|stalled:alpha"])
+
+
+class RosterStaleStallTest(StallCase):
+    """roster-stale-wake: stall asks and overdue links follow the mailbox's actual holder."""
+    NEW = "local_00000000-0000-0000-0000-0000000fe002"
+
+    def found(self, session):
+        from decision_inbox import desktop
+        return {"fe": desktop.Holder("stale", session)}
+
+    def long(self):
+        return {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+
+    def test_known_holder_is_woken(self):
+        [ask] = stall.asks(self.g, NOW, self.long(), {}, {}, holders=self.found(self.NEW))
+        self.assertEqual((ask.kind, ask.target), ("wake", self.NEW))
+
+    def test_unknown_holder_gets_mail_not_the_old_session(self):
+        [ask] = stall.asks(self.g, NOW, self.long(), {}, {}, holders=self.found(None))
+        self.assertEqual((ask.kind, ask.target), ("owner-alert", "fe"))
+
+    def test_overdue_link_follows_holder(self):
+        from datetime import datetime, timedelta
+        state = {"stallAsks": {"fe|stalled": (datetime.fromisoformat(NOW) - timedelta(minutes=31)).isoformat()}}
+        [row] = stall.overdue_rows(self.g, NOW, state, holders=self.found(self.NEW))
+        self.assertIn(f"claude://claude.ai/epitaxy/{self.NEW}", row)
+        self.assertNotIn(FE_DESKTOP, row)
+        [row] = stall.overdue_rows(self.g, NOW, state, holders=self.found(None))
+        self.assertIn("去新会话处理（名册过期，编号未知）", row)
+        self.assertNotIn(FE_DESKTOP, row)
+
+    def test_patrol_passes_holders_to_stall(self):
+        from decision_inbox import desktop, patrol
+        a = agent("fe")
+        a["host"]["sessionId"] = "FE-NEW"
+        sessions = desktop.parse_sessions(json.dumps({"claude": [{"sessionId": "FE-NEW", "hostSessionId": self.NEW}]}))
+        from unittest import mock
+        with mock.patch.object(health, "assess", return_value=health.Assessment(lines=self.long(), signals=[], snapshot={})):
+            p = patrol.plan(self.g, now=NOW, relay=snapshot(a), sessions=sessions)
+        ask = next(x for x in p.actions if x.id == "stall:fe|stalled")
+        self.assertEqual(ask.target, self.NEW)
