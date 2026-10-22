@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 
 # Implementation Plan: stage-c3-fixes
 
