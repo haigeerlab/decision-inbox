@@ -387,7 +387,8 @@ class ReplyTest(HubCase):
         self.reply("1 A")
         text = hub.main_view(self.g, now=NOW, relay=None)
         lines = text.split("\n")
-        self.assertEqual(lines[0], "⚠ #1 已答复，待发送（发给 前端，还没发）；说「重发 1」")
+        self.assertEqual(lines[0], "⚠ #1 已答复，待发送（发给 前端，还没发）；说「重发 1」照发，"
+                                   "「撤下 1」撤回这次答复，或直接重新答「1 X」")
         self.assertEqual(lines[1], "⚠ 本次没带 agent-relay 状态，各线状态不全")  # wait-honesty-and-briefs A3
         self.assertIn("本次没有 agent-relay 状态，无法判断", text)
         self.assertNotIn("agent-relay 没有它的数据", text)
@@ -1249,8 +1250,8 @@ class UnsentAnswerTest(HubCase):
         r = hub.reply(self.g, "1 B", now=NOW)
         self.assertEqual([(s["to"], s["kind"]) for s in r.sends], [("fe-codex", "answer")])
         self.assertEqual(items.get(self.g, 1)["answers"][-1]["letter"], "B")
-        self.assertNotIn(old, [s["id"] for s in hub.outgoing(self.g)])
-        self.assertNotIn("重发 1", hub.main_view(self.g, now=NOW))
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])  # only the new one waits
+        self.assertNotIn("不是答 #1", hub.main_view(self.g, now=NOW))  # the old failed send is gone
 
     def test_withdraw_puts_the_item_back(self):
         old = self.answer_then_fail()
@@ -1268,3 +1269,22 @@ class UnsentAnswerTest(HubCase):
         show = hub.reply(self.g, "撤下 1", now=NOW).show
         self.assertEqual(items.get(self.g, 1)["status"], "forwarded")
         self.assertIn("已经发出", show)
+
+
+class UnsentAnswerMoreTest(UnsentAnswerTest):
+    """stage-c3-fixes Task 2: the same, for an answer queued but never sent, and the words that teach it."""
+
+    def test_reanswer_before_any_send(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        first = hub.reply(self.g, "1 A", now=NOW).sends[0]["id"]
+        r = hub.reply(self.g, "1 B", now=NOW)
+        self.assertEqual([s["kind"] for s in r.sends], ["answer"])
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])
+        self.assertNotEqual(first, r.sends[0]["id"])
+        self.assertEqual(len(items.get(self.g, 1)["answers"]), 1)
+
+    def test_rules_and_command_help_name_it(self):
+        self.assertIn("「撤下 N」", hub.convention("demo"))
+        self.assertIn("撤下 N", hub.COMMANDS)
+        self.answer_then_fail()
+        self.assertIn("「撤下 1」撤回这次答复", hub.main_view(self.g, now=NOW))

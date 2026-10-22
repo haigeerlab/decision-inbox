@@ -199,11 +199,23 @@ class UnknownOutgoing(ValueError):
     """A send id that is not waiting to be sent."""
 
 
+def _drop_unsent(tx, doc: dict, no: int, at: str) -> list[str]:
+    """stage-c3-fixes I-20: forget an item's answer and notice sends that never went out."""
+    gone = [k for k, e in doc["outgoing"].items()
+            if e["item"] == no and e["relayId"] is None and e["kind"] in ("answer", "notice")]
+    for k in gone:
+        del doc["outgoing"][k]
+        tx.append_event("hub.dropped", ref=no, actor="hub", data={"id": k, "at": at})
+    return gone
+
+
 def _queue_answers(g: store.Group, outgoing, now: str, crews=None, maps=None) -> list[dict]:
     """Queue decision-queue's 【用户答复】 texts; only the proposer's copy replies to the item."""
     sends = []
     with g.transaction() as tx:
         doc = _doc(tx)
+        for no in dict.fromkeys(o.item for o in outgoing):  # a replaced answer's old sends go first
+            _drop_unsent(tx, doc, no, now)
         for o in outgoing:
             it = items.get(g, o.item)
             reply_to = it["relayId"] if o.to == it["sender"] else None
@@ -371,7 +383,8 @@ def unsent_rows(g: store.Group, exclude=()) -> list[str]:
         reason = f"：{entry.get('error') or '原因未记录'}" if entry.get("failed") else ""
         unsent = "" if entry.get("failed") else "，还没发"
         if entry["kind"] == "answer":
-            rows.append(f"⚠ #{item} 已答复，待发送（发给 {to}{unsent}）{reason}；说「重发 {item}」")
+            rows.append(f"⚠ #{item} 已答复，待发送（发给 {to}{unsent}）{reason}；说「重发 {item}」照发，"
+                        f"「撤下 {item}」撤回这次答复，或直接重新答「{item} X」")
         else:
             rows.append(f"⚠ 给 {to} 的{_KIND_NAMES.get(entry['kind'], '消息')}没发出去（{unsent[1:] or '发送失败'}）"
                         f"{reason}；说「重发」")
@@ -482,10 +495,11 @@ _ORIGINAL_RE = re.compile(r"^#?(\d+)\s*原文$")
 _CLOSED_RE = re.compile(r"^看已关闭(?:\s*(\d{4}-\d{2}-\d{2}))?$")
 _CLOSE_RE = re.compile(r"^关掉\s*((?:[#WwＷ]?\s*\d+[\s、，,]*)+)(.*)$", re.S)
 _RESEND_RE = re.compile(r"^重发\s*#?(\d+)$")
+_RETRACT_RE = re.compile(r"^撤下\s*#?(\d+)$")  # stage-c3-fixes I-20
 _FULL_RE = re.compile(r"^看\s*#?(\d+)\s*全文$")
 # decision-cards DI-7 (I-5): a sentence shaped like a command is never parsed as an answer.
-_COMMAND_LIKE_RE = re.compile(r"^(看|关掉)|重发|alsoAnswers")
-COMMANDS = ("这是操作指令，写法是：「重发」或「重发 N」（重发没发出去的消息）；「看 N」看卡片、「看 N 全文」看原文、"
+_COMMAND_LIKE_RE = re.compile(r"^(看|关掉|撤下)|重发|alsoAnswers")
+COMMANDS = ("这是操作指令，写法是：「重发」或「重发 N」（重发没发出去的消息）；「撤下 N」（撤回 #N 没发出去的答复，#N 回到待答）；「看 N」看卡片、「看 N 全文」看原文、"
             "「N 详情」；「看等待」「看已关闭」「看失效」「看模块 <模块>」；「关掉 W编号 原因」。"
             "答复待决事项请以编号开头，例如「12 B」。")
 
@@ -553,6 +567,19 @@ def reply(g: store.Group, text: str, now: str, relay=None, maps: dict | None = N
     if said == "重发":
         again = outgoing(g)
         return Reply(f"重新列出 {len(again)} 条没发出去的消息" if again else "没有没发出去的消息", again)
+    if m := _RETRACT_RE.match(said):
+        no = int(m.group(1))
+        done = items.retract(g, no, now)
+        if done is None:
+            return Reply(f"#{no} 没有可以撤下的答复")
+        if not done:
+            return Reply(f"#{no} 的答复已经发出，撤不回；要改请直接告诉提出方")
+        with g.transaction() as tx:
+            doc = _doc(tx)
+            _drop_unsent(tx, doc, no, now)
+            tx.write_state(DOMAIN, doc)
+        return Reply(f"已撤下 #{no} 这次没发出的答复，#{no} 回到待答\n\n"
+                     + main_view(g, now, relay, maps, crews=crews, loop_facts=loop_facts))
     if m := _RESEND_RE.match(said):
         no = int(m.group(1))
         again = [s for s in outgoing(g) if _item_of(g, s) == no]
@@ -637,7 +664,7 @@ CONVENTION = """<!-- BEGIN decision-inbox hub -->
 2. 用写文件工具把用户这句话一字不改地写入 {io}/said.txt。
 3. 运行 `{cli} inbox reply {group} --text-file {io}/said.txt --agents {io}/agents.json`。
 4. 输出有 `sends` 就按上面第 3、4 步发出并记账。
-5. 用户说的是「看 N」「看 N 全文」「重发」「重发 N」这类指令时，命令会照做；答复写「N 原话：…」表示不选选项、原话转过去。把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
+5. 用户说的是「看 N」「看 N 全文」「重发」「重发 N」「撤下 N」这类指令时，命令会照做（用户说某个答复不是答那一项、不要发时，用「撤下 N」，不要记成发送失败）；答复写「N 原话：…」表示不选选项、原话转过去。把输出的 `show` 逐字粘贴给用户，不要手抄、不要改写其中任何一行（包括选项和「回 N X」）；看起来不对时以命令输出为准，并告诉用户哪里不对（按 Markdown 直接显示，不要套进代码块）。它是一个问题时，等用户回答，不要自己替用户选。
 
 ### 改规则
 

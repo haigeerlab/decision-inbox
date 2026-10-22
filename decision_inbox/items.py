@@ -434,9 +434,9 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
         if m and other:  # stage-c2-fixes I-16: never forward another item's answer inside this one
             return ReplyParse(question=f"「{segment}」里像是同时答了 #{key} 和 #{other}，请分开写，每项一段，"
                                        f"例如第一行「{key} …」、第二行「{other} …」。")
-        if it["status"] in ANSWERED:
+        if it["status"] in ANSWERED and not unsent(it):
             return ReplyParse(question=f"#{key} 已经转达过，要改答复请先说明以哪次为准。")
-        if it["status"] != "pending":
+        if it["status"] != "pending" and not unsent(it):
             return ReplyParse(question=f"#{key} 已经不在待答状态（已失效或已结束），请确认。")
         if int(key) in looping and (loop := _LOOP_RE.match(rest)):
             answer = Answer(int(key), None, segment, loop_option=loop.group(1).strip())
@@ -485,16 +485,48 @@ class Outgoing:
     item: int
 
 
+def unsent(it: dict) -> bool:
+    """stage-c3-fixes I-20: answered, but no answer has reached anyone yet (never sent, or the send failed)."""
+    return it["status"] in ANSWERED and bool(it.get("answers")) and not it.get("sent")
+
+
+def retract(g: store.Group, no: int, at: str) -> bool | None:
+    """「撤下 N」 (stage-c3-fixes I-20): an answer not sent yet is taken back and the item waits again.
+
+    None when there is no such item or it was never answered; False when the answer already went out.
+    """
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        it = doc["items"].get(str(no))
+        if it is None or it["status"] not in ANSWERED or not it.get("answers"):
+            return None
+        if not unsent(it):
+            return False
+        dropped = it["answers"].pop()
+        it["status"] = "pending"
+        it["statusAt"].pop("forwarded", None)
+        tx.append_event("items.retracted", ref=no, actor="user", data={"original": dropped["original"], "at": at})
+        tx.write_state(DOMAIN, doc)
+    return True
+
+
 def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
-    """Record the user's answers and build the 【用户答复】 texts; the hub sends them."""
+    """Record the user's answers and build the 【用户答复】 texts; the hub sends them.
+
+    stage-c3-fixes I-20: an answer that never went out is replaced by the new one.
+    """
     out: list[Outgoing] = []
     legacy, left = store.legacy_relays(g), store.left_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
         for a in answers:
             it = doc["items"].get(str(a.item))
-            if it is None or it["status"] != "pending":
+            if it is None or (it["status"] != "pending" and not unsent(it)):
                 raise ValueError(f"#{a.item} is not waiting for an answer")
+            if it["status"] != "pending":
+                replaced = it["answers"].pop()
+                tx.append_event("items.answer-replaced", ref=a.item, actor="user",
+                                data={"original": replaced["original"], "at": answered_at})
             option = next((o for o in it["options"] if o["letter"] == a.letter), None)
             option_text = f"{option['letter']}：{option['text']}" if option else None
             # a loop option has no letter: the user's words go as they are, the rules section says what they mean

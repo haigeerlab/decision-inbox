@@ -476,6 +476,7 @@ class AnswerTest(ItemsCase):
     def test_changed_answer_after_forwarding_is_a_question(self):
         no = self.receive(SINGLE).item
         items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        items.record_sent(self.g, no, to="fe-codex", relay_id=3901, at=T2)  # stage-c3-fixes: it went out
         p = items.interpret_reply(self.g, f"{no} B")
         self.assertEqual(p.answers, ())
         self.assertTrue(p.question)
@@ -484,6 +485,7 @@ class AnswerTest(ItemsCase):
         no = self.receive(SINGLE).item
         answers = items.interpret_reply(self.g, f"{no} A").answers
         items.answer(self.g, answers, answered_at=T2)
+        items.record_sent(self.g, no, to="fe-codex", relay_id=3901, at=T2)  # stage-c3-fixes: it went out
         with self.assertRaises(ValueError):
             items.answer(self.g, answers, answered_at=T3)
 
