@@ -266,6 +266,16 @@ def _hub_scope(args, payload: dict) -> tuple[bool, list | None, str | None]:
     return len(found) == 1 and found[0][1]["role"] == "hub", found, None
 
 
+def _pending_numbers(group: str | None) -> set[int]:
+    """The numbers of the items waiting for the user's answer; empty when the group cannot be read."""
+    if not group:
+        return set()
+    try:
+        return {it["no"] for it in items.pending(store.open_group(group)) if not items.is_go_to_session(it)}
+    except store.StoreError:
+        return set()
+
+
 def _hook(argv: list[str]) -> int:
     """Stop hook entry: never fails the host; any problem means "let it stop" (spec 关键决策 6)."""
     try:
@@ -281,7 +291,8 @@ def _hook(argv: list[str]) -> int:
         if unsure:
             print(f"decision-inbox 停止钩子：收件箱停止检查放行：{unsure}", file=sys.stderr)
         if is_hub:
-            hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4, for the hub session only
+            pending = _pending_numbers(args.group or (found[0][0] if found else None))  # stage-c3-fixes I-22
+            hub_turn = stophook.hub_turn_check(payload, pending)  # decision-cards DI-4, for the hub session only
             if hub_turn.block:
                 print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
                 return 0

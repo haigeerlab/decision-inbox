@@ -9,8 +9,9 @@
 - [x] Task 3：I-21 停滞起点加模块最近一次抛出事项的时间（假设 4；验收 4）
   - 验证：`RaisedItemStallTest` 与普通开发线用例改前失败、改后通过
   - 结果：RaisedItemStallTest（模块）与 RaisedItemPlainLineTest（普通开发线）各 1 条改前失败、改后通过；「别的模块的事项不算」「撤回的事项不算」两条对照改前就通过；现有停滞用例未改；全量只剩 I-22 两条
-- [ ] Task 4：I-22 回复提到待答事项却没贴卡片时拦一次（假设 5；验收 5）
+- [x] Task 4：I-22 回复提到待答事项却没贴卡片时拦一次（假设 5；验收 5）
   - 验证：`HubTurnWithoutViewTest` 与命令行用例改前失败、改后通过
+  - 结果：HubTurnWithoutViewTest 两条（改前因没有 pending 参数报错）与新的 HubTurnWithoutViewHookTest 命令行用例（改前不拦）改后通过；命令行用例同时覆盖闲聊放行、提到的编号不在待答放行；全量 1232 项通过
 - [ ] Task 5：onboard watch --remove、重跑 join 改线名提示、README 排查行（假设 6、7；验收 6、7）
   - 验证：test_onboard 新用例改前失败、改后通过；全量测试通过
 

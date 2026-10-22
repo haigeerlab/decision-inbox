@@ -246,8 +246,15 @@ def _norm(text: str) -> str:
     return " ".join(text.split())
 
 
-def hub_turn_check(payload: dict) -> Decision:
-    """Block once when the hub's reply dropped a card head or a copy block, or added code blocks with nothing pending."""
+_ITEM_REF_RE = re.compile(r"(?<![0-9A-Za-z])#(\d+)(?!\d)")
+
+
+def hub_turn_check(payload: dict, pending=None) -> Decision:
+    """Block once when the hub's reply dropped a card head or a copy block, or added code blocks with nothing pending.
+
+    stage-c3-fixes I-22: a turn that printed no main view but names a pending item (`pending`, its numbers)
+    is blocked too: the user cannot answer from 「the card above」.
+    """
     if payload.get("stop_hook_active"):
         return _pass("本轮已经拦过一次")
     path = payload.get("transcript_path")
@@ -258,6 +265,12 @@ def hub_turn_check(payload: dict) -> Decision:
     except _Unreadable as e:
         return _pass(f"会话记录读不懂，收件箱停止检查放行：{e}")
     if output is None:
+        named = sorted({int(n) for n in _ITEM_REF_RE.findall(said)} & set(pending or ()))
+        if named:
+            refs = "、".join(f"#{n}" for n in named)
+            return Decision(True, "\n".join([
+                f"【decision-inbox】这一轮提到了待决事项 {refs}，却没有把卡片贴出来。",
+                "请运行 view，把主视图逐字贴给用户（按 Markdown 直接显示，不要套进代码块）；不要只说「卡片在上面」。"]), None)
         return _pass("本轮没有出主视图")
     blocks = [b.strip() for b in _BLOCK_RE.findall(output)]
     heads = _HEAD_RE.findall(output)
