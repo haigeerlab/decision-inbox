@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved -->
 
 # Implementation Plan: protocol-contract-v2-6
 
