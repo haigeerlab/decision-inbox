@@ -330,3 +330,22 @@ class RaisedItemStallTest(WorkTimeStallTest):
         at = self.raise_item(module="beta")
         m = crew_module(started_at=hours(30), last_commit_at=hours(20))
         self.assertEqual([a.key for a in self.asks_with(m, [self.loop(waits=[])])], ["coord|stalled:alpha"])
+
+
+class RaisedItemPlainLineTest(StallCase):
+    """stage-c3-fixes I-21 for a plain dev line: stalled for 13 hours, but it raised a question 10 minutes ago."""
+
+    def test_line_with_a_fresh_open_item_is_not_asked(self):
+        from datetime import datetime, timedelta
+        at = (datetime.fromisoformat(NOW) - timedelta(minutes=10)).isoformat()
+        items.receive(self.g, WAIT_USER, sender="fe", relay_id=7, received_at=at)
+        long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+        self.assertEqual(self.asks(long), [])
+
+    def test_closed_item_does_not_count(self):
+        from datetime import datetime, timedelta
+        at = (datetime.fromisoformat(NOW) - timedelta(minutes=10)).isoformat()
+        no = items.receive(self.g, WAIT_USER, sender="fe", relay_id=7, received_at=at).item
+        items.receive(self.g, f"【撤回】\n事项：#{no}\n", sender="fe", relay_id=8, received_at=at)
+        long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+        self.assertEqual([a.key for a in self.asks(long)], ["fe|stalled"])
