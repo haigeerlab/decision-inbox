@@ -1,8 +1,8 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved ea2a09f2de0b -->
 
 # Spec: protocol-contract-v2-6
 
-> 能力图模块 `protocol-contract-v2-6`（插入待用户确认，排在 stage-c3-fixes 之后）。来源：统筹派活，契约 session-protocol v2.5（566f0de，模块 light-task-field）与 v2.6（92309e7，模块 review-display-unify），两版都已经用户批准。和 stage-c3-fixes 一起出 0.0.37。
+> 能力图模块 `protocol-contract-v2-6`（2026-10-22 用户确认插入，排在 stage-c3-fixes 之后）。来源：统筹派活，契约 session-protocol v2.5（566f0de，模块 light-task-field）与 v2.6（92309e7，模块 review-display-unify），两版都已经用户批准。和 stage-c3-fixes 一起出 0.0.37。
 
 ## 目标
 

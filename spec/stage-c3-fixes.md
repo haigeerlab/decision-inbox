@@ -1,8 +1,8 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved 3754c4d62c44 -->
 
 # Spec: stage-c3-fixes
 
-> 能力图模块 `stage-c3-fixes`（插入待用户确认，排在 stage-c2-fixes 之后、protocol-contract-v2-6 之前）。来源：统筹派活，`livesaas-integration/DECISION-INBOX-ISSUES-2026-10-19.md` 第七节 I-20～I-22（0.0.36 短验证），外加两件小事；用户同意开做 0.0.37（原话「有人提需求的话，得做一下呀」）。根因和会失败的测试在 `claude/v0037-investigate`（3b0e8b8），本分支已带上。
+> 能力图模块 `stage-c3-fixes`（2026-10-22 用户确认插入，排在 stage-c2-fixes 之后、protocol-contract-v2-6 之前）。来源：统筹派活，`livesaas-integration/DECISION-INBOX-ISSUES-2026-10-19.md` 第七节 I-20～I-22（0.0.36 短验证），外加两件小事；用户同意开做 0.0.37（原话「有人提需求的话，得做一下呀」）。根因和会失败的测试在 `claude/v0037-investigate`（3b0e8b8），本分支已带上。
 
 ## 目标
 
