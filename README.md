@@ -201,6 +201,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 | Claude 会话不按项目的 `AGENTS.md` 办事 | 项目只有 `AGENTS.md`，又加了 `CLAUDE.local.md`，Claude 就不再读 AGENTS.md（宿主差异 H26） | 在项目里放一个 `CLAUDE.md`，写一行 `@AGENTS.md` 导入；或者在 Claude 设置里让它两种文件都读 | 宿主限制 |
 | `doctor` 报某个依赖插件「读不到接口说明」 | 那个插件的版本早于提供 `interface.json`（依赖插件） | 升级那个插件 | 那个插件 |
 | 主视图或通知写「名册过期：<线名> 的邮箱名已由新会话持有」 | 新会话用 `bridge_register` 接管了这个邮箱名，但没有重跑接入，名册里还是旧会话的编号（agent-relay 的实际绑定与名册不一致） | 在新会话里重跑 `/decision-inbox:join`（决策收件箱自己是 `/decision-inbox:hub-setup`），传入新会话的编号；重跑前巡视会改唤醒新会话，新会话没在运行时不唤醒 | 本插件 |
+| 一句不是答复的话被记成了某项的答复，或者答复还没发出就想改 | 只剩一项待答时，不带编号的话以前会被当成那一项的答复（0.0.37 起只认选项字母或「原话：」） | 答复还没发出：说「撤下 N」撤回这次答复，#N 回到待答；或直接重新答「N X」替换。已经发出的撤不回，直接告诉提出方 | 本插件 |
 | 不知道问题该报给谁 | — | 运行 `doctor --report`，按每项的「来源」转给负责方 | — |
 
 ## 升级
@@ -299,6 +300,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 | 不确定装对没有 | 运行 `~/.decision-inbox/bin/decision-inbox doctor`，按每项的「怎么做」处理 |
 | 停止钩子不拦 | 在那个会话的工作目录运行 `~/.decision-inbox/bin/decision-inbox whoami`：退出码 4 是没接入，5 是同一个目录对上了多个协作组；钩子出任何问题都会放行，不会卡住会话 |
 | 弹出系统通知「决策收件箱：巡视停了」 | 巡视提醒（`onboard watch` 装的 launchd 任务，每 5 分钟检查一次）发现巡视超过 15 分钟没跑：按通知里写的去巡视会话批完权限确认或重新发一次循环提示词；巡视恢复后不再弹，停着时每 30 分钟提醒一次。一直不弹：运行 doctor 看「巡视提醒」一项；系统设置里「通知」要允许「脚本编辑器」 |
+| 只想卸掉巡视提醒，不卸决策收件箱 | teardown 会把协作规则段、巡视会话一起卸掉 | 运行 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --remove` 看预览，确认后加 `--confirm`（只删 launchd 任务） | 本插件 |
 | doctor 的「巡视提醒」报「上次运行退出 N」或「是旧版装的」 | launchd 任务装上了但跑不起来。日志里有 `Operation not permitted`（退出 126）：跑的程序在 `~/Documents`、`~/Desktop`、`~/Downloads` 下，launchd 没权限读；退出 1、日志是 Python 报错：launchd 用的 python 低于 3.10。都是 0.0.31 装法的问题，升级到 0.0.32 后重跑 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`。日志在 `~/.decision-inbox/<协作组>/patrol-watch.log` |
 | 主视图第一行写「巡视还没跑完过一轮」或「巡视 N 分钟没跑」 | 在定时任务列表里打开这个任务：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发，立即运行一次。`query stats` 能看到这段时间巡视实际跑了几轮、最长隔多久 |
 | 决策收件箱跑 `inbox reply --relayed-from` 被自动模式拦下 | 转来的话同样不生效，只是少记一条事件；要留记录，请在决策收件箱会话里批准这一次 |

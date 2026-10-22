@@ -12,8 +12,9 @@
 - [x] Task 4：I-22 回复提到待答事项却没贴卡片时拦一次（假设 5；验收 5）
   - 验证：`HubTurnWithoutViewTest` 与命令行用例改前失败、改后通过
   - 结果：HubTurnWithoutViewTest 两条（改前因没有 pending 参数报错）与新的 HubTurnWithoutViewHookTest 命令行用例（改前不拦）改后通过；命令行用例同时覆盖闲聊放行、提到的编号不在待答放行；全量 1232 项通过
-- [ ] Task 5：onboard watch --remove、重跑 join 改线名提示、README 排查行（假设 6、7；验收 6、7）
+- [x] Task 5：onboard watch --remove、重跑 join 改线名提示、README 排查行（假设 6、7；验收 6、7）
   - 验证：test_onboard 新用例改前失败、改后通过；全量测试通过
+  - 结果：WatchRemoveCommandTest 两条（放在 test_watch，和现有 onboard watch 命令测试同处）与 test_rejoin_with_a_new_short_name_says_so 改前失败、改后通过；README 排查表加「误收的答复／撤下 N」「只卸巡视提醒」两行；全量 1242 项通过
 
 ## 检查点
 

@@ -835,6 +835,10 @@ def join(group: str, role: str, relay_name: str, short_name: str, host: str, lin
         out.codex_unseen = bool(unseen)
         if unseen and checkpoint_authority:
             out.warnings.append("当前目录下这份授权不会被守卫看到：「检查点答复即授权」写在协作规则段里，协作规则段加载不到就不起作用")
+    known = store.find_session(g, relay_name=relay_name)
+    if known is not None and known["shortName"] != short_name:  # stage-c3-fixes: say a rejoin renames the line
+        out.warnings.insert(0, f"线名会从「{known['shortName']}」改成「{short_name}」：主视图、通知和别人在等你的"
+                               "等待记录都按新名显示")
     if confirm:
         _commit(g, entry, rules, after, now, old)
         install.write_shim(install.plugin_root())
