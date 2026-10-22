@@ -1288,3 +1288,12 @@ class UnsentAnswerMoreTest(UnsentAnswerTest):
         self.assertIn("撤下 N", hub.COMMANDS)
         self.answer_then_fail()
         self.assertIn("「撤下 1」撤回这次答复", hub.main_view(self.g, now=NOW))
+
+
+class ContractV26RulesTest(TempHomeTestCase):
+    """protocol-contract-v2-6: the hub's rules say T numbers and C pending numbers are not item numbers."""
+
+    def test_rules_name_t_and_c_numbers(self):
+        rules = hub.convention("demo")
+        self.assertIn("「T数字」（轻任务）", rules)
+        self.assertIn("「C数字-数字」（待定问题，如 C15-1）不是待决事项编号", rules)

@@ -12,8 +12,9 @@
 - [x] Task 4：卡片抬头显示任务（假设 2；验收 7）
   - 验证：test_cards 新用例改前失败、改后通过；契约测试全部通过
   - 结果：TaskCardTest 改前抬头是「模块 未知」、改后是「任务 T3」；契约测试全部通过（SHA256SUMS 一致）；全量通过
-- [ ] Task 5：规则段、README、术语表、版本 0.0.37（假设 7、8；验收 8）
+- [x] Task 5：规则段、README、术语表、版本 0.0.37（假设 7、8；验收 8）
   - 验证：test_hub、test_glossary、test_packaging 通过；全量测试通过
+  - 结果：规则段第 5 步写明 T 编号、C 待定编号不是待决事项编号（ContractV26RulesTest 改前失败）；README 契约段改 v2.6 并加 v2.5／v2.6 说明，加 0.0.37 说明与升级步骤（收件箱重跑 hub-setup，其他会话不用重跑接入）；两个 plugin.json 0.0.37，test_packaging 跟着改；**术语表没改**：docs/glossary.md 是 livesaas-integration/GLOSSARY.md 的副本（「原件以来源为准」，测试要求逐字一致），「轻任务」「C 待定编号」要由术语表负责人加到原件，交付时提出；按术语检查把「事项号」「待答事项」改成「待决事项编号」「待答的待决事项」；全量 1264 项通过
 
 ## 检查点
 
