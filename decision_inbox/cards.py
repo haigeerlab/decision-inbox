@@ -257,7 +257,8 @@ def render(g, it: dict, waited: str, line_name: str) -> str:
     if k in APPROVALS:
         rounds, last = approval.rounds(g, it)
         where = [x for x in (it.get("project"), line_name) if x]
-        where.append(f"模块 {it.get('approvalModule') or '未知'}")
+        # session-protocol v2.5: a light task's card names the task instead of a module
+        where.append(f"任务 {it['task']}" if it.get("task") else f"模块 {it.get('approvalModule') or '未知'}")
         label = f"{KIND_NAMES[k]}（第 {rounds} 次交审" + (f"；上次你答：{last}" if last else "") + "）"
         top = [head(it, k, waited), " · ".join(where + [label]), ""]
         if it.get("points"):  # session-protocol v2.3: the template's own items replace the picked lines

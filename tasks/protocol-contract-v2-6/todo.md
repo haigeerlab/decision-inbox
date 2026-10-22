@@ -9,8 +9,9 @@
 - [x] Task 3：Spec／Plan 新小项名（假设 5；验收 6）
   - 验证：card-spec-upstream、card-plan-upstream 转绿；test_cards 新用例通过、旧用例不改
   - 结果：两份 upstream 样例转绿；V26CardTest 3 条（Spec 新名、Plan 新名、新旧名同时出现两行都在）改前失败、改后通过；加新名后卡片行数上限按名字个数算变大（spec-plan 22→26），改为按模板小项数与卡片实际小项数取大（cards.max_lines），旧用例不改全部通过；契约样例全部通过；全量 1257 项通过
-- [ ] Task 4：卡片抬头显示任务（假设 2；验收 7）
+- [x] Task 4：卡片抬头显示任务（假设 2；验收 7）
   - 验证：test_cards 新用例改前失败、改后通过；契约测试全部通过
+  - 结果：TaskCardTest 改前抬头是「模块 未知」、改后是「任务 T3」；契约测试全部通过（SHA256SUMS 一致）；全量通过
 - [ ] Task 5：规则段、README、术语表、版本 0.0.37（假设 7、8；验收 8）
   - 验证：test_hub、test_glossary、test_packaging 通过；全量测试通过
 

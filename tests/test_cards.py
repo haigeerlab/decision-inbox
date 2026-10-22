@@ -326,3 +326,17 @@ class V26CardTest(V23CardTest):
         labels = self.labels(self.card(r.item))
         self.assertIn("做／不做", labels)
         self.assertIn("边界", labels)
+
+
+class TaskCardTest(V23CardTest):
+    """protocol-contract-v2-6 (session-protocol v2.5): an approval card for a light task names the task."""
+
+    def test_head_names_the_task(self):
+        body = (V23 / "card-spec-upstream.txt").read_text(encoding="utf-8")
+        self.assertIn("\n类型：", body)
+        body = body.replace("\n类型：", "\n任务：T3\n类型：", 1)  # session-protocol v2.5: right after 要点
+        r = items.receive(self.g, body, sender="coord", relay_id=next(self.relay_ids), received_at=T1)
+        self.assertTrue(r.accepted, r.problems)
+        line = self.card(r.item).split("\n")[1]
+        self.assertIn("任务 T3", line)
+        self.assertNotIn("模块 未知", line)
