@@ -166,6 +166,7 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         # stage-c-fixes DI-10 (session-protocol v2.4): the sender's own module, "无" for a line-level item;
         # without it there is no key, so loops.tag works the module out
         **({"module": msg.module} if msg.module else {}),
+        "task": msg.task,  # protocol-contract-v2-6 (session-protocol v2.5): a light task, e.g. "T3"
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],

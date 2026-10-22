@@ -381,3 +381,40 @@ class BriefTest(unittest.TestCase):
     def test_proper_brief_not_flagged(self):
         msg = protocol.parse(self.brief("要点：Mock 已就绪，两种方式工作量差一倍。\n微信支付有现成 SDK，支付宝要补签名接口。\n最大风险是支付宝联调要等 API 三天。\n"))
         self.assertNotIn("brief-thin", {h.code for h in msg.hints})
+
+
+class TaskFieldTest(unittest.TestCase):
+    """protocol-contract-v2-6 (session-protocol v2.5): the optional 「任务：T<n>」."""
+
+    BASE = (Path(__file__).resolve().parent / "fixtures" / "session-protocol" / "v2.6" / "wait-user"
+            / "task-module-both.txt").read_text(encoding="utf-8")
+
+    def test_module_none_with_task_is_fine(self):
+        m = protocol.parse(self.BASE.replace("模块：crew-store", "模块：无"))
+        self.assertEqual((m.ok, m.task, m.module), (True, "T3", "无"))
+
+    def test_task_codes_come_after_the_kinds_own(self):
+        m = protocol.parse(self.BASE.replace("任务：T3", "任务：t3").replace("是否完全停住：是\n", ""))
+        codes = [p.code for p in m.problems]
+        self.assertEqual(codes[-2:], ["bad-task-ref", "module-task-both"])
+        self.assertLess(codes.index("missing-field:是否完全停住"), codes.index("bad-task-ref"))
+
+    def test_item_keeps_the_task(self):
+        import tempfile, os
+        from decision_inbox import items, store
+        home = tempfile.mkdtemp(prefix="di-task-")
+        old = os.environ.get("DECISION_INBOX_HOME")
+        os.environ["DECISION_INBOX_HOME"] = home
+        try:
+            g, _ = store.init_group("demo")
+            with g.transaction() as tx:
+                tx.add_session({"relayName": "c", "shortName": "前端模块协调", "role": "dev", "line": ["x"],
+                                "host": "codex-desktop", "repo": "/tmp/c"})
+            no = items.receive(g, self.BASE.replace("模块：crew-store\n", ""), sender="c", relay_id=1,
+                               received_at="2026-10-22T10:00:00Z").item
+            self.assertEqual(items.get(g, no)["task"], "T3")
+        finally:
+            if old is None:
+                os.environ.pop("DECISION_INBOX_HOME", None)
+            else:
+                os.environ["DECISION_INBOX_HOME"] = old

@@ -1,7 +1,8 @@
 # Todo: protocol-contract-v2-6
 
-- [ ] Task 1：拷入 v2.6 样例，读「任务」与 bad-task-ref、module-task-both（Spec 假设 1、2；验收 1、2）
+- [x] Task 1：拷入 v2.6 样例，读「任务」与 bad-task-ref、module-task-both（Spec 假设 1、2；验收 1、2）
   - 验证：四份 task 样例在契约测试里改前失败、改后通过；test_protocol 新用例通过
+  - 结果：92309e7 的 fixtures 原样拷入 v2.6（SHA256SUMS 全部核对一致），删 v2.4，CONTRACT_VERSION 2.6，SOURCE 记 92309e7，样例计数 parse 104→115、跳过 40→43；四份 task 样例改前失败、改后通过；TaskFieldTest 3 条（「模块：无」配「任务」合格、问题代码在原有代码之后、事项记录存 task），存 task 那条改前失败；剩 cnum 与 upstream 共 7 处样例留给 Task 2、3
 - [ ] Task 2：C 待定编号与 T 编号（假设 3、4；验收 3、4、5）
   - 验证：decision-cnum 两份样例转绿；test_items 新用例改前失败、改后通过
 - [ ] Task 3：Spec／Plan 新小项名（假设 5；验收 6）
