@@ -286,7 +286,7 @@ def _item(value: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
-_DECISION_HEAD_RE = re.compile(rf"^(D\d+)\s*{_COLON}\s*(.*)$")
+_DECISION_HEAD_RE = re.compile(rf"^(D\d+|C\d+-\d+)\s*{_COLON}\s*(.*)$")  # v2.6: or a C pending number, C15-1
 _DECISION_OPTION_RE = re.compile(r"^([A-Z])\s*[：:.、]\s*(.*)$")
 _LEAN_RE = re.compile(rf"^倾向\s*{_COLON}\s*([A-Z])\s*(?:[（(](.*)[）)])?\s*$")
 _CHANGE_RE = re.compile(r"^\d+\s*[.．、]\s*(.*)$")

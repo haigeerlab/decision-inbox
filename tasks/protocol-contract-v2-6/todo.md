@@ -3,8 +3,9 @@
 - [x] Task 1：拷入 v2.6 样例，读「任务」与 bad-task-ref、module-task-both（Spec 假设 1、2；验收 1、2）
   - 验证：四份 task 样例在契约测试里改前失败、改后通过；test_protocol 新用例通过
   - 结果：92309e7 的 fixtures 原样拷入 v2.6（SHA256SUMS 全部核对一致），删 v2.4，CONTRACT_VERSION 2.6，SOURCE 记 92309e7，样例计数 parse 104→115、跳过 40→43；四份 task 样例改前失败、改后通过；TaskFieldTest 3 条（「模块：无」配「任务」合格、问题代码在原有代码之后、事项记录存 task），存 task 那条改前失败；剩 cnum 与 upstream 共 7 处样例留给 Task 2、3
-- [ ] Task 2：C 待定编号与 T 编号（假设 3、4；验收 3、4、5）
+- [x] Task 2：C 待定编号与 T 编号（假设 3、4；验收 3、4、5）
   - 验证：decision-cnum 两份样例转绿；test_items 新用例改前失败、改后通过
+  - 结果：decision-cnum、decision-cnum-bad 及 card-spec-upstream 的 decisions 转绿；CNumberReplyTest 4 条，3 条改前失败（改前「2 A；C15-1 B」被当成同时答了 #2 和 #1，正是契约点名的误读），「T78 先缓一缓」一条因 stage-c3-fixes 已通过、留作回归保护；行内切分与夹带检查合用 _bare_number_at；全量只剩两份 upstream 的 points
 - [ ] Task 3：Spec／Plan 新小项名（假设 5；验收 6）
   - 验证：card-spec-upstream、card-plan-upstream 转绿；test_cards 新用例通过、旧用例不改
 - [ ] Task 4：卡片抬头显示任务（假设 2；验收 7）

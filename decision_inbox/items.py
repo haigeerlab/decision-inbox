@@ -313,7 +313,7 @@ _SPLIT_RE = re.compile(r"[，；;,]")
 _TRAILING = "」』\"'”’)）。.！!？?"
 _ORIGINAL_RE = re.compile(r"^原话\s*[：:]\s*\S", re.S)
 # session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
-_PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
+_PREFIXED_RE = re.compile(r"^\s*#?(?:C\d+-\d+|[CDT]\d+|R-?\d+)(?![A-Za-z0-9])")  # v2.5 T, v2.6 C15-1
 ANSWERED = ("forwarded", "picked", "acknowledged")
 # stage-c2-fixes I-16: "<item> <one option letter>" followed by a separator or the end, e.g. 「70 A；D1 A」.
 _INLINE_RE = re.compile(r"#?(\d+)\s+([A-Z])(?=[；;，,\s]|$)")
@@ -326,10 +326,19 @@ def _answer_at(m, known: dict) -> bool:
             and m.group(2) in {o["letter"] for o in it["options"]})
 
 
+def _bare_number_at(text: str, i: int) -> bool:
+    """A number starting at i stands alone: not glued to an ASCII letter, digit or 「-」 (C15-1, v2.6)."""
+    if i == 0:
+        return True
+    c = text[i - 1]
+    return not ((c.isascii() and c.isalnum()) or c == "-")
+
+
 def _split_inline(line: str, known: dict) -> list[str]:
     """Split one line where whitespace is followed by another pending item and its option letter (I-16)."""
     cuts = [m.start() for m in _INLINE_RE.finditer(line)
-            if m.start() > 0 and line[m.start() - 1].isspace() and _answer_at(m, known)]
+            if m.start() > 0 and line[m.start() - 1].isspace() and _bare_number_at(line, m.start())
+            and _answer_at(m, known)]
     bounds = [0, *cuts, len(line)]
     return [line[a:b].strip() for a, b in zip(bounds, bounds[1:]) if line[a:b].strip()]
 
@@ -364,7 +373,7 @@ def _segments(text: str, known: dict) -> list[str]:
     return [text]
 
 
-_DECISION_ANSWER_RE = re.compile(r"(?<![A-Za-z0-9])(D\d+)\s*(?:[：:]|选)?\s*([A-Z])(?![A-Za-z])")
+_DECISION_ANSWER_RE = re.compile(r"(?<![A-Za-z0-9-])(D\d+|C\d+-\d+)\s*(?:[：:]|选)?\s*([A-Z])(?![A-Za-z])")
 
 
 def _decision_answers(key: str, it: dict, letter: str | None, segment: str):
@@ -430,8 +439,7 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
         if it is None:
             return ReplyParse(question=f"#{key} 不在待答表里，请确认编号。")
         other = next((x.group(1) for x in _INLINE_RE.finditer(rest) if x.group(1) != key
-                      and (x.start() == 0 or not (rest[x.start() - 1].isascii() and rest[x.start() - 1].isalnum()))
-                      and _answer_at(x, known)), None)
+                      and _bare_number_at(rest, x.start()) and _answer_at(x, known)), None)
         if m and other:  # stage-c2-fixes I-16: never forward another item's answer inside this one
             return ReplyParse(question=f"「{segment}」里像是同时答了 #{key} 和 #{other}，请分开写，每项一段，"
                                        f"例如第一行「{key} …」、第二行「{other} …」。")
