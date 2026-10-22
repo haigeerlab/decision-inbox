@@ -68,18 +68,32 @@ _NODE_NAMES = {code: name for name, code in protocol.REVIEW_NODES.items()}
 _SKIP_STAGES = ("merged", "wait-merge")   # done, or waiting for the merge: no new commits are expected
 
 
-def _work_start(m, f) -> tuple[str | None, str]:
+def _raised(g: store.Group) -> dict[tuple[str, str | None], str]:
+    """stage-c3-fixes I-21: (sender, module) -> when it last raised an item that is still open; (sender, None)
+    covers all its items."""
+    out: dict[tuple[str, str | None], str] = {}
+    for it in items.by_status(g, "pending", *items.PROGRESS):
+        for key in ((it["sender"], it.get("module")), (it["sender"], None)):
+            if key not in out or _instant(it["receivedAt"]) > _instant(out[key]):
+                out[key] = it["receivedAt"]
+    return out
+
+
+def _work_start(m, f, raised: str | None = None) -> tuple[str | None, str]:
     """stage-c-fixes DI-12: the stall clock starts at the latest of the last commit, the start and the latest
-    answer that reached the module (module-crew's answers, or the hub's own send); none when commits are unread."""
+    answer that reached the module (module-crew's answers, or the hub's own send); none when commits are unread.
+
+    stage-c3-fixes I-21: or when the module last raised an item still open; asking it to raise one is pointless.
+    """
     if m.commits_error:
         return None, "commit"
     answered = [a.at for a in m.answers or ()] + ([t] if f is not None and (t := loops.last_delivered(f)) else [])
-    found = [(t, kind) for t, kind in [(m.last_commit_at, "commit"), (m.started_at, "start")]
+    found = [(t, kind) for t, kind in [(m.last_commit_at, "commit"), (m.started_at, "start"), (raised, "raise")]
              + [(t, "answer") for t in answered] if t]
     return max(found, key=lambda p: _instant(p[0])) if found else (None, "start")
 
 
-def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[str, str]:
+def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None, raised=None) -> dict[str, str]:
     """key -> where, from module-crew 0.4.0 facts; modules without them (0.3.x) are never judged.
 
     loop-detection: a module waiting for the user or in review is judged too; the stall time is work time,
@@ -94,13 +108,14 @@ def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[
             if m.stage in _SKIP_STAGES or m.suspended:
                 continue
             f = facts.get(f"{coordinator}|{m.module}")
-            since, start = _work_start(m, f)
+            since, start = _work_start(m, f, (raised or {}).get((coordinator, m.module)))
             worked = (loops.worked_since(f, since, now) if f is not None else _hours(now, since)) if since else 0
             if since and worked >= cfg["stalledHours"]:
                 when = since[5:16].replace("T", " ")
                 what = {"commit": f"已经 {int(worked)} 小时没有新提交（最后一次提交 {when}，等你答复的时间不算）",
                         "answer": f"你的答复 {when} 送达后 {int(worked)} 小时没有新提交（等你答复的时间不算）",
-                        "start": f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）"}[start]
+                        "start": f"开工 {int(worked)} 小时还没有提交（等你答复的时间不算）",
+                        "raise": f"你 {when} 抛出问题后 {int(worked)} 小时没有新提交（等你答复的时间不算）"}[start]
                 found[f"{coordinator}|stalled:{m.module}"] = what
             answered = max((a.at for a in m.answers or ()), key=_instant, default=None)
             for node, ats in m.asks:
@@ -116,9 +131,12 @@ def _module_findings(now: str, crews: dict, cfg: dict, loop_facts=None) -> dict[
 def _findings(g: store.Group, now: str, lines: dict, cfg: dict) -> dict[str, str]:
     """key -> where it is stuck."""
     found = {}
+    raised = _raised(g)
     for name, state in lines.items():
-        if state.word == "stalled" and state.since and _hours(now, state.since) >= cfg["stalledHours"]:
-            found[f"{name}|stalled"] = f"已经 {int(_hours(now, state.since))} 小时没有进展（{state.text}）"
+        # stage-c3-fixes I-21: a question the line raised and is still open restarts the clock
+        since = max([t for t in (state.since, raised.get((name, None))) if t], key=_instant, default=None)
+        if state.word == "stalled" and since and _hours(now, since) >= cfg["stalledHours"]:
+            found[f"{name}|stalled"] = f"已经 {int(_hours(now, since))} 小时没有进展（{state.text}）"
     for ref, submitter, node, rounds in reviews.round_stats(g).open:
         if rounds >= cfg["reworkRounds"]:
             found.setdefault(f"{submitter}|rework", f"审查 {ref}（{node}）来回 {rounds} 轮还没通过")
@@ -170,7 +188,8 @@ def asks(g: store.Group, now: str, lines: dict, maps: dict, state: dict, crews: 
     asked = state.get("stallAsks", {})
     left = store.left_relays(g)
     out = []
-    for key, where in {**_findings(g, now, lines, cfg), **_module_findings(now, crews, cfg, loop_facts)}.items():
+    for key, where in {**_findings(g, now, lines, cfg),
+                       **_module_findings(now, crews, cfg, loop_facts, _raised(g))}.items():
         name, _, reason = key.partition("|")
         module = reason.partition(":")[2]
         if _hushed(key, loop_facts):

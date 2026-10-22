@@ -266,6 +266,16 @@ def _hub_scope(args, payload: dict) -> tuple[bool, list | None, str | None]:
     return len(found) == 1 and found[0][1]["role"] == "hub", found, None
 
 
+def _pending_numbers(group: str | None) -> set[int]:
+    """The numbers of the items waiting for the user's answer; empty when the group cannot be read."""
+    if not group:
+        return set()
+    try:
+        return {it["no"] for it in items.pending(store.open_group(group)) if not items.is_go_to_session(it)}
+    except store.StoreError:
+        return set()
+
+
 def _hook(argv: list[str]) -> int:
     """Stop hook entry: never fails the host; any problem means "let it stop" (spec 关键决策 6)."""
     try:
@@ -281,7 +291,8 @@ def _hook(argv: list[str]) -> int:
         if unsure:
             print(f"decision-inbox 停止钩子：收件箱停止检查放行：{unsure}", file=sys.stderr)
         if is_hub:
-            hub_turn = stophook.hub_turn_check(payload)  # decision-cards DI-4, for the hub session only
+            pending = _pending_numbers(args.group or (found[0][0] if found else None))  # stage-c3-fixes I-22
+            hub_turn = stophook.hub_turn_check(payload, pending)  # decision-cards DI-4, for the hub session only
             if hub_turn.block:
                 print(json.dumps({"decision": "block", "reason": hub_turn.reason}, ensure_ascii=False))
                 return 0
@@ -666,6 +677,7 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("watch")  # stage-c-fixes DI-11: the launchd job behind patrol-watch
     p.add_argument("group")
     p.add_argument("--confirm", action="store_true")
+    p.add_argument("--remove", action="store_true")  # stage-c3-fixes: take off only the patrol watch
     for name in ("leave", "teardown"):
         p = sub.add_parser(name)
         p.add_argument("group")
@@ -717,6 +729,16 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "watch":
             from decision_inbox import watch
             store.open_group(args.group)
+            if args.remove:
+                path = watch.plist_path(args.group)
+                if not watch.uninstall(args.group, args.confirm):
+                    print(f"没有装巡视提醒（{path} 不存在），不用卸")
+                elif args.confirm:
+                    print(f"已卸掉巡视提醒：{watch.label(args.group)}，删掉了 {path}")
+                else:
+                    print(f"要卸掉巡视提醒：{watch.label(args.group)}，删掉 {path}（协作规则段、巡视会话和协作组状态不动）")
+                    print("这是预览，没有改动；用户确认后加 --confirm 再运行一次")
+                return 0
             plan = watch.install(args.group, args.confirm)
             print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
                   f"{watch.runtime_cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")

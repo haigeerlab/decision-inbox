@@ -305,3 +305,47 @@ class RosterStaleStallTest(StallCase):
             p = patrol.plan(self.g, now=NOW, relay=snapshot(a), sessions=sessions)
         ask = next(x for x in p.actions if x.id == "stall:fe|stalled")
         self.assertEqual(ask.target, self.NEW)
+
+
+class RaisedItemStallTest(WorkTimeStallTest):
+    """I-21 (0.0.36 short check): kappa waited on #84, which its coordinator raised for it, yet patrol asked it
+    to raise a question again. Replays the 16:33 round: work before the raise already passed the threshold."""
+
+    def raise_item(self, minutes_ago=10, module="alpha"):
+        from datetime import datetime, timedelta
+        at = (datetime.fromisoformat(NOW) - timedelta(minutes=minutes_ago)).isoformat()
+        no = items.receive(self.g, WAIT_USER, sender="coord", relay_id=9851, received_at=at).item
+        with self.g.transaction() as tx:
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["module"] = module
+            tx.write_state("items", doc)
+        return at
+
+    def test_a_module_waiting_on_its_own_raised_item_is_not_asked(self):
+        at = self.raise_item()
+        m = crew_module(started_at=hours(30), last_commit_at=hours(20))
+        self.assertEqual(self.asks_with(m, [self.loop(waits=[(at, NOW)])]), [])
+
+    def test_another_modules_item_does_not_count(self):
+        at = self.raise_item(module="beta")
+        m = crew_module(started_at=hours(30), last_commit_at=hours(20))
+        self.assertEqual([a.key for a in self.asks_with(m, [self.loop(waits=[])])], ["coord|stalled:alpha"])
+
+
+class RaisedItemPlainLineTest(StallCase):
+    """stage-c3-fixes I-21 for a plain dev line: stalled for 13 hours, but it raised a question 10 minutes ago."""
+
+    def test_line_with_a_fresh_open_item_is_not_asked(self):
+        from datetime import datetime, timedelta
+        at = (datetime.fromisoformat(NOW) - timedelta(minutes=10)).isoformat()
+        items.receive(self.g, WAIT_USER, sender="fe", relay_id=7, received_at=at)
+        long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+        self.assertEqual(self.asks(long), [])
+
+    def test_closed_item_does_not_count(self):
+        from datetime import datetime, timedelta
+        at = (datetime.fromisoformat(NOW) - timedelta(minutes=10)).isoformat()
+        no = items.receive(self.g, WAIT_USER, sender="fe", relay_id=7, received_at=at).item
+        items.receive(self.g, f"【撤回】\n事项：#{no}\n", sender="fe", relay_id=8, received_at=at)
+        long = {"fe": health.LineState("stalled", "停住 13 小时", since=hours(13))}
+        self.assertEqual([a.key for a in self.asks(long)], ["fe|stalled"])

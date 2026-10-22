@@ -166,6 +166,7 @@ def _record(msg, sender: str, relay_id, received_at: str, multi: bool, label) ->
         # stage-c-fixes DI-10 (session-protocol v2.4): the sender's own module, "无" for a line-level item;
         # without it there is no key, so loops.tag works the module out
         **({"module": msg.module} if msg.module else {}),
+        "task": msg.task,  # protocol-contract-v2-6 (session-protocol v2.5): a light task, e.g. "T3"
         "status": "pending",
         "statusAt": {"pending": received_at},
         "answers": [],
@@ -312,7 +313,7 @@ _SPLIT_RE = re.compile(r"[，；;,]")
 _TRAILING = "」』\"'”’)）。.！!？?"
 _ORIGINAL_RE = re.compile(r"^原话\s*[：:]\s*\S", re.S)
 # session-protocol v2.0 section 2: C (coordinator), R (review) and D (decision) numbers are never items.
-_PREFIXED_RE = re.compile(r"^\s*#?(?:[CD]\d+|R-?\d+)(?![A-Za-z0-9])")
+_PREFIXED_RE = re.compile(r"^\s*#?(?:C\d+-\d+|[CDT]\d+|R-?\d+)(?![A-Za-z0-9])")  # v2.5 T, v2.6 C15-1
 ANSWERED = ("forwarded", "picked", "acknowledged")
 # stage-c2-fixes I-16: "<item> <one option letter>" followed by a separator or the end, e.g. 「70 A；D1 A」.
 _INLINE_RE = re.compile(r"#?(\d+)\s+([A-Z])(?=[；;，,\s]|$)")
@@ -325,10 +326,19 @@ def _answer_at(m, known: dict) -> bool:
             and m.group(2) in {o["letter"] for o in it["options"]})
 
 
+def _bare_number_at(text: str, i: int) -> bool:
+    """A number starting at i stands alone: not glued to an ASCII letter, digit or 「-」 (C15-1, v2.6)."""
+    if i == 0:
+        return True
+    c = text[i - 1]
+    return not ((c.isascii() and c.isalnum()) or c == "-")
+
+
 def _split_inline(line: str, known: dict) -> list[str]:
     """Split one line where whitespace is followed by another pending item and its option letter (I-16)."""
     cuts = [m.start() for m in _INLINE_RE.finditer(line)
-            if m.start() > 0 and line[m.start() - 1].isspace() and _answer_at(m, known)]
+            if m.start() > 0 and line[m.start() - 1].isspace() and _bare_number_at(line, m.start())
+            and _answer_at(m, known)]
     bounds = [0, *cuts, len(line)]
     return [line[a:b].strip() for a, b in zip(bounds, bounds[1:]) if line[a:b].strip()]
 
@@ -363,7 +373,7 @@ def _segments(text: str, known: dict) -> list[str]:
     return [text]
 
 
-_DECISION_ANSWER_RE = re.compile(r"(?<![A-Za-z0-9])(D\d+)\s*(?:[：:]|选)?\s*([A-Z])(?![A-Za-z])")
+_DECISION_ANSWER_RE = re.compile(r"(?<![A-Za-z0-9-])(D\d+|C\d+-\d+)\s*(?:[：:]|选)?\s*([A-Z])(?![A-Za-z])")
 
 
 def _decision_answers(key: str, it: dict, letter: str | None, segment: str):
@@ -429,14 +439,13 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
         if it is None:
             return ReplyParse(question=f"#{key} 不在待答表里，请确认编号。")
         other = next((x.group(1) for x in _INLINE_RE.finditer(rest) if x.group(1) != key
-                      and (x.start() == 0 or not (rest[x.start() - 1].isascii() and rest[x.start() - 1].isalnum()))
-                      and _answer_at(x, known)), None)
+                      and _bare_number_at(rest, x.start()) and _answer_at(x, known)), None)
         if m and other:  # stage-c2-fixes I-16: never forward another item's answer inside this one
             return ReplyParse(question=f"「{segment}」里像是同时答了 #{key} 和 #{other}，请分开写，每项一段，"
                                        f"例如第一行「{key} …」、第二行「{other} …」。")
-        if it["status"] in ANSWERED:
+        if it["status"] in ANSWERED and not unsent(it):
             return ReplyParse(question=f"#{key} 已经转达过，要改答复请先说明以哪次为准。")
-        if it["status"] != "pending":
+        if it["status"] != "pending" and not unsent(it):
             return ReplyParse(question=f"#{key} 已经不在待答状态（已失效或已结束），请确认。")
         if int(key) in looping and (loop := _LOOP_RE.match(rest)):
             answer = Answer(int(key), None, segment, loop_option=loop.group(1).strip())
@@ -444,7 +453,7 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
                 answers.append(answer)
             continue
         letter = None
-        lm = _LETTER_RE.match(rest.rstrip(_TRAILING + " ")) if m else None
+        lm = _LETTER_RE.match(rest.rstrip(_TRAILING + " "))
         if lm and int(key) in looping and _LOOP_WORD_RE.search(rest[1:]):
             return ReplyParse(question=f"#{key} 这一段里既有选项 {lm.group(1)}，又有打转提示的选项，"
                                        "请分成两次答，或只留一个。")
@@ -454,6 +463,8 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
                 return ReplyParse(question=f"#{key} 没有选项 {letter}，请确认。")
         if m and not lm and it["options"] and not it.get("decisions") and not _ORIGINAL_RE.match(rest):
             return ReplyParse(question=_no_letter_question(key, it))
+        if not m and not lm and it["options"] and not _ORIGINAL_RE.match(rest):
+            return ReplyParse(question=NO_ITEM_QUESTION)  # stage-c3-fixes I-20: chat is never an answer
         picked = ()
         if it.get("decisions"):
             picked, question = _decision_answers(key, it, letter, segment)
@@ -483,16 +494,48 @@ class Outgoing:
     item: int
 
 
+def unsent(it: dict) -> bool:
+    """stage-c3-fixes I-20: answered, but no answer has reached anyone yet (never sent, or the send failed)."""
+    return it["status"] in ANSWERED and bool(it.get("answers")) and not it.get("sent")
+
+
+def retract(g: store.Group, no: int, at: str) -> bool | None:
+    """「撤下 N」 (stage-c3-fixes I-20): an answer not sent yet is taken back and the item waits again.
+
+    None when there is no such item or it was never answered; False when the answer already went out.
+    """
+    with g.transaction() as tx:
+        doc = _doc(tx)
+        it = doc["items"].get(str(no))
+        if it is None or it["status"] not in ANSWERED or not it.get("answers"):
+            return None
+        if not unsent(it):
+            return False
+        dropped = it["answers"].pop()
+        it["status"] = "pending"
+        it["statusAt"].pop("forwarded", None)
+        tx.append_event("items.retracted", ref=no, actor="user", data={"original": dropped["original"], "at": at})
+        tx.write_state(DOMAIN, doc)
+    return True
+
+
 def answer(g: store.Group, answers, answered_at: str) -> tuple[Outgoing, ...]:
-    """Record the user's answers and build the 【用户答复】 texts; the hub sends them."""
+    """Record the user's answers and build the 【用户答复】 texts; the hub sends them.
+
+    stage-c3-fixes I-20: an answer that never went out is replaced by the new one.
+    """
     out: list[Outgoing] = []
     legacy, left = store.legacy_relays(g), store.left_relays(g)
     with g.transaction() as tx:
         doc = _doc(tx)
         for a in answers:
             it = doc["items"].get(str(a.item))
-            if it is None or it["status"] != "pending":
+            if it is None or (it["status"] != "pending" and not unsent(it)):
                 raise ValueError(f"#{a.item} is not waiting for an answer")
+            if it["status"] != "pending":
+                replaced = it["answers"].pop()
+                tx.append_event("items.answer-replaced", ref=a.item, actor="user",
+                                data={"original": replaced["original"], "at": answered_at})
             option = next((o for o in it["options"] if o["letter"] == a.letter), None)
             option_text = f"{option['letter']}：{option['text']}" if option else None
             # a loop option has no letter: the user's words go as they are, the rules section says what they mean

@@ -568,3 +568,50 @@ class InheritedItemTest(AnsweredNotResumedTest):
         no = self.answered()
         d = self.decide_with(str(self.repos / "nope.jsonl"))
         self.assertIn(f"- #{no} 用户已答复：「{no} A」（3 分钟前）", d.reason)
+
+
+class HubTurnWithoutViewTest(HubTurnCheckTest):
+    """I-22 (0.0.36 short check): woken by the patrol session's turn-end notice, the hub ran no command and wrote
+    「选项在上面那张 #79 卡片里」; the check passed it because the turn printed no main view."""
+
+    def chat_turn(self, final):
+        import json
+        rows = [{"type": "user", "message": {"role": "user", "content": "<system-reminder>巡视会话结束了一轮</system-reminder>"}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": final}]}}]
+        path = self.dir / "chat.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+        return {"transcript_path": str(path), "stop_hook_active": False, "cwd": "/somewhere"}
+
+    REPLAY = ("巡视会话因为 #79 等得久了，发了一条桌面通知提醒你。#79 问的是：要开 kappa，得先挂起 theta 还是挂起 iota；"
+              "选项在上面那张 #79 卡片里。#78 也还在等你回。")
+
+    def test_pending_item_named_without_cards_blocks(self):
+        d = stophook.hub_turn_check(self.chat_turn(self.REPLAY), pending={78, 79})
+        self.assertTrue(d.block)
+        self.assertIn("#79", d.reason)
+        self.assertIn("view", d.reason)
+
+    def test_chat_without_pending_items_passes(self):
+        self.assertFalse(stophook.hub_turn_check(self.chat_turn("好的，巡视这一轮没有动作。"), pending={78}).block)
+        self.assertFalse(stophook.hub_turn_check(self.chat_turn(self.REPLAY), pending=set()).block)
+
+
+class HubTurnWithoutViewHookTest(HubScopeHookTest):
+    """stage-c3-fixes I-22 through the hook: the hub's chat turn names a pending item without its card."""
+
+    def chat_hook(self, text):
+        import json, subprocess, sys
+        rows = [{"type": "user", "message": {"role": "user", "content": "<system-reminder>巡视结束了一轮</system-reminder>"}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}]
+        path = self.repos / "chat.jsonl"
+        path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+        payload = {"transcript_path": str(path), "stop_hook_active": False, "cwd": str(self.hub_dir)}
+        done = subprocess.run([sys.executable, "-m", "decision_inbox", "hook", "stop"], input=json.dumps(payload),
+                              capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent))
+        return json.loads(done.stdout).get("decision") if done.stdout.strip() else None
+
+    def test_named_pending_item_blocks_and_others_pass(self):
+        no = items.receive(self.g, WAIT_USER, sender="api-codex", relay_id=7, received_at=at(5)).item
+        self.assertEqual(self.chat_hook(f"选项在上面那张 #{no} 卡片里。"), "block")
+        self.assertIsNone(self.chat_hook("好的，这一轮没有动作。"))
+        self.assertIsNone(self.chat_hook(f"#{no + 50} 早就结了。"))

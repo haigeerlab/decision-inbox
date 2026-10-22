@@ -67,6 +67,7 @@ def to_contract(m: protocol.Message) -> dict:
         "waitKind": m.wait_kind,  # v2.2
         "points": [{"name": n, "text": t} for n, t in getattr(m, "points", ())],  # v2.3
         "module": getattr(m, "module", None),  # v2.4
+        "task": getattr(m, "task", None),  # v2.5
         "goToSession": m.go_to_session,
         "receipt": None if m.receipt is None else {
             "original": m.receipt.original, "status": m.receipt.status,
@@ -108,7 +109,7 @@ class FingerprintTest(unittest.TestCase):
 
     def test_source(self):
         self.assertEqual((CONTRACT / "SOURCE").read_text(encoding="utf-8").split(),
-                         ["session-protocol", VERSION, "495b475"])
+                         ["session-protocol", VERSION, "92309e7"])
 
 
 class ConformanceTest(unittest.TestCase):
@@ -116,9 +117,10 @@ class ConformanceTest(unittest.TestCase):
         docs = [json.loads(p.read_text(encoding="utf-8")) for p in cases()]
         # v2.0 (review-nearby): 90 parse samples; 40 skipped = coordination-notice 20, review-request 8,
         # user-reply/relay-* 5, shared-change-request 4, owner-handoff 3.
-        self.assertEqual(sum("parse" in d for d in docs), 104)  # v2.1: + wait-user originals, two bad lines; v2.2: + go-to-session 4; v2.3: + card 4; v2.4: + module 3
+        self.assertEqual(sum("parse" in d for d in docs), 115)  # v2.1: + wait-user originals, two bad lines; v2.2: + go-to-session 4; v2.3: + card 4; v2.4: + module 3; v2.5: + task 6; v2.6: + 5
         self.assertEqual(sum("generate" in d for d in docs), 6)
-        self.assertEqual(len([p for p in cases() if skipped(p)]), 40,
+        # v2.5: + review-request/task-final, coordination-notice/task-returned; v2.6: + review-request/points
+        self.assertEqual(len([p for p in cases() if skipped(p)]), 43,
                          "契约给不解析的类型加了样例，确认本插件是否仍不需要它们")
 
     def test_parse(self):

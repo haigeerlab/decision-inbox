@@ -387,7 +387,8 @@ class ReplyTest(HubCase):
         self.reply("1 A")
         text = hub.main_view(self.g, now=NOW, relay=None)
         lines = text.split("\n")
-        self.assertEqual(lines[0], "⚠ #1 已答复，待发送（发给 前端，还没发）；说「重发 1」")
+        self.assertEqual(lines[0], "⚠ #1 已答复，待发送（发给 前端，还没发）；说「重发 1」照发，"
+                                   "「撤下 1」撤回这次答复，或直接重新答「1 X」")
         self.assertEqual(lines[1], "⚠ 本次没带 agent-relay 状态，各线状态不全")  # wait-honesty-and-briefs A3
         self.assertIn("本次没有 agent-relay 状态，无法判断", text)
         self.assertNotIn("agent-relay 没有它的数据", text)
@@ -1225,3 +1226,74 @@ class NarrowNoticeTest(HubCase):
         crews = {"fe-tester": NS(status="ok", modules=(NS(module="theta"),))}
         r = hub.reply(self.g, "1 A", now=NOW, crews=crews)
         self.assertEqual(self.kinds(r), [("fe-owner", "answer"), ("fe-tester", "notice")])
+
+
+class UnsentAnswerTest(HubCase):
+    """I-20 (0.0.36 short check): a misread answer withdrawn before it went out locked its item for good."""
+
+    def answer_then_fail(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        out_id = r.sends[0]["id"]
+        hub.sent(self.g, {}, [out_id], at=NOW, reasons={out_id: "用户说这句不是答 #1，不发"})
+        return out_id
+
+    def test_unnumbered_chat_is_not_an_answer(self):
+        """Root cause: the only pending item took a sentence with no number and no option letter."""
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "dev codex 应该在线了", now=NOW)
+        self.assertEqual(r.sends, [])
+        self.assertEqual(items.get(self.g, 1)["status"], "pending")
+
+    def test_reanswer_replaces_an_answer_that_never_went_out(self):
+        old = self.answer_then_fail()
+        r = hub.reply(self.g, "1 B", now=NOW)
+        self.assertEqual([(s["to"], s["kind"]) for s in r.sends], [("fe-codex", "answer")])
+        self.assertEqual(items.get(self.g, 1)["answers"][-1]["letter"], "B")
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])  # only the new one waits
+        self.assertNotIn("不是答 #1", hub.main_view(self.g, now=NOW))  # the old failed send is gone
+
+    def test_withdraw_puts_the_item_back(self):
+        old = self.answer_then_fail()
+        hub.reply(self.g, "撤下 1", now=NOW)
+        it = items.get(self.g, 1)
+        self.assertEqual((it["status"], it["answers"]), ("pending", []))
+        self.assertNotIn("forwarded", it["statusAt"])
+        self.assertNotIn(old, [s["id"] for s in hub.outgoing(self.g)])
+        self.assertNotIn("重发 1", hub.main_view(self.g, now=NOW))
+
+    def test_sent_answer_still_cannot_be_withdrawn(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        r = hub.reply(self.g, "1 A", now=NOW)
+        hub.sent(self.g, {r.sends[0]["id"]: 1601}, [], at=NOW)
+        show = hub.reply(self.g, "撤下 1", now=NOW).show
+        self.assertEqual(items.get(self.g, 1)["status"], "forwarded")
+        self.assertIn("已经发出", show)
+
+
+class UnsentAnswerMoreTest(UnsentAnswerTest):
+    """stage-c3-fixes Task 2: the same, for an answer queued but never sent, and the words that teach it."""
+
+    def test_reanswer_before_any_send(self):
+        self.receive(message(1501, "fe-codex", WAIT_USER))
+        first = hub.reply(self.g, "1 A", now=NOW).sends[0]["id"]
+        r = hub.reply(self.g, "1 B", now=NOW)
+        self.assertEqual([s["kind"] for s in r.sends], ["answer"])
+        self.assertEqual([s["id"] for s in hub.outgoing(self.g)], [r.sends[0]["id"]])
+        self.assertNotEqual(first, r.sends[0]["id"])
+        self.assertEqual(len(items.get(self.g, 1)["answers"]), 1)
+
+    def test_rules_and_command_help_name_it(self):
+        self.assertIn("「撤下 N」", hub.convention("demo"))
+        self.assertIn("撤下 N", hub.COMMANDS)
+        self.answer_then_fail()
+        self.assertIn("「撤下 1」撤回这次答复", hub.main_view(self.g, now=NOW))
+
+
+class ContractV26RulesTest(TempHomeTestCase):
+    """protocol-contract-v2-6: the hub's rules say T numbers and C pending numbers are not item numbers."""
+
+    def test_rules_name_t_and_c_numbers(self):
+        rules = hub.convention("demo")
+        self.assertIn("「T数字」（轻任务）", rules)
+        self.assertIn("「C数字-数字」（待定问题，如 C15-1）不是待决事项编号", rules)

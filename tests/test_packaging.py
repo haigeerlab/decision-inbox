@@ -28,7 +28,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.36")
+        self.assertEqual(claude["version"], "0.0.37")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -242,7 +242,7 @@ class ReadmeTest(unittest.TestCase):
                        # host-permission-check
                        "宿主权限", ".codex/config.toml", "network_access = true", "没实测",
                        # go-to-session
-                       "session-protocol` v2.4", "要你去会话里操作", "去会话操作", "0.0.28 改了协作规则段",
+                       "session-protocol` v2.6", "要你去会话里操作", "去会话操作", "0.0.28 改了协作规则段",
                        # scope-authority-defaults
                        "--no-checkpoint-authority", "默认打开", "npm ci", "旧版本写的", "0.0.28 改了协作规则段",
                        # permission-closeout
@@ -254,7 +254,7 @@ class ReadmeTest(unittest.TestCase):
                        # decision-cards
                        "复制块", "已答复，待发送", "bridge_sessions", "12 原话：", "重发 12", "收件箱停止检查",
                        # review-nearby
-                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "0.0.30 改了协作规则段", "0.0.31 没改协作规则段", "0.0.32 没改协作规则段", "0.0.33 没改协作规则段", "0.0.34 没改协作规则段", "0.0.35 包括 0.0.34", "0.0.36 没改协作规则段", "~/.decision-inbox/<协作组>/patrol", "名册过期：<线名> 的邮箱名已由新会话持有", "/decision-inbox:waits", "上次运行退出 N", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
+                       "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "0.0.30 改了协作规则段", "0.0.31 没改协作规则段", "0.0.32 没改协作规则段", "0.0.33 没改协作规则段", "0.0.34 没改协作规则段", "0.0.35 包括 0.0.34", "0.0.36 没改协作规则段", "0.0.37 改了决策收件箱的协作规则段", "撤下 N", "~/.decision-inbox/<协作组>/patrol", "名册过期：<线名> 的邮箱名已由新会话持有", "/decision-inbox:waits", "上次运行退出 N", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
                        # patrol-cadence
                        "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",

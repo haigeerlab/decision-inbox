@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-CONTRACT_VERSION = "2.4"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
+CONTRACT_VERSION = "2.6"  # session-protocol version this plugin is pinned to (tests/test_contract.py)
 
 KIND_TAGS = {
     "等待用户": "wait-user",
@@ -23,14 +23,14 @@ KIND_TAGS = {
 
 # Field names each kind knows, in the order they are usually written.
 FIELDS = {
-    "wait-user": ("来自", "项目", "要你决定", "要点", "模块", "类型", "会话", "链接", "被拦的操作", "点哪个按钮", "为什么批不了",
+    "wait-user": ("来自", "项目", "要你决定", "要点", "任务", "模块", "类型", "会话", "链接", "被拦的操作", "点哪个按钮", "为什么批不了",
                   "宿主原文", "关联事项", "注意", "推荐理由", "批了会怎样", "产物", "交审原文", "审查原文", "待用户决定", "架构审查", "选项与我的建议", "你该回",
                   "是否完全停住", "适用会话", "各线范围"),
     "user-reply": ("事项", "用户原话", "选项原文", "适用于你的范围", "答复时间", "原事项全文"),
     "wait-session": ("在等谁", "等什么"),
     "resumed": (),
     "withdraw": ("事项", "原因"),
-    "review-conclusion": ("审查编号", "节点", "模块", "送审方", "结论", "来自", "要点", "须修改", "待用户决定"),
+    "review-conclusion": ("审查编号", "节点", "模块", "送审方", "结论", "来自", "要点", "任务", "须修改", "待用户决定"),
     "hub-receipt": ("原消息", "事项", "状态", "取代", "写法提示"),
     "unknown": (),
 }
@@ -43,11 +43,14 @@ PROBLEM_CODES = ("unknown-kind", "missing-end", "missing-field:", "missing-optio
                  # v2.0 (review-nearby)
                  "change-count-mismatch", "bad-decision-item:", "duplicate-decision:", "bad-receipt-status",
                  # v2.1 (approval-display)
-                 "bad-artifact-line", "bad-file-line")
+                 "bad-artifact-line", "bad-file-line",
+                 # v2.5 (light-task-field)
+                 "bad-task-ref", "module-task-both")
 REVIEW_NODES = {"Spec": "spec", "Plan": "plan", "接口提案": "interface", "最终验收": "final"}
 HINT_CODES = ("no-consequence:", "no-recommendation", "brief-thin", "change-count-missing")
 
 _TAG_RE = re.compile(r"【([^】]*)】")
+_TASK_RE = re.compile(r"^T\d+$")  # v2.5
 _COLON = "[：:]"
 _END_RE = re.compile(rf"^结束\s*{_COLON}\s*(.*)$")
 _REPLY_RE = re.compile(rf"^回复\s*{_COLON}\s*#\s*(\d+)\s*$")
@@ -201,6 +204,7 @@ class Message:
     points: tuple[tuple[str, str], ...] = ()  # v2.3: (point name, text) of the class, in writing order
     go_to_session: dict | None = None  # v2.2: the 去会话操作 fields under the contract's keys (go-to-session)
     module: str | None = None  # v2.4: 「模块」 as written (stripped), "无" for a line-level item
+    task: str | None = None  # v2.5: 「任务」 when it is a T-number, e.g. "T3"
 
     @property
     def ok(self) -> bool:
@@ -282,7 +286,7 @@ def _item(value: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
-_DECISION_HEAD_RE = re.compile(rf"^(D\d+)\s*{_COLON}\s*(.*)$")
+_DECISION_HEAD_RE = re.compile(rf"^(D\d+|C\d+-\d+)\s*{_COLON}\s*(.*)$")  # v2.6: or a C pending number, C15-1
 _DECISION_OPTION_RE = re.compile(r"^([A-Z])\s*[：:.、]\s*(.*)$")
 _LEAN_RE = re.compile(rf"^倾向\s*{_COLON}\s*([A-Z])\s*(?:[（(](.*)[）)])?\s*$")
 _CHANGE_RE = re.compile(r"^\d+\s*[.．、]\s*(.*)$")
@@ -411,8 +415,10 @@ WAIT_KINDS = {"去会话操作": "go-to-session",
               # v2.3: the approval classes of the decision-card template
               "能力图审阅": "capability-map", "Spec": "spec", "Plan": "plan", "Spec 与 Plan": "spec-plan",
               "中途检查点": "checkpoint", "最终验收": "final", "接口提案": "interface", "卡住选做法": "stuck"}
-_SPEC_POINTS = ("目标", "做／不做", "要你确认的假设", "验收标准", "附带的小决定")
-_PLAN_POINTS = ("分几步", "会改哪些文件", "风险", "中途会停下来问你的地方")
+# v2.6: upstream agent-skills names next to the old ones (边界 for 做／不做, 未决问题 for 附带的小决定; Plan adds
+# 架构决定 first and 未决问题 last); both are canonical, each kept under its own name, in this display order.
+_SPEC_POINTS = ("目标", "做／不做", "边界", "要你确认的假设", "验收标准", "附带的小决定", "未决问题")
+_PLAN_POINTS = ("架构决定", "分几步", "会改哪些文件", "风险", "中途会停下来问你的地方", "未决问题")
 # v2.3: the fixed content points of each class, in writing order, written as 「小项名：内容」 lines in 要点
 POINTS = {"capability-map": ("拆成哪些模块", "先后顺序", "文档建议"), "spec": _SPEC_POINTS, "plan": _PLAN_POINTS,
           "spec-plan": _SPEC_POINTS + _PLAN_POINTS, "checkpoint": ("做到哪了", "为什么停在这", "接下来要做的那一步"),
@@ -599,6 +605,16 @@ def parse(text: str) -> Message:
         receipt = Receipt(_item(fields.get("原消息")), "registered" if status == "已登记" else None,
                           tuple(int(x) for x in _NUM_RE.findall(fields.get("取代", ""))))
 
+    task = None
+    if kind in ("wait-user", "review-conclusion") and "任务" in fields:  # v2.5, reported after the kind's own codes
+        written = fields["任务"].strip()
+        if _TASK_RE.match(written):
+            task = written
+        else:
+            problems.append(Issue("bad-task-ref", f"「任务」要写成大写 T 加数字（如 T3），现在是「{written}」"))
+        if fields.get("模块", "").strip() not in ("", "无"):
+            problems.append(Issue("module-task-both", "「模块」「任务」只能写一个：轻任务写「任务」，「模块」不写或写「无」"))
+
     return Message(kind=kind, markers=tuple(markers), ends=end, reply_to=reply_to,
                    fields=fields, item=item, problems=tuple(problems), hints=tuple(hints),
                    options=options, recommended=recommended,
@@ -607,7 +623,8 @@ def parse(text: str) -> Message:
                    review=_review(fields.get("架构审查")) if kind == "wait-user" else ReviewLine("absent"),
                    conclusion=conclusion, decisions=decisions, receipt=receipt, local_item=local_item,
                    artifacts=artifacts, originals=originals, wait_kind=wait_kind, go_to_session=go_to_session,
-                   points=points, module=(fields.get("模块") or "").strip() or None if kind == "wait-user" else None)
+                   points=points, module=(fields.get("模块") or "").strip() or None if kind == "wait-user" else None,
+                   task=task)
 
 
 def _source(relay_id) -> str:

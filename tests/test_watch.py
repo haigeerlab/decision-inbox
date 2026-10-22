@@ -321,3 +321,24 @@ class RuntimeTest(TempHomeTestCase):
         self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
                          (REPO / "decision_inbox" / "watch.py").read_bytes())
         self.assertFalse((rt / "decision_inbox" / "a.py").exists())
+
+
+class WatchRemoveCommandTest(WatchOnboardCommandTest):
+    """stage-c3-fixes: `onboard watch <组> --remove` takes off only the patrol watch."""
+
+    def test_remove_previews_then_removes(self):
+        self.run_cli("--confirm")
+        r = self.run_cli("--remove")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("这是预览", r.stdout)
+        self.assertIn(str(watch.plist_path("demo")), r.stdout)
+        self.assertTrue(watch.plist_path("demo").exists())
+        r = self.run_cli("--remove", "--confirm")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("已卸掉", r.stdout)
+        self.assertFalse(watch.plist_path("demo").exists())
+
+    def test_remove_when_not_installed(self):
+        r = self.run_cli("--remove", "--confirm")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("没有装巡视提醒", r.stdout)

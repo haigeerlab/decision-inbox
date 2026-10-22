@@ -277,9 +277,26 @@ class InterpretTest(ItemsCase):
                 self.assertTrue(p.question)
 
     def test_no_number_with_single_pending(self):
+        """stage-c3-fixes I-20: with one item pending, only a letter or 「原话：」 answers it without a number."""
         self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
         p = self.parse("按推荐来")
-        self.assertEqual(p.answers, (items.Answer(self.a, None, "按推荐来"),))
+        self.assertEqual(p.answers, ())
+        self.assertEqual(p.question, items.NO_ITEM_QUESTION)
+        self.assertEqual(self.parse("B").answers, (items.Answer(self.a, "B", "B"),))
+        self.assertEqual(self.parse("B。").answers, (items.Answer(self.a, "B", "B。"),))
+        self.assertEqual(self.parse("原话：按推荐来").answers, (items.Answer(self.a, None, "原话：按推荐来"),))
+        self.assertEqual(self.parse("Z").question, f"#{self.a} 没有选项 Z，请确认。")
+
+    def test_no_number_item_without_options_takes_the_sentence(self):
+        no_options = SINGLE.split("选项与我的建议：")[0] + "选项与我的建议：\n推荐 A：照做\n是否完全停住：是\n"
+        self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
+        self.receive(f"【撤回】\n事项：#{self.a}\n", sender="fe-codex")
+        no = self.receive(no_options, sender="coord", at=T3).item
+        with self.g.transaction() as tx:  # an item whose options were never recorded (old data)
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["options"] = []
+            tx.write_state("items", doc)
+        self.assertEqual(self.parse("按推荐来").answers, (items.Answer(no, None, "按推荐来"),))
 
     def test_same_answer_twice_in_one_reply_is_one(self):
         p = self.parse(f"{self.a} B，{self.a} B")
@@ -346,7 +363,7 @@ class PrefixTest(InterpretTest):
         self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B，{self.b} A").answers],
                          [(self.a, "B"), (self.b, "A")])
         self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
-        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, None, "A"),))
+        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, "A", "A"),))  # stage-c3-fixes I-20: letter now read
 
 
 CONTRACT = Path(__file__).resolve().parent / "fixtures" / "session-protocol" / f"v{protocol.CONTRACT_VERSION}"
@@ -459,6 +476,7 @@ class AnswerTest(ItemsCase):
     def test_changed_answer_after_forwarding_is_a_question(self):
         no = self.receive(SINGLE).item
         items.answer(self.g, items.interpret_reply(self.g, f"{no} A").answers, answered_at=T2)
+        items.record_sent(self.g, no, to="fe-codex", relay_id=3901, at=T2)  # stage-c3-fixes: it went out
         p = items.interpret_reply(self.g, f"{no} B")
         self.assertEqual(p.answers, ())
         self.assertTrue(p.question)
@@ -467,6 +485,7 @@ class AnswerTest(ItemsCase):
         no = self.receive(SINGLE).item
         answers = items.interpret_reply(self.g, f"{no} A").answers
         items.answer(self.g, answers, answered_at=T2)
+        items.record_sent(self.g, no, to="fe-codex", relay_id=3901, at=T2)  # stage-c3-fixes: it went out
         with self.assertRaises(ValueError):
             items.answer(self.g, answers, answered_at=T3)
 
@@ -756,3 +775,44 @@ class InlineSplitTest(ItemsCase):
         self.assertIsNotNone(q)
         self.assertIn("#69", q)
         self.assertIn("#72", q)
+
+
+CNUM = (CONTRACT / "wait-user" / "decision-cnum.txt").read_text(encoding="utf-8")  # A/B, C15-1 and C15-2 (A/B)
+
+
+class CNumberReplyTest(ItemsCase):
+    """protocol-contract-v2-6 (session-protocol v2.6): C pending numbers like C15-1, and T numbers."""
+
+    def setUp(self):
+        super().setUp()
+        store.set_start_number(self.g, 1)
+        self.one = self.receive(SINGLE, sender="api-codex").item          # item 1, options A/B/C
+        self.no = self.receive(CNUM, sender="coord", at=T2).item          # item 2, with C15-1, C15-2
+
+    def parse(self, text):
+        return items.interpret_reply(self.g, text)
+
+    def test_recorded(self):
+        self.assertEqual([d["id"] for d in self.item(self.no)["decisions"]], ["C15-1", "C15-2"])
+
+    def test_three_ways_and_item_one_untouched(self):
+        n = self.no
+        for text in (f"{n} A；C15-1 B；C15-2 A", f"{n} A；C15-1：B；C15-2：A", f"{n} A；C15-1 选 B；C15-2 选 A"):
+            with self.subTest(text=text):
+                p = self.parse(text)
+                self.assertIsNone(p.question)
+                self.assertEqual([(a.item, a.letter, a.decisions) for a in p.answers],
+                                 [(n, "A", (("C15-1", "B"), ("C15-2", "A")))])
+
+    def test_missing_c_number_asks_for_the_whole(self):
+        p = self.parse(f"{self.no} A；C15-1 B")
+        self.assertEqual(p.answers, ())
+        self.assertIn("C15-2", p.question)
+
+    def test_t_number_is_not_an_item(self):
+        self.receive(f"【撤回】\n事项：#{self.no}\n", sender="coord")
+        p = self.parse(f"T{self.one} 先缓一缓")
+        self.assertEqual(p.answers, ())
+        self.assertEqual(p.question, items.NO_ITEM_QUESTION)
+        p = self.parse(f"{self.one} A；T3 先做")
+        self.assertEqual([(a.item, a.letter, a.original) for a in p.answers], [(self.one, "A", f"{self.one} A；T3 先做")])

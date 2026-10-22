@@ -244,6 +244,14 @@ class JoinTest(OnboardCase):
         return self.join(role="owner", relay_name="fe-owner", short_name="前端负责人", host="claude-desktop",
                          desktop_session="local_00000000-0000-0000-0000-0000000own1", project="owner")
 
+    def test_rejoin_with_a_new_short_name_says_so(self):
+        """stage-c3-fixes: a rejoin that renames the line warns in the preview; same name, no warning."""
+        self.join()
+        renamed = self.join(short_name="前端2", confirm=False)
+        self.assertIn("线名会从「前端」改成「前端2」", renamed.warnings[0])
+        same = self.join(confirm=False)
+        self.assertFalse(any("线名会从" in w for w in same.warnings))
+
     def test_rejoin_moves_roster_to_new_session(self):
         """roster-stale-wake: a new session rejoining under the same mailbox name replaces desktopSession."""
         from decision_inbox import desktop, relay
