@@ -444,7 +444,7 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
                 answers.append(answer)
             continue
         letter = None
-        lm = _LETTER_RE.match(rest.rstrip(_TRAILING + " ")) if m else None
+        lm = _LETTER_RE.match(rest.rstrip(_TRAILING + " "))
         if lm and int(key) in looping and _LOOP_WORD_RE.search(rest[1:]):
             return ReplyParse(question=f"#{key} 这一段里既有选项 {lm.group(1)}，又有打转提示的选项，"
                                        "请分成两次答，或只留一个。")
@@ -454,6 +454,8 @@ def interpret_reply(g: store.Group, text: str, looping=()) -> ReplyParse:
                 return ReplyParse(question=f"#{key} 没有选项 {letter}，请确认。")
         if m and not lm and it["options"] and not it.get("decisions") and not _ORIGINAL_RE.match(rest):
             return ReplyParse(question=_no_letter_question(key, it))
+        if not m and not lm and it["options"] and not _ORIGINAL_RE.match(rest):
+            return ReplyParse(question=NO_ITEM_QUESTION)  # stage-c3-fixes I-20: chat is never an answer
         picked = ()
         if it.get("decisions"):
             picked, question = _decision_answers(key, it, letter, segment)

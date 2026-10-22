@@ -277,9 +277,26 @@ class InterpretTest(ItemsCase):
                 self.assertTrue(p.question)
 
     def test_no_number_with_single_pending(self):
+        """stage-c3-fixes I-20: with one item pending, only a letter or 「原话：」 answers it without a number."""
         self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
         p = self.parse("按推荐来")
-        self.assertEqual(p.answers, (items.Answer(self.a, None, "按推荐来"),))
+        self.assertEqual(p.answers, ())
+        self.assertEqual(p.question, items.NO_ITEM_QUESTION)
+        self.assertEqual(self.parse("B").answers, (items.Answer(self.a, "B", "B"),))
+        self.assertEqual(self.parse("B。").answers, (items.Answer(self.a, "B", "B。"),))
+        self.assertEqual(self.parse("原话：按推荐来").answers, (items.Answer(self.a, None, "原话：按推荐来"),))
+        self.assertEqual(self.parse("Z").question, f"#{self.a} 没有选项 Z，请确认。")
+
+    def test_no_number_item_without_options_takes_the_sentence(self):
+        no_options = SINGLE.split("选项与我的建议：")[0] + "选项与我的建议：\n推荐 A：照做\n是否完全停住：是\n"
+        self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
+        self.receive(f"【撤回】\n事项：#{self.a}\n", sender="fe-codex")
+        no = self.receive(no_options, sender="coord", at=T3).item
+        with self.g.transaction() as tx:  # an item whose options were never recorded (old data)
+            doc = tx.read_state("items")
+            doc["items"][str(no)]["options"] = []
+            tx.write_state("items", doc)
+        self.assertEqual(self.parse("按推荐来").answers, (items.Answer(no, None, "按推荐来"),))
 
     def test_same_answer_twice_in_one_reply_is_one(self):
         p = self.parse(f"{self.a} B，{self.a} B")
@@ -346,7 +363,7 @@ class PrefixTest(InterpretTest):
         self.assertEqual([(x.item, x.letter) for x in self.parse(f"{self.a} B，{self.b} A").answers],
                          [(self.a, "B"), (self.b, "A")])
         self.receive(f"【撤回】\n事项：#{self.b}\n", sender="api-codex")
-        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, None, "A"),))
+        self.assertEqual(self.parse("A").answers, (items.Answer(self.a, "A", "A"),))  # stage-c3-fixes I-20: letter now read
 
 
 CONTRACT = Path(__file__).resolve().parent / "fixtures" / "session-protocol" / f"v{protocol.CONTRACT_VERSION}"
