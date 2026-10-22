@@ -228,9 +228,15 @@ def head(it: dict, k: str, waited: str, extra: str = "") -> str:
     return line + extra
 
 
-def max_lines(k: str) -> int:
-    """MAX_LINES, plus one line per template point beyond five (Spec 与 Plan has nine, 接口提案 seven)."""
-    return MAX_LINES + max(0, len(protocol.POINTS.get(k, ())) - 5)
+# Points per template (session-protocol v2.3); v2.6 only renamed points or added two to the Plan, which a card
+# that uses them brings along in its own points.
+_TEMPLATE_SIZE = {"capability-map": 3, "spec": 5, "plan": 4, "spec-plan": 9, "checkpoint": 3, "final": 4,
+                  "interface": 7, "stuck": 1}
+
+
+def max_lines(k: str, points=()) -> int:
+    """MAX_LINES, plus one line per point beyond five (Spec 与 Plan has nine, 接口提案 seven; more when written)."""
+    return MAX_LINES + max(0, max(_TEMPLATE_SIZE.get(k, 0), len(points or ())) - 5)
 
 
 def _fit(top: list[str], content: list[str], cut: bool, rest: list[str], no: int, limit: int = MAX_LINES) -> list[str]:
@@ -273,7 +279,7 @@ def render(g, it: dict, waited: str, line_name: str) -> str:
     if rec := _recommend_line(it):
         rest += ["", rec]
     rest += ["", *_copy_block(it)]
-    return "\n".join(_fit(top, content, cut, rest, it["no"], max_lines(k)))
+    return "\n".join(_fit(top, content, cut, rest, it["no"], max_lines(k, it.get("points"))))
 
 
 def go_to_session(it: dict, waited: str, where: str, remind: bool) -> str:

@@ -306,3 +306,23 @@ class NoteSourceTest(CardCase):
         self.assertNotIn("**注意**", self.card(no))
         self.set(no, note="无")
         self.assertIn("**注意**：无", self.card(no))
+
+
+class V26CardTest(V23CardTest):
+    """protocol-contract-v2-6 (session-protocol v2.6): Spec/Plan point names after upstream agent-skills."""
+
+    def test_spec_card_with_upstream_names(self):
+        text = self.card(self.receive("card-spec-upstream.txt"))
+        self.assertEqual(self.labels(text)[:5], ["目标", "边界", "要你确认的假设", "验收标准", "未决问题"])
+
+    def test_plan_card_with_upstream_names(self):
+        text = self.card(self.receive("card-plan-upstream.txt"))
+        self.assertEqual(self.labels(text)[:6], ["架构决定", "分几步", "会改哪些文件", "风险", "中途会停下来问你的地方",
+                                                "未决问题"])
+
+    def test_old_and_new_names_both_shown(self):
+        body = (V23 / "card-spec-upstream.txt").read_text(encoding="utf-8").replace("边界：", "做／不做：旧写法\n边界：", 1)
+        r = items.receive(self.g, body, sender="coord", relay_id=next(self.relay_ids), received_at=T1)
+        labels = self.labels(self.card(r.item))
+        self.assertIn("做／不做", labels)
+        self.assertIn("边界", labels)

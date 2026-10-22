@@ -415,8 +415,10 @@ WAIT_KINDS = {"去会话操作": "go-to-session",
               # v2.3: the approval classes of the decision-card template
               "能力图审阅": "capability-map", "Spec": "spec", "Plan": "plan", "Spec 与 Plan": "spec-plan",
               "中途检查点": "checkpoint", "最终验收": "final", "接口提案": "interface", "卡住选做法": "stuck"}
-_SPEC_POINTS = ("目标", "做／不做", "要你确认的假设", "验收标准", "附带的小决定")
-_PLAN_POINTS = ("分几步", "会改哪些文件", "风险", "中途会停下来问你的地方")
+# v2.6: upstream agent-skills names next to the old ones (边界 for 做／不做, 未决问题 for 附带的小决定; Plan adds
+# 架构决定 first and 未决问题 last); both are canonical, each kept under its own name, in this display order.
+_SPEC_POINTS = ("目标", "做／不做", "边界", "要你确认的假设", "验收标准", "附带的小决定", "未决问题")
+_PLAN_POINTS = ("架构决定", "分几步", "会改哪些文件", "风险", "中途会停下来问你的地方", "未决问题")
 # v2.3: the fixed content points of each class, in writing order, written as 「小项名：内容」 lines in 要点
 POINTS = {"capability-map": ("拆成哪些模块", "先后顺序", "文档建议"), "spec": _SPEC_POINTS, "plan": _PLAN_POINTS,
           "spec-plan": _SPEC_POINTS + _PLAN_POINTS, "checkpoint": ("做到哪了", "为什么停在这", "接下来要做的那一步"),
