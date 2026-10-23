@@ -22,6 +22,8 @@ OLD = {
     "已恢复": "已结项", "约定块": "协作规则段", "用户答复": "你的答复", "待用户决定": "待你决定",
     "审批": "批准", "评审": "审查", "待审核": "待批准", "待审": "待批准",
 }
+# patrol-launchd: agent-relay's own term (register-script-identity), in the glossary as 「脚本身份」, not the old 身份
+_TERMS = ("脚本身份",)
 _ITEM = re.compile(r"(?<!待决)(?<!多线)(?<!单线)(?<!注意)事项")
 _FIELD_NAMES = {name for names in protocol.FIELDS.values() for name in names}
 _TAG = re.compile(r"【[^】]*】")
@@ -54,6 +56,8 @@ def old_terms(text: str) -> list[tuple[str, str]]:
     for line in strip_contract(text).splitlines():
         if LEGEND in line:
             continue
+        for term in _TERMS:
+            line = line.replace(term, "")
         hits += [(old, line.strip()) for old in OLD if old in line]
         if _ITEM.search(line):
             hits.append(("事项", line.strip()))
@@ -156,7 +160,7 @@ class GlossaryPageTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         copy = (ROOT / "docs" / "glossary.md").read_text(encoding="utf-8")
         self.assertEqual(done.stdout, copy)
-        self.assertIn("术语表（v1.2", copy)
+        self.assertIn("术语表（v1.3", copy)
         self.assertIn("来源：", copy.splitlines()[0] + copy.splitlines()[1] + copy.splitlines()[2])
 
 

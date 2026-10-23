@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from decision_inbox import hub as hub_loop
-from decision_inbox import install, items, patrol, reviews, store, watch
+from decision_inbox import install, items, reviews, store, watch
 
 _MARK_RE = re.compile(r"^<!-- (BEGIN|END) decision-inbox ([a-z]+) -->$")
 
@@ -557,25 +557,24 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
     except store.GroupNotFound:
         old_task = None
     try:
-        old_patrol = store.read_state(store.open_group(group), DOMAIN).get("patrolSession")
+        state = store.read_state(store.open_group(group), DOMAIN)
     except store.GroupNotFound:
-        old_patrol = None
+        state = {}
+    old_patrol = state.get("patrolSession")
+    identity = state.get("patrolIdentity") or default_patrol_identity(relay_name)
     steps = [
         _register_step(relay_name),
         # stage-c2-fixes I-17: an old patrol session still runs in the hub's folder; retire it first
         *(_retire_patrol_steps(old_patrol) if old_patrol else []),
-        # stall-and-patrol R18: a scheduled task opens a new session every run; one session loops instead;
-        # stage-c2-fixes I-17: in its own folder, so it never loads the hub's rules nor passes for the hub
-        f"用 mkdir -p 建好巡视目录 {patrol_dir(group)}，再用桌面版的开会话工具 start_session 在这个目录开巡视会话"
-        f"（不要开在决策收件箱目录或它的子目录里）：标题「decision-inbox 巡视 {group}」，"
-        f"权限模式与本会话相同，提示词写「{hub_loop.PATROL_LOOP}」，"
-        "后面接下面打印的巡视提示词原文",
-        f"运行 {cli} onboard patrol-session {group} --session <巡视会话编号（local_ 开头）>",
+        # patrol-launchd: launchd runs the patrol, mailing as a script identity only the user can register
+        f"请用户在终端运行 {register_identity_command(identity)}，登记巡视的脚本身份"
+        "（只能用户自己运行；要 agent-relay 0.9.0 及以上）",
+        f"运行 {cli} onboard patrol-identity {group} --name {identity} 预览，用户确认后加 --confirm，把脚本身份记进协作组",
         f"运行 {cli} onboard allow {group} --project <决策收件箱目录> 预览一次性权限放行（决策收件箱目录和巡视目录各一份），"
         "用户确认后加 --confirm 写入，之后巡视和决策收件箱不再为这些工具停下来问",
-        # stage-c-fixes DI-11: tells the user when the patrol goes quiet, even with the hub idle
-        f"运行 {cli} onboard watch {group} 预览巡视提醒（本机 launchd 每 5 分钟检查一次巡视，停了就弹系统通知，"
-        "写明去哪个会话做什么），用户确认后加 --confirm 装上",
+        # patrol-launchd: the launchd job runs the patrol itself and still tells the user when it goes quiet
+        f"运行 {cli} onboard watch {group} 预览巡视定时任务（本机 launchd 每 5 分钟跑一轮巡视，不靠巡视会话；"
+        "巡视停了就弹系统通知），用户确认后加 --confirm 装上",
         HOOK_STEP,
         f"其他会话各自接入：审查者先接入，再接开发线和跨线协调，例如 {cli} onboard join {group} --role dev "
         f"--relay-name <邮箱名> --short-name <线名> --host codex-desktop --line <线名> --project <项目目录>；"
@@ -585,7 +584,7 @@ def hub(group: str, relay_name: str, desktop_session: str, project, confirm: boo
         steps.insert(2, f"用定时任务工具 delete_scheduled_task 删除旧巡视任务 {old_task}（它建过的会话会一起归档）")
     if start_number is not None:
         steps.insert(0, f"待决事项和等待记录从 {start_number} 开始编号（待决事项写 #{start_number}、等待记录写 W{start_number}；替换旧的决策收件箱时避免和旧编号混淆）")
-    out = Outcome(rules, before, after, after != before, entry, steps, patrol.prompt(group, hub=relay_name),
+    out = Outcome(rules, before, after, after != before, entry, steps, None,
                   warnings=old_warnings + warnings, old_rules=old_note)
     if confirm:
         g, _ = store.init_group(group)
@@ -877,6 +876,58 @@ def record_patrol_session(group: str, session: str, now: str) -> None:
         tx.append_event("onboarding.patrol-session", ref=None, actor="hub", data={"session": session, "at": now})
 
 
+def default_patrol_identity(hub_relay: str) -> str:
+    """patrol-launchd: the hub's mailbox name plus -patrol (user 2026-10-20)."""
+    return f"{hub_relay}-patrol"
+
+
+def register_identity_command(name: str) -> str:
+    """What the user runs in a terminal; only they may register a script identity (agent-relay)."""
+    return f"~/.agent-relay/bin/agent-relay register-script-identity {name} --confirm"
+
+
+@dataclass
+class IdentityPlan:
+    name: str
+    previous: str | None
+    registered: bool | None   # None: agent-relay could not be read, so it was not checked
+
+
+def script_identity_registered(name: str) -> bool | None:
+    """Whether agent-relay lists `name` as a live script identity."""
+    from decision_inbox import relayscript
+    r = relayscript.run_script("agents")
+    if r.code != 0:
+        return None
+    try:
+        doc = json.loads(r.stdout)
+    except ValueError:
+        return None
+    rows = doc.get("agents") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return None
+    return any(isinstance(a, dict) and a.get("name") == name and (a.get("host") or {}).get("app") == "script"
+               and not a.get("retiredAt") for a in rows)
+
+
+def patrol_identity(group: str, name: str, confirm: bool, now: str) -> IdentityPlan:
+    """patrol-launchd: preview, and with confirm record, the script identity the launchd patrol mails as."""
+    g = store.open_group(group)
+    store.validate_name(name)
+    if store.find_session(g, relay_name=name) is not None:
+        raise JoinError(f"{name} 是名册里会话的邮箱名；脚本身份不能和任何会话同名（agent-relay 不让会话接管脚本身份）")
+    previous = store.read_state(g, DOMAIN).get("patrolIdentity")
+    out = IdentityPlan(name, previous, script_identity_registered(name))
+    if confirm:
+        with g.transaction() as tx:
+            doc = tx.read_state(DOMAIN)
+            doc["patrolIdentity"] = name
+            doc["patrolIdentityAt"] = now
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.patrol-identity", ref=None, actor="hub", data={"name": name, "at": now})
+    return out
+
+
 def _unfinished(g: store.Group, entry: dict) -> list[str]:
     """What the leaving session still has open; leave only says so, it does not stop (rehearsal-fixes)."""
     name = entry["relayName"]
@@ -1040,9 +1091,12 @@ def teardown(group: str, project, confirm: bool, now: str) -> Outcome:
     if watch.plist_path(group).is_file():  # stage-c-fixes DI-11
         if confirm:
             watch.uninstall(group, confirm=True)
-            out.written.append(f"已卸掉巡视提醒（launchd 任务 {watch.label(group)}）")
+            out.written.append(f"已卸掉巡视定时任务（launchd 任务 {watch.label(group)}）")
         else:
-            out.steps.insert(0, f"卸掉巡视提醒：launchd 任务 {watch.label(group)}（确认后由本命令卸）")
+            out.steps.insert(0, f"卸掉巡视定时任务：launchd 任务 {watch.label(group)}（确认后由本命令卸）")
+    if state.get("patrolIdentity"):  # patrol-launchd: only the user retires it
+        out.steps.append(f"巡视的脚本身份 {state['patrolIdentity']} 留在 agent-relay 里；不再用就请用户用 "
+                         "/agent-relay:collaboration 退役")
     out.steps.append("协作组的状态目录保留，不删")
     return out
 

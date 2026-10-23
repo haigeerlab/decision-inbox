@@ -168,6 +168,20 @@ class PatrolTest(DoctorCase):
             tx.write_state("patrol", {"lastRunAt": "2026-10-17T21:58:00+08:00"})
         self.assertEqual(self.check("巡视").state, "ok")
 
+    def test_launchd_patrol(self):
+        """patrol-launchd: a recorded script identity means launchd runs the patrol."""
+        g = store.open_group("g")
+        with g.transaction() as tx:
+            tx.write_state(onboard.DOMAIN, {**tx.read_state(onboard.DOMAIN), "patrolIdentity": "g-hub-patrol",
+                                            "patrolIdentityAt": "2026-10-17T20:00:00+08:00"})
+            tx.write_state("patrol", {"lastRunAt": "2026-10-17T21:00:00+08:00"})
+        c = self.check("巡视")
+        self.assertEqual((c.state, c.source), ("bad", "macOS launchd"))
+        self.assertIn("onboard watch g --confirm", c.fix)
+        with g.transaction() as tx:
+            tx.write_state("patrol", {"lastRunAt": "2026-10-17T21:58:00+08:00"})
+        self.assertEqual(self.check("巡视").state, "ok")
+
 
 class TornDownTest(DoctorCase):
     """doctor-skip-teardown: a group whose decision inbox has left is not checked for patrol."""

@@ -180,9 +180,10 @@ class HubTest(OnboardCase):
         self.assertTrue(text.startswith("# 我的规则\n\n<!-- BEGIN decision-inbox hub -->"))
         self.assertEqual(text, onboard.place("# 我的规则\n", "hub", hub.convention("demo")))
         self.assertTrue((g.path / "io").is_dir())
-        self.assertEqual(out.patrol_prompt, patrol.prompt("demo"))
+        self.assertIsNone(out.patrol_prompt)  # patrol-launchd: no patrol session to hand a prompt to
         steps = "\n".join(out.steps)
-        for needle in ("start_session", "/loop 5m", "onboard patrol-session demo",  # stall-and-patrol R18
+        for needle in ("register-script-identity di-hub-patrol --confirm",  # patrol-launchd
+                       "onboard patrol-identity demo --name di-hub-patrol", "onboard watch demo",
                        "bridge_register", "wake: \"auto\"", "di-hub", "停止钩子", "Claude Code", "Codex",
                        "onboard join demo"):
             self.assertIn(needle, steps)
@@ -899,8 +900,10 @@ class CommandLineTest(OnboardCase):
         code, out, _ = self.run_cli("onboard", "hub", "demo", "--relay-name", "di-hub", "--desktop-session", HUB_DESKTOP,
                                     "--project", hub_dir, "--confirm")
         self.assertEqual(code, 0)
-        for needle in ("已写入", "CLAUDE.md", "巡视提示词", "patrol plan demo", "start_session"):
+        for needle in ("已写入", "CLAUDE.md", "register-script-identity", "onboard patrol-identity demo"):
             self.assertIn(needle, out)
+        for gone in ("巡视提示词", "start_session"):  # patrol-launchd: no patrol session any more
+            self.assertNotIn(gone, out)
         code, out, _ = self.run_cli("onboard", "join", "demo", "--role", "dev", "--relay-name", "fe-codex",
                                     "--short-name", "前端", "--host", "codex-desktop", "--line", "前端",
                                     "--project", fe_dir, "--confirm")
@@ -1163,7 +1166,7 @@ class PatrolSessionTest(OnboardCase):
     def test_no_scheduled_task_step(self):
         steps = "\n".join(self.hub(confirm=False).steps)
         self.assertNotIn("create_scheduled_task", steps)
-        self.assertIn("decision-inbox 巡视 demo", steps)
+        self.assertNotIn("decision-inbox 巡视 demo", steps)  # patrol-launchd: no patrol session either
 
     def test_old_task_is_deleted_on_rerun(self):
         self.hub()
@@ -1181,8 +1184,10 @@ class PatrolSessionTest(OnboardCase):
         self.assertTrue(any("archive_session" in s and "local_patrol1" in s for s in out.steps))
 
     def test_patrol_session_knows_how_to_stop(self):  # patrol-stop-fixes: /loop keeps it from being archived
+        self.hub()
+        onboard.record_patrol_session("demo", "local_patrol1", NOW)  # patrol-launchd: only an old one is stopped
         steps = "\n".join(self.hub(confirm=False).steps)
-        for needle in ("收到『停止巡视』", "CronDelete", "已停"):
+        for needle in ("「停止巡视」", "「已停」", "local_patrol1"):
             self.assertIn(needle, steps)
 
     def test_teardown_stops_the_loop_before_archiving(self):
@@ -1580,16 +1585,15 @@ class DropOldTest(RulesDirGuardCase):
 
 
 class PatrolDirTest(OnboardCase):
-    """stage-c2-fixes I-17: the patrol session runs in its own folder, not the hub's, so it never loads the
-    hub's rules and the stop hook never takes it for the hub."""
+    """patrol-launchd: launchd runs the patrol, so hub-setup opens no patrol session; an old one (stage-c2-fixes
+    I-17 put it in its own folder) is stopped and archived first, and its folder is left as it is."""
 
-    def test_hub_steps_open_patrol_in_its_own_folder(self):
+    def test_hub_steps_open_no_patrol_session(self):
         out = self.hub()
-        patrol_dir = store.root_dir() / "demo" / "patrol"
-        self.assertEqual(onboard.patrol_dir("demo"), patrol_dir)
-        start = next(s for s in out.steps if "start_session" in s)
-        self.assertIn(str(patrol_dir), start)
-        self.assertNotIn("在决策收件箱目录开巡视会话", start)
+        self.assertEqual(onboard.patrol_dir("demo"), store.root_dir() / "demo" / "patrol")
+        steps = "\n".join(out.steps)
+        self.assertNotIn("start_session", steps)
+        self.assertNotIn("onboard patrol-session", steps)
         self.assertFalse(any("archive_session" in s for s in out.steps))  # no old patrol session yet
 
     def test_rerun_retires_old_patrol_session_first(self):
@@ -1598,9 +1602,24 @@ class PatrolDirTest(OnboardCase):
         steps = self.hub().steps
         stop = next(i for i, s in enumerate(steps) if "停止巡视" in s and "local_oldpatrol" in s)
         archive = next(i for i, s in enumerate(steps) if "archive_session" in s and "local_oldpatrol" in s)
-        start = next(i for i, s in enumerate(steps) if "start_session" in s)
+        register = next(i for i, s in enumerate(steps) if "register-script-identity" in s)
+        identity = next(i for i, s in enumerate(steps) if "onboard patrol-identity" in s)
+        watch_step = next(i for i, s in enumerate(steps) if "onboard watch demo" in s)
         self.assertLess(stop, archive)
-        self.assertLess(archive, start)
+        self.assertLess(archive, register)
+        self.assertLess(register, identity)
+        self.assertLess(identity, watch_step)
+
+    def test_rerun_keeps_a_recorded_identity_name(self):
+        self.hub()
+        onboard.patrol_identity("demo", "my-patrol", confirm=True, now=NOW)
+        self.assertTrue(any("register-script-identity my-patrol --confirm" in s for s in self.hub().steps))
+
+    def test_teardown_leaves_the_identity_to_the_user(self):
+        self.hub()
+        onboard.patrol_identity("demo", "di-hub-patrol", confirm=True, now=NOW)
+        steps = onboard.teardown("demo", self.dir("hub"), False, NOW).steps
+        self.assertTrue(any("di-hub-patrol" in s and "/agent-relay:collaboration" in s for s in steps))
 
     def test_teardown_steps_unchanged(self):
         self.hub()

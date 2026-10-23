@@ -79,7 +79,7 @@ def _plist(group: str) -> str:
     log = str(store.root_dir() / group / "patrol-watch.log")
     return plistlib.dumps({
         "Label": label(group),
-        "ProgramArguments": [str(runtime_cli()), "patrol-watch", group],
+        "ProgramArguments": [str(runtime_cli()), "patrol", "tick", group],  # patrol-launchd: the round itself
         "EnvironmentVariables": env,
         "StartInterval": INTERVAL_SECONDS,
         "RunAtLoad": True,

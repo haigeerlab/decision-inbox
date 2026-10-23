@@ -4,13 +4,13 @@ import os
 import sys
 from pathlib import Path
 
-from decision_inbox import crew, desktop, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, view
+from decision_inbox import crew, desktop, doctor, health, hub, install, items, loops, mapview, onboard, patrol, query, relay, specguard, stophook, store, tick, view
 
 USAGE = ("用法：python3 -m decision_inbox store <init|show> <协作组>\n"
          "      python3 -m decision_inbox query <lines|flow|item-ids|item|stats|events> <协作组> ...\n"
          "      python3 -m decision_inbox map <协作组> <线|all> [全部]\n"
          "      python3 -m decision_inbox hook stop [--group <协作组>] [--session <邮箱名>]\n"
-         "      python3 -m decision_inbox patrol <plan|record|prompt> <协作组> ...\n"
+         "      python3 -m decision_inbox patrol <plan|record|prompt|tick> <协作组> ...\n"
          "      python3 -m decision_inbox notify <文字>\n"
          "      python3 -m decision_inbox patrol-watch <协作组>\n"
          "      python3 -m decision_inbox inbox <receive|reply|sent|convention> <协作组> ...\n"
@@ -341,10 +341,14 @@ def _patrol(argv: list[str]) -> int:
     p.add_argument("--failed", nargs="*", default=[])
     p = sub.add_parser("prompt")
     p.add_argument("group")
+    p = sub.add_parser("tick")  # patrol-launchd: the launchd round
+    p.add_argument("group")
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
         return 2 if e.code else 0
+    if args.command == "tick":
+        return _patrol_tick(args.group)
     try:
         g = store.open_group(args.group)
     except (store.InvalidName, store.GroupNotFound) as e:
@@ -358,6 +362,13 @@ def _patrol(argv: list[str]) -> int:
             # hub-patrol Task 5: a file an earlier command consumed is the hub's slip, not agent-relay down
             print(f"没有 {args.agents}：先用 bridge_agents 读状态，原样写入这个文件，再运行本命令", file=sys.stderr)
             return 2
+        if args.from_hub and not tick.acquire(g, "hub", store.now()):
+            # patrol-launchd: the launchd round holds the lock; the hub skips this one
+            doc = {"version": 1, "now": store.now(), "by": "hub", "skipped": True, "actions": []}
+            Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+            _consume(args.agents)
+            print(json.dumps({"actions": [], "skipped": "本机定时巡视正在跑这一轮，这一轮跳过"}, ensure_ascii=False, indent=1))
+            return 0
         agents, error, outbox, raw = None, None, None, {}
         try:
             raw["agents"] = Path(args.agents).read_text(encoding="utf-8")
@@ -395,7 +406,27 @@ def _patrol(argv: list[str]) -> int:
         print(f"计划里没有这些动作：{'、'.join(unknown)}", file=sys.stderr)
         return 2
     patrol.record(g, doc, done=args.done, failed=args.failed)
+    if doc.get("by") == "hub" and not doc.get("skipped"):
+        tick.release(g, "hub")
     _consume(args.plan)
+    return 0
+
+
+def _patrol_tick(group: str) -> int:
+    """patrol-launchd: run by launchd every five minutes; always exits 0 so a broken run never stops the next."""
+    from datetime import datetime, timezone
+    try:
+        g = store.open_group(group)
+        result = tick.tick(g, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    except Exception as e:  # noqa: BLE001
+        print(f"巡视没跑成（{group}）：{e}".replace("\n", " "), file=sys.stderr)
+        return 0
+    if result.skipped == "locked":
+        print("决策收件箱正在跑这一轮，跳过")
+    elif result.skipped == "relay":
+        print("读不到 agent-relay，这一轮没跑")
+    else:
+        print(f"巡视跑完一轮：做成 {len(result.done)} 件，失败 {len(result.failed)} 件")
     return 0
 
 
@@ -674,6 +705,10 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("patrol-session")
     p.add_argument("group")
     p.add_argument("--session", required=True)
+    p = sub.add_parser("patrol-identity")  # patrol-launchd: the script identity the launchd patrol mails as
+    p.add_argument("group")
+    p.add_argument("--name", required=True)
+    p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("watch")  # stage-c-fixes DI-11: the launchd job behind patrol-watch
     p.add_argument("group")
     p.add_argument("--confirm", action="store_true")
@@ -726,22 +761,36 @@ def _onboard(argv: list[str]) -> int:
             onboard.record_patrol_session(args.group, args.session, now)
             print(f"已记下巡视会话：{args.session}")
             return 0
+        elif args.command == "patrol-identity":
+            out = onboard.patrol_identity(args.group, args.name, args.confirm, now)
+            was = f"（原来是 {out.previous}）" if out.previous and out.previous != out.name else ""
+            print(f"{'已记下' if args.confirm else '要记下'}巡视的脚本身份：{out.name}{was}")
+            if out.registered is False:
+                print(f"agent-relay 里还没有这个脚本身份：请用户在终端运行 {onboard.register_identity_command(out.name)}")
+            elif out.registered is None:
+                print("读不到 agent-relay，没核对它是否已登记为脚本身份")
+            else:
+                print("agent-relay 里已登记为脚本身份")
+            if not args.confirm:
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次")
+            return 0
         elif args.command == "watch":
             from decision_inbox import watch
             store.open_group(args.group)
             if args.remove:
                 path = watch.plist_path(args.group)
                 if not watch.uninstall(args.group, args.confirm):
-                    print(f"没有装巡视提醒（{path} 不存在），不用卸")
+                    print(f"没有装巡视定时任务（{path} 不存在），不用卸")
                 elif args.confirm:
-                    print(f"已卸掉巡视提醒：{watch.label(args.group)}，删掉了 {path}")
+                    print(f"已卸掉巡视定时任务：{watch.label(args.group)}，删掉了 {path}")
                 else:
-                    print(f"要卸掉巡视提醒：{watch.label(args.group)}，删掉 {path}（协作规则段、巡视会话和协作组状态不动）")
+                    print(f"要卸掉巡视定时任务：{watch.label(args.group)}，删掉 {path}（协作规则段、脚本身份和协作组状态不动）")
                     print("这是预览，没有改动；用户确认后加 --confirm 再运行一次")
                 return 0
             plan = watch.install(args.group, args.confirm)
-            print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
-                  f"{watch.runtime_cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+            print(f"巡视定时任务：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
+                  f"{watch.runtime_cli()} patrol tick {args.group}（跑一轮巡视：读 agent-relay、叫醒、提醒、通知）；"
+                  "巡视超过 15 分钟没跑完一轮就弹系统通知，30 分钟内不重复")
             print(f"运行副本：{install.runtime_dir()}（从 {install.plugin_root()} 复制，插件升级后开会话时自动刷新）")
             print(f"python：{sys.executable}")
             if plan.refused:

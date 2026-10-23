@@ -4,15 +4,15 @@
 
 - **待答表**：各会话抛来的【等待用户】待决事项，按挡住几条线排序，一项一张卡片，推荐选项带好复制块；你回「12 A」，决策收件箱原话转达给提出方（多线事项分别转给各条线）。
 - **等待记录**：谁在等谁的什么、等了多久，编号是 `W3` 这样的 W 编号（`#数字` 只给待决事项），只按四种理由关掉。
-- **巡视**：一个专门的巡视会话用 `/loop 5m` 每 5 分钟跑一轮（侧边栏只有这一个会话；实际间隔受宿主影响，见排查）。停下或空闲积压 3 分钟的 Claude 会话先叫醒；决策收件箱发出的消息被 agent-relay 判为 offline 满 3 分钟，也改用桌面版会话消息叫醒；叫不醒、Codex 任务没打开或全线停住时提醒你，附上去哪里打开。线停住 12 小时、返工 3 轮或 24 小时内同一件事报批 3 次，巡视会请那条线自己抛一项【等待用户】，30 分钟没抛就在主视图列出选项。模块协调那条线还按模块看（需要 module-crew 0.4.0）：模块从最后一次提交（没提交过按开工时间）算起的出手时长超过 12 小时（等你答复的时间不算），或同一节点 24 小时内报批 3 次，巡视请模块协调就这个模块抛【等待用户】；已合入、等合并、挂起的模块不问，正在等你或正在审查的模块照样看，读不到提交时不按时间判断；已经提示「可能在打转」的模块（见「模块打转」）不再叫醒。巡视会话停了时，决策收件箱会顺带巡视：它被叫醒或你跟它说话时，巡视超过 10 分钟没跑就补一轮（通知直接显示在决策收件箱里）。每轮读到的原始状态留在 `~/.decision-inbox/<协作组>/io/snapshots/`，最多 24 份，方便查没叫醒的原因。
+- **巡视**：本机 launchd 每 5 分钟直接跑一轮（`patrol tick`，0.0.38 起不再靠巡视会话）：用 agent-relay 0.9.0 的脚本命令读状态，以巡视的脚本身份（默认是「决策收件箱邮箱名-patrol」，由你在终端登记）给要叫醒、要提醒的会话发信；跑不成（读不到 agent-relay、脚本身份没登记）时直接弹系统通知。停下或空闲积压 3 分钟的 Claude 会话先叫醒；决策收件箱发出的消息被 agent-relay 判为 offline 满 3 分钟，也给对方发信叫醒（被桌面版停掉的会话脚本叫不醒，会通知你去打开；决策收件箱顺带巡视时仍用桌面版会话消息叫醒）；叫不醒、Codex 任务没打开或全线停住时提醒你，附上去哪里打开。线停住 12 小时、返工 3 轮或 24 小时内同一件事报批 3 次，巡视会请那条线自己抛一项【等待用户】，30 分钟没抛就在主视图列出选项。模块协调那条线还按模块看（需要 module-crew 0.4.0）：模块从最后一次提交（没提交过按开工时间）算起的出手时长超过 12 小时（等你答复的时间不算），或同一节点 24 小时内报批 3 次，巡视请模块协调就这个模块抛【等待用户】；已合入、等合并、挂起的模块不问，正在等你或正在审查的模块照样看，读不到提交时不按时间判断；已经提示「可能在打转」的模块（见「模块打转」）不再叫醒。巡视停了时，决策收件箱会顺带巡视：它被叫醒或你跟它说话时，巡视超过 10 分钟没跑就补一轮（通知直接显示在决策收件箱里）；两边撞在同一轮时，拿不到协作组巡视锁的一方跳过。每轮读到的原始状态留在 `~/.decision-inbox/<协作组>/io/snapshots/`，最多 24 份，方便查没叫醒的原因。
 - **停止钩子**：有会话在等你时，工作会话收工前会被拦一次，提醒先交付或报阻塞。
 - **查询**：各线状态、流畅度体检、单项时间线、能力图进度。
 
 依赖：
 
-- [agent-relay](https://github.com/haigeerlab/agent-relay)：会话之间的邮箱，必需；
+- [agent-relay](https://github.com/haigeerlab/agent-relay)：会话之间的邮箱，必需；巡视要 0.9.0 及以上（脚本命令）；
 - [spec-guard](https://github.com/haigeerlab/spec-guard-plugin)：可选，有了才能看能力图进度和进度预警；
-- macOS、`python3`（3.10 及以上，只用标准库）、Claude 桌面版（决策收件箱和巡视任务都在桌面版里跑）。
+- macOS、`python3`（3.10 及以上，只用标准库）、Claude 桌面版（决策收件箱在桌面版里跑；巡视由本机 launchd 跑）。
 
 ## 安装
 
@@ -45,8 +45,11 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 
 1. **决策收件箱**：为它单独建一个目录，在这个目录里开一个 Claude 桌面版会话，运行
    `/decision-inbox:hub-setup <协作组名> <它在 agent-relay 的邮箱名>`。
-   它会建协作组、把决策收件箱的约定写进本目录的 `CLAUDE.md`、开一个巡视会话（`/loop 5m`；开在 `~/.decision-inbox/<协作组>/patrol`，不开在决策收件箱目录里，免得巡视加载收件箱的协作规则段、被当成决策收件箱；以前建过巡视定时任务的，确认后删掉它，它建过的会话会一起归档）。
-   建好后运行 `~/.decision-inbox/bin/decision-inbox onboard allow <协作组名> --project <决策收件箱目录>`：它列出巡视和决策收件箱要用的命令和 agent-relay 工具，你确认后加 `--confirm` 写进决策收件箱目录和巡视目录各自的 `.claude/settings.local.json`（只写这两个文件），以后巡视不会卡在权限确认上。然后打开巡视会话看第一轮跑完；没写权限放行的话，这一次要把弹出的权限逐个批完。
+   它会建协作组、把决策收件箱的约定写进本目录的 `CLAUDE.md`，再按后续步骤装巡视（以前开过巡视会话或建过巡视定时任务的，先停止、归档或删掉它们）：
+   - 你在终端运行 `~/.agent-relay/bin/agent-relay register-script-identity <决策收件箱邮箱名>-patrol --confirm`，登记巡视的脚本身份（只能你自己运行；它不能和任何会话的邮箱名相同）；
+   - `~/.decision-inbox/bin/decision-inbox onboard patrol-identity <协作组名> --name <决策收件箱邮箱名>-patrol` 预览，确认后加 `--confirm`，把这个名字记进协作组；
+   - `~/.decision-inbox/bin/decision-inbox onboard allow <协作组名> --project <决策收件箱目录>`：列出决策收件箱要用的命令和 agent-relay 工具，你确认后加 `--confirm` 写进 `.claude/settings.local.json`，以后决策收件箱不会卡在权限确认上；
+   - `~/.decision-inbox/bin/decision-inbox onboard watch <协作组名>` 预览巡视定时任务（launchd 每 5 分钟跑一轮 `patrol tick`），确认后加 `--confirm` 装上。装好后运行 `doctor`，「巡视定时任务」一项应是正常。
 2. **审查者**：在各审查者的会话里运行 `/decision-inbox:join <协作组> owner <邮箱名> <线名> <线名>`。
 3. **开发线和跨线协调**：
    - Claude 会话：`/decision-inbox:join <协作组> dev <邮箱名> <线名> <线名>`（跨线协调用 `coordinator`，不写线名）；有审查者时告诉它审查者的邮箱名和审哪几类节点（spec、plan、interface、final）。
@@ -289,6 +292,22 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 1. 升级插件，开一个新会话（固定入口自动指向新版本）。
 2. 在决策收件箱里重跑 `/decision-inbox:hub-setup`，拿到新的协作规则段。
 
+0.0.38 没改协作规则段，开发线、审查者、跨线协调不用重跑接入。这一版巡视改由本机 launchd 直接跑（DI-11）：
+
+- launchd 任务每 5 分钟运行 `patrol tick <协作组>`：用 agent-relay 0.9.0 的脚本命令读 `agents`、`outbox`、`sessions`，判断规则和以前一样；叫醒和提醒审查者改为以巡视的脚本身份给对方的邮箱名发信，桌面通知直接弹。巡视会话不再需要。
+- 读不到 agent-relay 时弹「巡视读不到 agent-relay：<原因>」，30 分钟内不重复；脚本身份没登记、发信被拒时弹一次「巡视发不出信：请在终端登记脚本身份 <名>」。巡视超过 15 分钟没跑完一轮，照旧弹「巡视停了」。
+- 决策收件箱收到脚本身份发来的唤醒信只确认，不退回、不登记成待决事项。
+- doctor 的「巡视提醒」改名「巡视定时任务」，并核对脚本身份有没有记进协作组、agent-relay 里有没有登记。
+- 0.0.36 开在 `~/.decision-inbox/<协作组>/patrol` 的巡视目录以后不再用，留着不删。
+
+升级步骤（要 agent-relay 0.9.0 及以上）：
+
+1. 升级插件，开一个新会话（固定入口自动指向新版本）。
+2. 你在终端运行 `~/.agent-relay/bin/agent-relay register-script-identity <决策收件箱邮箱名>-patrol --confirm`，登记巡视的脚本身份（这一步只能你自己做）。
+3. 在决策收件箱里重跑 `/decision-inbox:hub-setup`：后续步骤会先请你停止并归档旧的巡视会话，再运行 `onboard patrol-identity <协作组> --name <决策收件箱邮箱名>-patrol`（预览、确认）。
+4. 重跑 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`，launchd 任务改跑 `patrol tick`。
+5. 运行 `~/.decision-inbox/bin/decision-inbox doctor`，确认「巡视定时任务」和「巡视」两项正常。
+
 ### 常规授权（Claude 线）
 
 接入 Claude 桌面版的线时，join 会预览要合并进那条线仓库 `.claude/settings.local.json` 的权限规则，你确认（`--confirm`）后才写：`git add`、`git commit`、装依赖和加新包（`npm ci`、`npm install *`、`pnpm add *`、`yarn add *`、`uv add *`、`.venv/bin/pip install *` 等，清单与 module-crew 0.5.1 一致）、`--test-command` 指定的测试命令直接放行；仓库根 `package.json` 有 `dev` 脚本时，按锁文件再放行一条开发服务命令（`pnpm dev`、`yarn dev` 或 `npm run dev`）。全局安装（`-g`、`--global` 放在哪里都算，`yarn global`、`uv --system`）和把内容管道给 shell（`sh`、`bash`、`zsh` 不带参数或带 `-s`，能拦住 `curl … | sh`，不影响 `sh 脚本.sh`）设成「禁止」。`git push`、`git reset --hard`、`rm -rf` 设成「先问」。裸 `pip install <包>` 不写规则，交给宿主默认确认。旧版本写的「先问」`npm install *`、`pip install *` 在重跑接入时会列出来，你确认后只删这两条（预览里标「旧版本写的」）。其余只追加缺的规则，不删你写的；想改就直接编辑那个文件。写在 CLAUDE.md 里的话管不了权限确认（Claude Code 文档），所以要用这份规则。Codex 线要先在 Codex 里信任项目，否则它不读协作规则段。
@@ -296,7 +315,7 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 ## 卸载
 
 1. 在各工作会话里运行 `/decision-inbox:leave`（Codex 会话说「退出 decision-inbox 协作组」），删掉规则文件里的协作规则段。
-2. 在决策收件箱里运行 `/decision-inbox:teardown`，删掉它的协作规则段、卸掉巡视提醒（launchd 任务）、归档巡视会话（以前建过巡视定时任务的也删掉）。
+2. 在决策收件箱里运行 `/decision-inbox:teardown`，删掉它的协作规则段、卸掉巡视定时任务（launchd 任务），有旧的就归档巡视会话（以前建过巡视定时任务的也删掉）。巡视的脚本身份留在 agent-relay 里，不用了就用 `/agent-relay:collaboration` 退役。
 3. 卸载插件：Claude Code 用 `claude plugin uninstall decision-inbox@decision-inbox-marketplace`；Codex 用 `codex plugin remove decision-inbox@decision-inbox-marketplace`。
 
 `~/.decision-inbox` 下的状态目录（名册、待决事项、等待记录、事件日志）**保留**，不会被删除；确实不要了再自己处理。
@@ -313,9 +332,11 @@ Codex 会把装好的副本缓存在自己的目录里，只改市场不重装�
 | 巡视运行一直「运行中」，后面的运行都没跑 | 多半卡在权限确认上：上一次没跑完，宿主会跳过之后到点的运行。打开那次运行的会话批完；升级到 0.0.20 后按「升级」一节重跑 `onboard allow`、换上新的巡视提示词，巡视就不再需要确认 |
 | 不确定装对没有 | 运行 `~/.decision-inbox/bin/decision-inbox doctor`，按每项的「怎么做」处理 |
 | 停止钩子不拦 | 在那个会话的工作目录运行 `~/.decision-inbox/bin/decision-inbox whoami`：退出码 4 是没接入，5 是同一个目录对上了多个协作组；钩子出任何问题都会放行，不会卡住会话 |
-| 弹出系统通知「决策收件箱：巡视停了」 | 巡视提醒（`onboard watch` 装的 launchd 任务，每 5 分钟检查一次）发现巡视超过 15 分钟没跑：按通知里写的去巡视会话批完权限确认或重新发一次循环提示词；巡视恢复后不再弹，停着时每 30 分钟提醒一次。一直不弹：运行 doctor 看「巡视提醒」一项；系统设置里「通知」要允许「脚本编辑器」 |
-| 只想卸掉巡视提醒，不卸决策收件箱 | teardown 会把协作规则段、巡视会话一起卸掉 | 运行 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --remove` 看预览，确认后加 `--confirm`（只删 launchd 任务） | 本插件 |
-| doctor 的「巡视提醒」报「上次运行退出 N」或「是旧版装的」 | launchd 任务装上了但跑不起来。日志里有 `Operation not permitted`（退出 126）：跑的程序在 `~/Documents`、`~/Desktop`、`~/Downloads` 下，launchd 没权限读；退出 1、日志是 Python 报错：launchd 用的 python 低于 3.10。都是 0.0.31 装法的问题，升级到 0.0.32 后重跑 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`。日志在 `~/.decision-inbox/<协作组>/patrol-watch.log` |
+| 弹出系统通知「决策收件箱：巡视停了」 | 巡视定时任务（`onboard watch` 装的 launchd 任务）发现巡视超过 15 分钟没跑完一轮：运行 doctor 看「巡视定时任务」一项，按「怎么做」处理（0.0.37 及以前是巡视会话停了：去巡视会话批完权限确认或重新发一次循环提示词）；巡视恢复后不再弹，停着时每 30 分钟提醒一次。一直不弹：系统设置里「通知」要允许「脚本编辑器」 |
+| 弹出系统通知「巡视读不到 agent-relay：<原因>」 | `patrol tick` 运行 agent-relay 的脚本命令失败：agent-relay 没装、正在升级，或低于 0.9.0（没有脚本命令）。升级或等它升级完，下一轮读到就恢复；停着时每 30 分钟提醒一次 | agent-relay |
+| 弹出系统通知「巡视发不出信：请在终端登记脚本身份 <名>」 | 巡视的脚本身份没在 agent-relay 登记，或协作组没记这个名字：你在终端运行 `~/.agent-relay/bin/agent-relay register-script-identity <名> --confirm`，再运行 `~/.decision-inbox/bin/decision-inbox onboard patrol-identity <协作组> --name <名> --confirm`；下一次发信成功后不再提醒 | 本插件 |
+| 只想卸掉巡视定时任务，不卸决策收件箱 | teardown 会把协作规则段、巡视定时任务一起卸掉 | 运行 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --remove` 看预览，确认后加 `--confirm`（只删 launchd 任务） | 本插件 |
+| doctor 的「巡视定时任务」（0.0.37 及以前叫「巡视提醒」）报「上次运行退出 N」或「是旧版装的」 | launchd 任务装上了但跑不起来。日志里有 `Operation not permitted`（退出 126）：跑的程序在 `~/Documents`、`~/Desktop`、`~/Downloads` 下，launchd 没权限读；退出 1、日志是 Python 报错：launchd 用的 python 低于 3.10。都是 0.0.31 装法的问题，升级到 0.0.32 后重跑 `~/.decision-inbox/bin/decision-inbox onboard watch <协作组> --confirm`。日志在 `~/.decision-inbox/<协作组>/patrol-watch.log` |
 | 主视图第一行写「巡视还没跑完过一轮」或「巡视 N 分钟没跑」 | 在定时任务列表里打开这个任务：最近一次运行停在权限确认上，就批完；没有在跑的运行，是宿主没按时触发，立即运行一次。`query stats` 能看到这段时间巡视实际跑了几轮、最长隔多久 |
 | 决策收件箱跑 `inbox reply --relayed-from` 被自动模式拦下 | 转来的话同样不生效，只是少记一条事件；要留记录，请在决策收件箱会话里批准这一次 |
 | 巡视不跑 | 在定时任务列表里看任务是否启用、最近的运行记录；建好后是否手动「立即运行」过一次（第一次手动运行之前，定时不会触发） |

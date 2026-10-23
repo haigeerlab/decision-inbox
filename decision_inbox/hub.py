@@ -101,6 +101,8 @@ def _dispatch(g: store.Group, m, at: str) -> tuple[str, list, list[str], dict | 
     """
     if m.sender == BRIDGE:
         return "bridge", [], [f"agent-relay 通知：{_first_line(m.body)}"], None, None
+    if m.sender == store.read_state(g, "onboarding").get("patrolIdentity"):
+        return "patrol", [], [], None, None  # patrol-launchd: the patrol's wake, only acknowledged (spec 假设 6)
     msg = protocol.parse(m.body)
     short = _short(g, m.sender)
     if msg.kind in ("wait-user", "withdraw"):
@@ -415,7 +417,10 @@ def patrol_due(g: store.Group, now: str) -> bool:
 
 
 def _patrol_runner(onboarding: dict) -> tuple[str, str, str | None] | None:
-    """What runs the patrol: the looping session (stall-and-patrol R18) or the older scheduled task."""
+    """What runs the patrol: launchd (patrol-launchd), the looping session (stall-and-patrol R18) or the older
+    scheduled task."""
+    if onboarding.get("patrolIdentity"):
+        return "launchd", onboarding["patrolIdentity"], onboarding.get("patrolIdentityAt")
     if onboarding.get("patrolSession"):
         return "session", onboarding["patrolSession"], onboarding.get("patrolSessionAt")
     if onboarding.get("patrolTask"):
@@ -439,6 +444,15 @@ def patrol_fix(task: str) -> str:
             "没有在跑的运行，是宿主没按时触发（宿主差异 H24），立即运行一次")
 
 
+LAUNCHD = "macOS launchd"
+
+
+def patrol_launchd_fix(group: str) -> str:
+    """patrol-launchd: the patrol is the launchd job; doctor says which part of it is wrong."""
+    cli = install.cli()
+    return (f"运行 {cli} doctor 看「巡视定时任务」一项；没装或没加载就运行 {cli} onboard watch {group} --confirm 重装")
+
+
 def patrol_alarm(g: store.Group, now: str) -> str | None:
     """A registered patrol that has not finished a run lately (e2e-round1-fixes F4).
 
@@ -451,14 +465,16 @@ def patrol_alarm(g: store.Group, now: str) -> str | None:
     if runner is None:
         return None
     kind, name, since = runner
-    fix = patrol_session_fix(name) if kind == "session" else patrol_fix(name)
+    fix = {"launchd": lambda: patrol_launchd_fix(g.name), "session": lambda: patrol_session_fix(name)}.get(
+        kind, lambda: patrol_fix(name))()
+    host = LAUNCHD if kind == "launchd" else HOST
     last = store.read_state(g, "patrol").get("lastRunAt")
     if last is None:
         if since is not None and view._minutes(now, since) > PATROL_STALE_MINUTES:
-            return deps.sourced(f"⚠ 巡视还没跑完过一轮：{fix}", HOST)
+            return deps.sourced(f"⚠ 巡视还没跑完过一轮：{fix}", host)
         return None
     idle = view._minutes(now, last)
-    return deps.sourced(f"⚠ 巡视 {idle} 分钟没跑：{fix}", HOST) if idle > PATROL_STALE_MINUTES else None
+    return deps.sourced(f"⚠ 巡视 {idle} 分钟没跑：{fix}", host) if idle > PATROL_STALE_MINUTES else None
 
 
 def main_view(g: store.Group, now: str, relay=None, maps: dict | None = None, exclude=(),
