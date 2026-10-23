@@ -877,6 +877,58 @@ def record_patrol_session(group: str, session: str, now: str) -> None:
         tx.append_event("onboarding.patrol-session", ref=None, actor="hub", data={"session": session, "at": now})
 
 
+def default_patrol_identity(hub_relay: str) -> str:
+    """patrol-launchd: the hub's mailbox name plus -patrol (user 2026-10-20)."""
+    return f"{hub_relay}-patrol"
+
+
+def register_identity_command(name: str) -> str:
+    """What the user runs in a terminal; only they may register a script identity (agent-relay)."""
+    return f"~/.agent-relay/bin/agent-relay register-script-identity {name} --confirm"
+
+
+@dataclass
+class IdentityPlan:
+    name: str
+    previous: str | None
+    registered: bool | None   # None: agent-relay could not be read, so it was not checked
+
+
+def script_identity_registered(name: str) -> bool | None:
+    """Whether agent-relay lists `name` as a live script identity."""
+    from decision_inbox import relayscript
+    r = relayscript.run_script("agents")
+    if r.code != 0:
+        return None
+    try:
+        doc = json.loads(r.stdout)
+    except ValueError:
+        return None
+    rows = doc.get("agents") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return None
+    return any(isinstance(a, dict) and a.get("name") == name and (a.get("host") or {}).get("app") == "script"
+               and not a.get("retiredAt") for a in rows)
+
+
+def patrol_identity(group: str, name: str, confirm: bool, now: str) -> IdentityPlan:
+    """patrol-launchd: preview, and with confirm record, the script identity the launchd patrol mails as."""
+    g = store.open_group(group)
+    store.validate_name(name)
+    if store.find_session(g, relay_name=name) is not None:
+        raise JoinError(f"{name} 是名册里会话的邮箱名；脚本身份不能和任何会话同名（agent-relay 不让会话接管脚本身份）")
+    previous = store.read_state(g, DOMAIN).get("patrolIdentity")
+    out = IdentityPlan(name, previous, script_identity_registered(name))
+    if confirm:
+        with g.transaction() as tx:
+            doc = tx.read_state(DOMAIN)
+            doc["patrolIdentity"] = name
+            doc["patrolIdentityAt"] = now
+            tx.write_state(DOMAIN, doc)
+            tx.append_event("onboarding.patrol-identity", ref=None, actor="hub", data={"name": name, "at": now})
+    return out
+
+
 def _unfinished(g: store.Group, entry: dict) -> list[str]:
     """What the leaving session still has open; leave only says so, it does not stop (rehearsal-fixes)."""
     name = entry["relayName"]

@@ -705,6 +705,10 @@ def _onboard(argv: list[str]) -> int:
     p = sub.add_parser("patrol-session")
     p.add_argument("group")
     p.add_argument("--session", required=True)
+    p = sub.add_parser("patrol-identity")  # patrol-launchd: the script identity the launchd patrol mails as
+    p.add_argument("group")
+    p.add_argument("--name", required=True)
+    p.add_argument("--confirm", action="store_true")
     p = sub.add_parser("watch")  # stage-c-fixes DI-11: the launchd job behind patrol-watch
     p.add_argument("group")
     p.add_argument("--confirm", action="store_true")
@@ -756,6 +760,19 @@ def _onboard(argv: list[str]) -> int:
         elif args.command == "patrol-session":
             onboard.record_patrol_session(args.group, args.session, now)
             print(f"已记下巡视会话：{args.session}")
+            return 0
+        elif args.command == "patrol-identity":
+            out = onboard.patrol_identity(args.group, args.name, args.confirm, now)
+            was = f"（原来是 {out.previous}）" if out.previous and out.previous != out.name else ""
+            print(f"{'已记下' if args.confirm else '要记下'}巡视的脚本身份：{out.name}{was}")
+            if out.registered is False:
+                print(f"agent-relay 里还没有这个脚本身份：请用户在终端运行 {onboard.register_identity_command(out.name)}")
+            elif out.registered is None:
+                print("读不到 agent-relay，没核对它是否已登记为脚本身份")
+            else:
+                print("agent-relay 里已登记为脚本身份")
+            if not args.confirm:
+                print("这是预览，没有写入；用户确认后加 --confirm 再运行一次")
             return 0
         elif args.command == "watch":
             from decision_inbox import watch
