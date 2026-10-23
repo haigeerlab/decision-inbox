@@ -5,4 +5,4 @@
 - [x] Task 3 `onboard patrol-identity`、`patrol_alarm` 认 launchd、收件箱收到脚本身份的信只确认
 - [x] Task 4 hub-setup 步骤、`onboard watch` 跑 `patrol tick`、doctor「巡视定时任务」与脚本身份检查、teardown 一行
 - [x] Task 5 README、`commands/hub-setup.md`、术语表 v1.3 同步与「脚本身份」、版本 0.0.38、全量测试、真实 agent-relay 只读核对
-- [ ] Checkpoint（gate）：模块最终验收 —— 批准后告诉负责人、推送、开 PR
+- [x] Checkpoint（gate）：模块最终验收（用户 2026-10-23 批准） —— 批准后告诉负责人、推送、开 PR
