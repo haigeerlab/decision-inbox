@@ -160,7 +160,7 @@ class GlossaryPageTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         copy = (ROOT / "docs" / "glossary.md").read_text(encoding="utf-8")
         self.assertEqual(done.stdout, copy)
-        self.assertIn("术语表（v1.2", copy)
+        self.assertIn("术语表（v1.3", copy)
         self.assertIn("来源：", copy.splitlines()[0] + copy.splitlines()[1] + copy.splitlines()[2])
 
 

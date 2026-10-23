@@ -28,7 +28,7 @@ class ManifestTest(unittest.TestCase):
         market = load(".claude-plugin/marketplace.json")
         self.assertEqual((claude["name"], codex["name"]), ("decision-inbox", "decision-inbox"))
         self.assertEqual(claude["version"], codex["version"])
-        self.assertEqual(claude["version"], "0.0.37")
+        self.assertEqual(claude["version"], "0.0.38")
         self.assertEqual((codex["skills"], codex["hooks"]), ("./skills/", "./hooks/hooks.json"))
         self.assertEqual(market["name"], "decision-inbox-marketplace")
         self.assertEqual([(p["name"], p["source"]) for p in market["plugins"]], [("decision-inbox", "./")])
@@ -165,10 +165,13 @@ class CommandFilesTest(unittest.TestCase):
         self.assertIn("item-ids", self.read("commands/item.md"))
         self.assertIn("bridge_wake_status", self.read("commands/item.md"))
         setup = self.read("commands/hub-setup.md")
-        # stall-and-patrol R18: a looping patrol session replaces the scheduled task
-        for needle in ("get_session", "start_session", "/loop 5m", "onboard patrol-session", "delete_scheduled_task",
-                       "bridge_register", "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked
+        # patrol-launchd: launchd runs the patrol; the user registers its script identity, no patrol session
+        for needle in ("get_session", "register-script-identity", "onboard patrol-identity", "onboard watch",
+                       "delete_scheduled_task", "archive_session", "bridge_register",
+                       "巡视还没跑完过"):  # e2e-round1-fixes F4: the first run is checked
             self.assertIn(needle, setup)
+        for gone in ("start_session", "/loop 5m", "onboard patrol-session"):
+            self.assertNotIn(gone, setup)
         self.assertIn("get_session", self.read("commands/join.md"))
         self.assertIn("--no-checkpoint-authority", self.read("commands/join.md"))  # scope-authority-defaults: on
         self.assertIn("默认打开", self.read("commands/join.md"))
@@ -248,7 +251,10 @@ class ReadmeTest(unittest.TestCase):
                        # permission-closeout
                        "pnpm add *", "禁止", "curl … | sh", "开发服务命令", "依赖清单",
                        # stall-and-patrol
-                       "/loop 5m", "### 常规授权（Claude 线）", "io/snapshots/",
+                       "### 常规授权（Claude 线）", "io/snapshots/",
+                       # patrol-launchd
+                       "patrol tick", "register-script-identity", "onboard patrol-identity", "0.0.38 没改协作规则段",
+                       "巡视读不到 agent-relay", "巡视发不出信", "巡视定时任务",
                        # approval-display
                        "### 卡片怎么读", "回「看 N 全文」", "原文取不到", "⚠ 缺证据",
                        # decision-cards
@@ -257,7 +263,7 @@ class ReadmeTest(unittest.TestCase):
                        "21 A；D1 B；D2 A", "【登记回执】", "返工中（审查第 N 轮）", "0.0.21 改了协作规则段", "0.0.22 改了协作规则段", "0.0.23 没改协作规则段", "0.0.24 也没改协作规则段", "0.0.25 也没改协作规则段", "0.0.26 也没改协作规则段", "0.0.27 也没改协作规则段", "0.0.28 还加了「模块打转」", "0.0.29 没改协作规则段", "0.0.30 改了协作规则段", "0.0.31 没改协作规则段", "0.0.32 没改协作规则段", "0.0.33 没改协作规则段", "0.0.34 没改协作规则段", "0.0.35 包括 0.0.34", "0.0.36 没改协作规则段", "0.0.37 改了决策收件箱的协作规则段", "撤下 N", "~/.decision-inbox/<协作组>/patrol", "名册过期：<线名> 的邮箱名已由新会话持有", "/decision-inbox:waits", "上次运行退出 N", "不解析【交审】【公共变更请求】【协调通知】", "【负责人转交】",
                        "第一次手动运行之前，定时不会触发", "名字还绑在旧会话上",
                        # patrol-cadence
-                       "实际间隔受宿主影响", "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
+                       "宿主没按时触发", "query stats <协作组> [--since 2026-10-17] [--json]",
                        # hub-patrol
                        "决策收件箱会顺带巡视", "重跑一次 `/decision-inbox:hub-setup`",
                        # crew-coordinator-seam
