@@ -185,11 +185,13 @@ def _patrol(g: store.Group, now: str) -> Check:
         return Check("巡视", "ok", "本插件",
                      f"{g.name} 的决策收件箱已卸载（{gone[5:16].replace('T', ' ')}），状态目录保留，不再检查巡视")
     state = store.read_state(g, onboard.DOMAIN)
-    session, task = state.get("patrolSession"), state.get("patrolTask")
-    if not (session or task):
-        return Check("巡视", "unknown", "本插件", "没有登记巡视会话",
-                     "按 onboard hub 打印的步骤开巡视会话后运行 onboard patrol-session")
+    session, task, identity = state.get("patrolSession"), state.get("patrolTask"), state.get("patrolIdentity")
+    if not (session or task or identity):
+        return Check("巡视", "unknown", "本插件", "没有登记巡视",
+                     "按 onboard hub 打印的步骤登记脚本身份、装巡视定时任务")
     alarm = hub.patrol_alarm(g, now)
+    if alarm and identity:  # patrol-launchd
+        return Check("巡视", "bad", hub.LAUNCHD, alarm.lstrip("⚠ ").split("：")[0], hub.patrol_launchd_fix(g.name))
     if alarm:
         return Check("巡视", "bad", "Claude 桌面版", alarm.lstrip("⚠ ").split("：")[0],
                      hub.patrol_session_fix(session) if session else hub.patrol_fix(task))
@@ -423,29 +425,51 @@ def _groups(names) -> list[str]:
     return sorted(p.name for p in root.iterdir() if (p / "group.json").is_file()) if root.is_dir() else []
 
 
+WATCH = "巡视定时任务"
+
+
+def _patrol_identity(group: str, label: str) -> Check:
+    """patrol-launchd: the script identity the launchd patrol mails as, recorded and registered in agent-relay."""
+    g = store.open_group(group)
+    name = store.read_state(g, onboard.DOMAIN).get("patrolIdentity")
+    hub_name = next((e["relayName"] for e in store.roster(g) if e["role"] == "hub"), "<决策收件箱邮箱名>")
+    wanted = name or onboard.default_patrol_identity(hub_name)
+    register = f"请用户在终端运行 {onboard.register_identity_command(wanted)}"
+    if not name:
+        return Check(WATCH, "bad", "本插件", "协作组没记巡视的脚本身份：巡视发不出叫醒和提醒",
+                     f"{register}，再运行 {install.cli()} onboard patrol-identity {group} --name {wanted} --confirm")
+    registered = onboard.script_identity_registered(name)
+    if registered is False:
+        return Check(WATCH, "bad", "agent-relay", f"agent-relay 里没有脚本身份 {name}：巡视发不出信", register)
+    if registered is None:
+        return Check(WATCH, "unknown", "agent-relay", f"读不到 agent-relay，没核对脚本身份 {name}",
+                     "巡视要 agent-relay 0.9.0 及以上的脚本命令：升级 agent-relay 后重跑 doctor")
+    return Check(WATCH, "ok", "本插件", f"{label} 已加载，每 5 分钟跑一轮巡视；脚本身份 {name}")
+
+
 def _patrol_watch(group: str) -> Check:
-    """stage-c-fixes DI-11: the launchd job that tells the user when the patrol has gone quiet."""
+    """stage-c-fixes DI-11, patrol-launchd: the launchd job that runs the patrol and tells the user when it stops."""
     from decision_inbox import watch
     fix = f"运行 {install.cli()} onboard watch {group} 预览，确认后加 --confirm"
     if not watch.plist_path(group).is_file():
-        return Check("巡视提醒", "bad", "本插件", "没有装：巡视停了只在主视图上提示", fix)
+        return Check(WATCH, "bad", "本插件", "没有装：巡视没人跑，停了也只在主视图上提示", fix)
     if not watch.loaded(group):
-        return Check("巡视提醒", "bad", "macOS launchd", f"{watch.label(group)} 没有加载", fix)
+        return Check(WATCH, "bad", "macOS launchd", f"{watch.label(group)} 没有加载", fix)
     # patrol-watch-runtime: loaded is not enough, it has to run
     rerun = f"升级到本版后运行 {install.cli()} onboard watch {group} --confirm 重装"
     prog = watch.program(group)
     if prog != str(watch.runtime_cli()):
-        return Check("巡视提醒", "bad", "本插件", f"是旧版装的：跑的是 {prog}，不是运行副本", rerun)
+        return Check(WATCH, "bad", "本插件", f"是旧版装的：跑的是 {prog}，不是运行副本", rerun)
     if not os.access(prog, os.X_OK):
-        return Check("巡视提醒", "bad", "本插件", f"运行副本 {prog} 不在", rerun)
+        return Check(WATCH, "bad", "本插件", f"运行副本 {prog} 不在", rerun)
     code = watch.last_exit(group)
     if code:
         tail = watch.log_tail(group)
         why = f"上次运行退出 {code}" + (f"：{tail}" if tail else "")
         if "Operation not permitted" in tail:
             why += "（运行的程序落在 macOS 受保护目录，launchd 读不了）"
-        return Check("巡视提醒", "bad", "macOS launchd", why, rerun)
-    return Check("巡视提醒", "ok", "本插件", f"{watch.label(group)} 已加载，每 5 分钟检查一次")
+        return Check(WATCH, "bad", "macOS launchd", why, rerun)
+    return _patrol_identity(group, watch.label(group))
 
 
 def run(groups=None, now: str | None = None) -> list[Check]:

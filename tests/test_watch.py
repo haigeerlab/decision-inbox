@@ -113,10 +113,29 @@ class InstallTest(TempHomeTestCase):
     def calls(self):
         return self.log.read_text(encoding="utf-8").splitlines() if self.log.is_file() else []
 
+    def identity(self, name="demo-hub-patrol", registered=True):
+        """patrol-launchd: record the patrol's script identity and fake agent-relay listing it (or not)."""
+        import json
+        import tempfile
+        from unittest import mock
+        from helpers import FakeAgentRelay
+        from decision_inbox import onboard
+        with self.g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc["patrolIdentity"] = name
+            tx.write_state(onboard.DOMAIN, doc)
+        fake = FakeAgentRelay(Path(tempfile.mkdtemp(prefix="di-relay-")))
+        rows = [{"name": name, "host": {"app": "script"}, "presence": {"state": "stopped"}}] if registered else []
+        fake.answer("agents", json.dumps({"count": len(rows), "agents": rows}))
+        env = mock.patch.dict(os.environ, fake.env())
+        env.start()
+        self.addCleanup(env.stop)
+        return fake
+
     def test_preview_writes_nothing(self):
         plan = watch.install("demo", confirm=False)
         self.assertEqual(plan.path, self.agents / "com.haigeerlab.decision-inbox.patrol-watch.demo.plist")
-        self.assertIn("<string>patrol-watch</string>", plan.content)
+        self.assertIn("<string>tick</string>", plan.content)  # patrol-launchd: launchd runs the patrol itself
         self.assertIn("<integer>300</integer>", plan.content)
         self.assertFalse(plan.path.exists())
         self.assertEqual(self.calls(), [])
@@ -146,7 +165,7 @@ class InstallTest(TempHomeTestCase):
         self.assertEqual((rt / "decision_inbox" / "watch.py").read_bytes(),
                          (REPO / "decision_inbox" / "watch.py").read_bytes())
         job = plistlib.loads(plan.path.read_bytes())
-        self.assertEqual(job["ProgramArguments"], [str(rt / "bin" / "decision-inbox"), "patrol-watch", "demo"])
+        self.assertEqual(job["ProgramArguments"], [str(rt / "bin" / "decision-inbox"), "patrol", "tick", "demo"])
         self.assertEqual(job["EnvironmentVariables"]["PATH"], f"{os.path.dirname(sys.executable)}:/usr/bin:/bin")
         self.assertEqual(job["EnvironmentVariables"]["DECISION_INBOX_HOME"], str(self.home))
         self.assertEqual(job["StartInterval"], 300)
@@ -178,22 +197,58 @@ class InstallTest(TempHomeTestCase):
         self.assertTrue(any("onboard watch demo" in s and "--confirm" in s for s in out.steps))
         watch.install("demo", confirm=True)
         out = onboard.teardown("demo", project, confirm=False, now="2026-10-20T01:00:00Z")
-        self.assertTrue(any("巡视提醒" in s for s in out.steps))
+        self.assertTrue(any("巡视定时任务" in s for s in out.steps))
         self.assertTrue(watch.plist_path("demo").exists())
         out = onboard.teardown("demo", project, confirm=True, now="2026-10-20T01:00:00Z")
         self.assertFalse(watch.plist_path("demo").exists())
-        self.assertTrue(any("巡视提醒" in w for w in out.written))
+        self.assertTrue(any("巡视定时任务" in w for w in out.written))
 
     def test_doctor(self):
         from decision_inbox import doctor
         self.assertEqual(doctor._patrol_watch("demo").state, "bad")
+        self.assertEqual(doctor._patrol_watch("demo").name, "巡视定时任务")  # patrol-launchd
         self.assertIn("onboard watch demo", doctor._patrol_watch("demo").fix)
         watch.install("demo", confirm=True)
-        self.assertEqual(doctor._patrol_watch("demo").state, "ok")
+        self.identity()
+        c = doctor._patrol_watch("demo")
+        self.assertEqual(c.state, "ok")
+        self.assertIn("demo-hub-patrol", c.evidence)
+
+    def test_doctor_without_a_recorded_identity(self):
+        from decision_inbox import doctor, onboard
+        watch.install("demo", confirm=True)
+        with self.g.transaction() as tx:
+            doc = tx.read_state(onboard.DOMAIN)
+            doc.pop("patrolIdentity", None)
+            tx.write_state(onboard.DOMAIN, doc)
+        c = doctor._patrol_watch("demo")
+        self.assertEqual(c.state, "bad")
+        self.assertIn("脚本身份", c.evidence)
+        self.assertIn("onboard patrol-identity demo", c.fix)
+
+    def test_doctor_identity_not_registered_in_agent_relay(self):
+        from decision_inbox import doctor
+        watch.install("demo", confirm=True)
+        self.identity(registered=False)
+        c = doctor._patrol_watch("demo")
+        self.assertEqual((c.state, c.source), ("bad", "agent-relay"))
+        self.assertIn("register-script-identity demo-hub-patrol --confirm", c.fix)
+
+    def test_doctor_agent_relay_unreadable(self):
+        from decision_inbox import doctor
+        watch.install("demo", confirm=True)
+        self.identity().fail("agents", 3, "down")
+        c = doctor._patrol_watch("demo")
+        self.assertEqual(c.state, "unknown")
+        self.assertIn("0.9.0", c.fix)
 
 
 class DoctorRunsTest(InstallTest):
     """patrol-watch-runtime: loaded is not enough; the job has to run."""
+
+    def setUp(self):
+        super().setUp()
+        self.identity()
 
     def check(self, last=None, log=None):
         from decision_inbox import doctor
@@ -341,4 +396,4 @@ class WatchRemoveCommandTest(WatchOnboardCommandTest):
     def test_remove_when_not_installed(self):
         r = self.run_cli("--remove", "--confirm")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("没有装巡视提醒", r.stdout)
+        self.assertIn("没有装巡视定时任务", r.stdout)

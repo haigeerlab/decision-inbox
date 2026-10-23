@@ -780,16 +780,17 @@ def _onboard(argv: list[str]) -> int:
             if args.remove:
                 path = watch.plist_path(args.group)
                 if not watch.uninstall(args.group, args.confirm):
-                    print(f"没有装巡视提醒（{path} 不存在），不用卸")
+                    print(f"没有装巡视定时任务（{path} 不存在），不用卸")
                 elif args.confirm:
-                    print(f"已卸掉巡视提醒：{watch.label(args.group)}，删掉了 {path}")
+                    print(f"已卸掉巡视定时任务：{watch.label(args.group)}，删掉了 {path}")
                 else:
-                    print(f"要卸掉巡视提醒：{watch.label(args.group)}，删掉 {path}（协作规则段、巡视会话和协作组状态不动）")
+                    print(f"要卸掉巡视定时任务：{watch.label(args.group)}，删掉 {path}（协作规则段、脚本身份和协作组状态不动）")
                     print("这是预览，没有改动；用户确认后加 --confirm 再运行一次")
                 return 0
             plan = watch.install(args.group, args.confirm)
-            print(f"巡视提醒：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
-                  f"{watch.runtime_cli()} patrol-watch {args.group}；巡视超过 15 分钟没跑就弹系统通知，30 分钟内不重复")
+            print(f"巡视定时任务：launchd 任务 {watch.label(args.group)}，每 5 分钟运行一次 "
+                  f"{watch.runtime_cli()} patrol tick {args.group}（跑一轮巡视：读 agent-relay、叫醒、提醒、通知）；"
+                  "巡视超过 15 分钟没跑完一轮就弹系统通知，30 分钟内不重复")
             print(f"运行副本：{install.runtime_dir()}（从 {install.plugin_root()} 复制，插件升级后开会话时自动刷新）")
             print(f"python：{sys.executable}")
             if plan.refused:
