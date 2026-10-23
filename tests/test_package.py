@@ -48,7 +48,9 @@ class StaticScanTest(unittest.TestCase):
         # stall-and-patrol R19: save_snapshot rotates its own copies under the group's io/snapshots, keeping 24
         # stage-c-fixes DI-11: uninstall removes the launchd plist the hub's own `onboard watch` wrote
         # patrol-watch-runtime: write_runtime drops its own build dir and the runtime copy it just replaced
-        allowed = {("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink"),
+        # patrol-launchd: the patrol lock file, taken over when stale and dropped by its holder
+        allowed = {("tick.py", "acquire", "unlink"), ("tick.py", "release", "unlink"),
+                   ("onboard.py", "_drop_created_rules", "unlink"), ("__main__.py", "_consume", "unlink"),
                    ("patrol.py", "save_snapshot", "unlink"), ("watch.py", "uninstall", "unlink"),
                    ("install.py", "write_runtime", "rmtree")}
         seen = set()

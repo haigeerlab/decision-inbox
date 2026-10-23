@@ -293,6 +293,8 @@ def plan(g: store.Group, now: str, relay=None, maps: dict | None = None,
 
 def record(g: store.Group, plan_doc: dict, done=(), failed=(), now: str | None = None) -> None:
     """The only writer of the patrol domain: outcomes of this round, then forget what is no longer live."""
+    if plan_doc.get("skipped"):
+        return  # patrol-launchd: the hub skipped a round the launchd tick held
     done, failed = list(done), list(failed)
     at = plan_doc["now"]
     live = plan_doc["live"]
